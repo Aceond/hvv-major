@@ -41,21 +41,13 @@ function rankColor(index: number) {
   return ''
 }
 
-/**
- * KD 显示规则：
- * - 击杀=0 且 死亡=0 → '-'（无意义）
- * - 死亡=0 且 击杀>0 → 击杀数（HLTV 惯例，避免无穷大）
- * - 其余 → 击杀/死亡 保留两位小数
- */
-function formatKd(kills: number, deaths: number): string {
-  if (kills === 0 && deaths === 0) return '-'
-  if (deaths === 0) return String(kills)
-  return (kills / deaths).toFixed(2)
+/** 高值显示绿色、低值红色（threshold 为分界，≥ 为高） */
+function trendClass(value: number, threshold = 1) {
+  return value >= threshold ? 'rating-pos' : 'rating-neg'
 }
 
-function kdClass(kills: number, deaths: number): string {
-  if (deaths === 0) return 'rating-pos'
-  return kills / deaths >= 1 ? 'rating-pos' : 'rating-neg'
+function pctClass(value: number) {
+  return value >= 50 ? 'rating-pos' : 'rating-neg'
 }
 </script>
 
@@ -96,7 +88,7 @@ function kdClass(kills: number, deaths: number): string {
     <!-- 队伍排行 -->
     <el-card v-if="tab === 'team'" v-loading="loading">
       <el-table :data="teamRows" stripe empty-text="暂无队伍数据">
-        <el-table-column label="排名" width="70">
+        <el-table-column label="排名" width="64">
           <template #default="{ $index }">
             <span :class="['rank', rankColor($index)]">{{ $index + 1 }}</span>
           </template>
@@ -107,30 +99,47 @@ function kdClass(kills: number, deaths: number): string {
             <el-tag v-if="row.tag" size="small" effect="plain">{{ row.tag }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="阶段" width="110">
+        <el-table-column label="阶段" width="104">
           <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
         </el-table-column>
-        <el-table-column prop="group_name" label="组别" width="80" />
-        <el-table-column prop="played" label="场次" width="60" />
-        <el-table-column prop="wins" label="胜" width="50" />
-        <el-table-column prop="losses" label="负" width="50" />
-        <el-table-column label="WE" width="70">
+        <el-table-column prop="group_name" label="组别" width="76" />
+        <el-table-column label="胜率" width="72">
           <template #default="{ row }">
-            <b :class="row.we > 0 ? 'rating-pos' : 'rating-neg'">{{ row.we }}%</b>
+            <b :class="pctClass(row.win_rate)">{{ row.win_rate }}%</b>
           </template>
         </el-table-column>
-        <el-table-column label="ADR" width="80">
-          <template #default="{ row }">{{ row.adr.toFixed(1) }}</template>
-        </el-table-column>
-        <el-table-column label="KD" width="70">
+        <el-table-column label="K/D" width="72">
           <template #default="{ row }">
-            <b :class="row.kd >= 1 ? 'rating-pos' : 'rating-neg'">{{ row.kd.toFixed(2) }}</b>
+            <b :class="trendClass(row.kd)">{{ row.kd.toFixed(2) }}</b>
           </template>
         </el-table-column>
-        <el-table-column label="Rating" width="80">
-          <template #default="{ row }">
-            <b :class="row.rating >= 1 ? 'rating-pos' : 'rating-neg'">{{ row.rating.toFixed(2) }}</b>
-          </template>
+        <el-table-column prop="matches" label="比赛数" width="70" align="center" />
+        <el-table-column label="爆头率" width="80">
+          <template #default="{ row }">{{ row.hs_rate.toFixed(1) }}%</template>
+        </el-table-column>
+        <el-table-column label="手枪局胜率" width="104">
+          <template #default="{ row }">{{ row.pistol_win_rate }}%</template>
+        </el-table-column>
+        <el-table-column label="先胜5回合胜率" width="120">
+          <template #default="{ row }">{{ row.first_five_win_rate }}%</template>
+        </el-table-column>
+        <el-table-column label="场均击杀" width="82">
+          <template #default="{ row }">{{ row.avg_kills.toFixed(1) }}</template>
+        </el-table-column>
+        <el-table-column label="场均死亡" width="82">
+          <template #default="{ row }">{{ row.avg_deaths.toFixed(1) }}</template>
+        </el-table-column>
+        <el-table-column label="场均助攻" width="82">
+          <template #default="{ row }">{{ row.avg_assists.toFixed(1) }}</template>
+        </el-table-column>
+        <el-table-column label="总击杀" width="72">
+          <template #default="{ row }">{{ row.total_kills }}</template>
+        </el-table-column>
+        <el-table-column label="总死亡" width="72">
+          <template #default="{ row }">{{ row.total_deaths }}</template>
+        </el-table-column>
+        <el-table-column label="总助攻" width="72">
+          <template #default="{ row }">{{ row.total_assists }}</template>
         </el-table-column>
       </el-table>
     </el-card>
@@ -138,39 +147,64 @@ function kdClass(kills: number, deaths: number): string {
     <!-- 个人排行 -->
     <el-card v-else v-loading="loading">
       <el-table :data="playerRows" stripe empty-text="暂无个人数据">
-        <el-table-column label="排名" width="70">
+        <el-table-column label="排名" width="64">
           <template #default="{ $index }">
             <span :class="['rank', rankColor($index)]">{{ $index + 1 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="player_name" label="选手" min-width="110" />
-        <el-table-column prop="team_name" label="战队" min-width="130" />
-        <el-table-column label="阶段" width="110">
+        <el-table-column prop="player_name" label="选手" min-width="100" />
+        <el-table-column prop="team_name" label="战队" min-width="120" />
+        <el-table-column label="阶段" width="104">
           <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
         </el-table-column>
-        <el-table-column prop="group_name" label="组别" width="80" />
-        <el-table-column prop="matches" label="场次" width="60" />
-        <el-table-column label="击杀" width="60">
-          <template #default="{ row }">{{ row.kills }}</template>
+        <el-table-column prop="group_name" label="组别" width="76" />
+        <el-table-column label="WE" width="72">
+          <template #default="{ row }">
+            <b :class="pctClass(row.we)">{{ row.we.toFixed(1) }}</b>
+          </template>
         </el-table-column>
-        <el-table-column label="死亡" width="60">
-          <template #default="{ row }">{{ row.deaths }}</template>
+        <el-table-column label="Rating PRO" width="92">
+          <template #default="{ row }">
+            <b :class="trendClass(row.rating_pro)">{{ row.rating_pro.toFixed(2) }}</b>
+          </template>
         </el-table-column>
-        <el-table-column label="助攻" width="60">
-          <template #default="{ row }">{{ row.assists }}</template>
+        <el-table-column label="胜率" width="72">
+          <template #default="{ row }">
+            <b :class="pctClass(row.win_rate)">{{ row.win_rate }}%</b>
+          </template>
         </el-table-column>
+        <el-table-column label="K/D" width="72">
+          <template #default="{ row }">
+            <b :class="trendClass(row.kd)">{{ row.kd.toFixed(2) }}</b>
+          </template>
+        </el-table-column>
+        <el-table-column prop="matches" label="比赛数" width="70" align="center" />
         <el-table-column label="爆头率" width="80">
           <template #default="{ row }">{{ row.hs_rate.toFixed(1) }}%</template>
         </el-table-column>
-        <el-table-column label="KD" width="70">
-          <template #default="{ row }">
-            <b :class="kdClass(row.kills, row.deaths)">{{ formatKd(row.kills, row.deaths) }}</b>
-          </template>
+        <el-table-column label="击杀/回合" width="92">
+          <template #default="{ row }">{{ row.kpr.toFixed(2) }}</template>
         </el-table-column>
-        <el-table-column label="Rating" width="80">
-          <template #default="{ row }">
-            <b :class="row.rating >= 1 ? 'rating-pos' : 'rating-neg'">{{ row.rating.toFixed(2) }}</b>
-          </template>
+        <el-table-column label="死亡/回合" width="92">
+          <template #default="{ row }">{{ row.dpr.toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column label="ADR" width="72">
+          <template #default="{ row }">{{ row.adr.toFixed(1) }}</template>
+        </el-table-column>
+        <el-table-column label="总击杀" width="72">
+          <template #default="{ row }">{{ row.total_kills }}</template>
+        </el-table-column>
+        <el-table-column label="总死亡" width="72">
+          <template #default="{ row }">{{ row.total_deaths }}</template>
+        </el-table-column>
+        <el-table-column label="总助攻" width="72">
+          <template #default="{ row }">{{ row.total_assists }}</template>
+        </el-table-column>
+        <el-table-column label="首杀/回合" width="92">
+          <template #default="{ row }">{{ row.fpr.toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column label="AWP击杀/回合" width="110">
+          <template #default="{ row }">{{ row.awp_kpr.toFixed(2) }}</template>
         </el-table-column>
       </el-table>
     </el-card>

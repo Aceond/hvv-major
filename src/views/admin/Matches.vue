@@ -278,7 +278,7 @@ onMounted(load)
 }
 
 .score {
-  color: #409eff;
+  color: var(--cs2-accent);
 }
 
 .tip {
@@ -287,6 +287,6 @@ onMounted(load)
 
 .form .vs {
   margin: 0 8px;
-  color: #909399;
+  color: var(--cs2-text-muted);
 }
 </style>

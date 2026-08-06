@@ -92,7 +92,7 @@ async function save() {
 
 .form-tip {
   font-size: 12px;
-  color: #909399;
+  color: var(--cs2-text-muted);
   line-height: 1.5;
 }
 </style>

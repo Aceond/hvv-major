@@ -46,9 +46,13 @@ async function load() {
           team_id: t.id, team_name: t.name, tag: t.tag,
           stage_id: currentStage.value, stage_name: stageName,
           group_id: t.group_id, group_name: groupName,
-          played: ex?.played ?? 0, wins: ex?.wins ?? 0,
-          losses: ex?.losses ?? 0, points: ex?.points ?? 0,
-          we: ex?.we ?? 0, adr: ex?.adr ?? 0, kd: ex?.kd ?? 0, rating: ex?.rating ?? 0,
+          win_rate: ex?.win_rate ?? 0, kd: ex?.kd ?? 0, matches: ex?.matches ?? 0,
+          hs_rate: ex?.hs_rate ?? 0, pistol_win_rate: ex?.pistol_win_rate ?? 0,
+          first_five_win_rate: ex?.first_five_win_rate ?? 0,
+          avg_kills: ex?.avg_kills ?? 0, avg_deaths: ex?.avg_deaths ?? 0,
+          avg_assists: ex?.avg_assists ?? 0,
+          total_kills: ex?.total_kills ?? 0, total_deaths: ex?.total_deaths ?? 0,
+          total_assists: ex?.total_assists ?? 0,
         } as TeamStatRow
       })
 
@@ -67,9 +71,13 @@ async function load() {
           team_id: currentTeam.value, team_name: team?.name ?? '-',
           stage_id: currentStage.value, stage_name: stageName,
           group_id: team?.group_id ?? null, group_name: groupName,
-          matches: ex?.matches ?? 0, kills: ex?.kills ?? 0,
-          deaths: ex?.deaths ?? 0, assists: ex?.assists ?? 0,
-          hs_rate: ex?.hs_rate ?? 0, rating: ex?.rating ?? 0,
+          we: ex?.we ?? 0, rating_pro: ex?.rating_pro ?? 0,
+          win_rate: ex?.win_rate ?? 0, kd: ex?.kd ?? 0, matches: ex?.matches ?? 0,
+          hs_rate: ex?.hs_rate ?? 0, kpr: ex?.kpr ?? 0, dpr: ex?.dpr ?? 0,
+          adr: ex?.adr ?? 0,
+          total_kills: ex?.total_kills ?? 0, total_deaths: ex?.total_deaths ?? 0,
+          total_assists: ex?.total_assists ?? 0,
+          fpr: ex?.fpr ?? 0, awp_kpr: ex?.awp_kpr ?? 0,
         } as PlayerStatRow
       })
     } else {
@@ -147,36 +155,48 @@ async function savePlayerRows() {
     <!-- 队伍数据 -->
     <el-card v-if="tab === 'team'" v-loading="loading">
       <el-table :data="teamRows" stripe empty-text="暂无队伍">
-        <el-table-column prop="team_name" label="队伍" min-width="150">
+        <el-table-column prop="team_name" label="队伍" min-width="150" fixed>
           <template #default="{ row }">
             <span>{{ row.team_name }}</span>
             <el-tag v-if="row.tag" size="small" effect="plain">{{ row.tag }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="group_name" label="组别" width="80" />
-        <el-table-column label="场次" width="76">
-          <template #default="{ row }"><el-input-number v-model="row.played" :min="0" size="small" :controls="false" /></template>
+        <el-table-column prop="group_name" label="组别" width="80" fixed />
+        <el-table-column label="胜率%" width="86">
+          <template #default="{ row }"><el-input-number v-model="row.win_rate" :min="0" :max="100" size="small" :controls="false" /></template>
         </el-table-column>
-        <el-table-column label="胜" width="66">
-          <template #default="{ row }"><el-input-number v-model="row.wins" :min="0" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="负" width="66">
-          <template #default="{ row }"><el-input-number v-model="row.losses" :min="0" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="积分" width="66">
-          <template #default="{ row }"><el-input-number v-model="row.points" :min="0" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="WE%" width="80">
-          <template #default="{ row }"><el-input-number v-model="row.we" :min="0" :max="100" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="ADR" width="86">
-          <template #default="{ row }"><el-input-number v-model="row.adr" :min="0" :precision="1" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="KD" width="76">
+        <el-table-column label="K/D" width="76">
           <template #default="{ row }"><el-input-number v-model="row.kd" :min="0" :precision="2" size="small" :controls="false" /></template>
         </el-table-column>
-        <el-table-column label="Rating" width="90">
-          <template #default="{ row }"><el-input-number v-model="row.rating" :min="0" :precision="2" size="small" :controls="false" /></template>
+        <el-table-column label="比赛数" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.matches" :min="0" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="爆头率%" width="86">
+          <template #default="{ row }"><el-input-number v-model="row.hs_rate" :min="0" :max="100" :precision="1" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="手枪局胜率%" width="110">
+          <template #default="{ row }"><el-input-number v-model="row.pistol_win_rate" :min="0" :max="100" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="先胜5回合胜率%" width="128">
+          <template #default="{ row }"><el-input-number v-model="row.first_five_win_rate" :min="0" :max="100" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="场均击杀" width="86">
+          <template #default="{ row }"><el-input-number v-model="row.avg_kills" :min="0" :precision="1" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="场均死亡" width="86">
+          <template #default="{ row }"><el-input-number v-model="row.avg_deaths" :min="0" :precision="1" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="场均助攻" width="86">
+          <template #default="{ row }"><el-input-number v-model="row.avg_assists" :min="0" :precision="1" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="总击杀" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.total_kills" :min="0" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="总死亡" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.total_deaths" :min="0" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="总助攻" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.total_assists" :min="0" size="small" :controls="false" /></template>
         </el-table-column>
       </el-table>
     </el-card>
@@ -184,27 +204,51 @@ async function savePlayerRows() {
     <!-- 个人数据 -->
     <el-card v-else v-loading="loading">
       <el-table :data="playerRows" stripe empty-text="暂无选手（请先选择战队）">
-        <el-table-column prop="player_name" label="选手" min-width="110" />
-        <el-table-column label="完美 ID" min-width="130">
+        <el-table-column prop="player_name" label="选手" min-width="110" fixed />
+        <el-table-column label="完美 ID" min-width="130" fixed>
           <template #default="{ row }">{{ row.pw_username ?? '-' }}</template>
         </el-table-column>
-        <el-table-column label="场次" width="76">
+        <el-table-column label="WE" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.we" :min="0" :max="100" :precision="1" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="Rating PRO" width="96">
+          <template #default="{ row }"><el-input-number v-model="row.rating_pro" :min="0" :precision="2" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="胜率%" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.win_rate" :min="0" :max="100" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="K/D" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.kd" :min="0" :precision="2" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="比赛数" width="76">
           <template #default="{ row }"><el-input-number v-model="row.matches" :min="0" size="small" :controls="false" /></template>
         </el-table-column>
-        <el-table-column label="击杀" width="76">
-          <template #default="{ row }"><el-input-number v-model="row.kills" :min="0" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="死亡" width="76">
-          <template #default="{ row }"><el-input-number v-model="row.deaths" :min="0" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="助攻" width="76">
-          <template #default="{ row }"><el-input-number v-model="row.assists" :min="0" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="爆头率%" width="96">
+        <el-table-column label="爆头率%" width="86">
           <template #default="{ row }"><el-input-number v-model="row.hs_rate" :min="0" :max="100" :precision="1" size="small" :controls="false" /></template>
         </el-table-column>
-        <el-table-column label="Rating" width="90">
-          <template #default="{ row }"><el-input-number v-model="row.rating" :min="0" :precision="2" size="small" :controls="false" /></template>
+        <el-table-column label="击杀/回合" width="90">
+          <template #default="{ row }"><el-input-number v-model="row.kpr" :min="0" :precision="2" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="死亡/回合" width="90">
+          <template #default="{ row }"><el-input-number v-model="row.dpr" :min="0" :precision="2" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="ADR" width="80">
+          <template #default="{ row }"><el-input-number v-model="row.adr" :min="0" :precision="1" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="总击杀" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.total_kills" :min="0" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="总死亡" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.total_deaths" :min="0" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="总助攻" width="76">
+          <template #default="{ row }"><el-input-number v-model="row.total_assists" :min="0" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="首杀/回合" width="90">
+          <template #default="{ row }"><el-input-number v-model="row.fpr" :min="0" :precision="2" size="small" :controls="false" /></template>
+        </el-table-column>
+        <el-table-column label="AWP击杀/回合" width="118">
+          <template #default="{ row }"><el-input-number v-model="row.awp_kpr" :min="0" :precision="2" size="small" :controls="false" /></template>
         </el-table-column>
       </el-table>
     </el-card>

@@ -66,7 +66,7 @@ onMounted(async () => {
 }
 
 .stat-label {
-  color: #909399;
+  color: var(--cs2-text-muted);
   margin: 0 0 8px;
 }
 
@@ -74,7 +74,7 @@ onMounted(async () => {
   font-size: 32px;
   font-weight: 700;
   margin: 0;
-  color: #409eff;
+  color: var(--cs2-accent);
 }
 
 .warning {

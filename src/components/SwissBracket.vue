@@ -123,7 +123,7 @@ const standings = computed(() => {
 }
 
 .swiss-stage {
-  color: #909399;
+  color: var(--cs2-text-muted);
   font-size: 13px;
 }
 
@@ -137,7 +137,8 @@ const standings = computed(() => {
 .round {
   flex: 0 0 auto;
   width: 230px;
-  background: #f5f7fa;
+  background: var(--cs2-panel);
+  border: 1px solid var(--cs2-border);
   border-radius: 8px;
   padding: 12px;
 }
@@ -151,12 +152,12 @@ const standings = computed(() => {
 
 .round-name {
   font-weight: 700;
-  color: #303133;
+  color: var(--cs2-text);
 }
 
 .round-count {
   font-size: 12px;
-  color: #909399;
+  color: var(--cs2-text-muted);
 }
 
 .round-matches {
@@ -166,8 +167,8 @@ const standings = computed(() => {
 }
 
 .match-card {
-  background: #fff;
-  border: 1px solid #e4e7ed;
+  background: var(--cs2-panel-2);
+  border: 1px solid var(--cs2-border);
   border-radius: 6px;
   padding: 8px 10px;
 }
@@ -181,7 +182,7 @@ const standings = computed(() => {
 .team {
   flex: 1;
   font-size: 13px;
-  color: #606266;
+  color: var(--cs2-text-regular, #c6ccd8);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -194,7 +195,7 @@ const standings = computed(() => {
 
 .score {
   font-weight: 700;
-  color: #409eff;
+  color: var(--cs2-accent);
   white-space: nowrap;
 }
 
@@ -203,7 +204,7 @@ const standings = computed(() => {
   justify-content: space-between;
   margin-top: 6px;
   font-size: 12px;
-  color: #909399;
+  color: var(--cs2-text-muted);
 }
 
 .status.completed {

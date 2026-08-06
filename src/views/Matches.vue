@@ -137,7 +137,7 @@ function matchStatusType(status: Match['status']) {
 
 .team {
   min-width: 90px;
-  color: #606266;
+  color: var(--cs2-text-regular, #c6ccd8);
 }
 
 .team.win {
@@ -147,7 +147,7 @@ function matchStatusType(status: Match['status']) {
 
 .score {
   font-weight: 700;
-  color: #409eff;
+  color: var(--cs2-accent);
   white-space: nowrap;
 }
 </style>

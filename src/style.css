@@ -1,3 +1,76 @@
+/* ============================================================
+   CS2 主题 · 全局样式
+   设计语言：暗色战术风格 / 琥珀金强调（Counter-Strike 2 品牌色）
+   ============================================================ */
+
+:root {
+  --cs2-bg: #0b0e14;
+  --cs2-bg-soft: #10141d;
+  --cs2-panel: #151a24;
+  --cs2-panel-2: #1b2230;
+  --cs2-panel-3: #232b3d;
+  --cs2-border: #262e40;
+  --cs2-border-strong: #333e56;
+  --cs2-text: #e8eaee;
+  --cs2-text-muted: #8b95a9;
+  --cs2-accent: #ffb020;
+  --cs2-accent-strong: #ff9d00;
+  --cs2-accent-soft: rgba(255, 176, 32, 0.12);
+  --cs2-font:
+    'Rajdhani', 'Oswald', 'Helvetica Neue', 'PingFang SC',
+    'Microsoft YaHei', Arial, sans-serif;
+}
+
+/* ---------- Element Plus 变量覆盖（CS2 色板） ---------- */
+html.dark {
+  /* 主色：琥珀金 */
+  --el-color-primary: #ffb020;
+  --el-color-primary-light-3: #ffc64d;
+  --el-color-primary-light-5: #ffd780;
+  --el-color-primary-light-7: #ffe6b3;
+  --el-color-primary-light-8: #ffedcc;
+  --el-color-primary-light-9: #fff4e0;
+  --el-color-primary-dark-2: #cc8d1a;
+
+  /* 背景 */
+  --el-bg-color: var(--cs2-panel);
+  --el-bg-color-page: var(--cs2-bg);
+  --el-bg-color-overlay: var(--cs2-panel-2);
+
+  /* 填充 / 悬浮 */
+  --el-fill-color-blank: var(--cs2-panel);
+  --el-fill-color: var(--cs2-panel-2);
+  --el-fill-color-light: var(--cs2-panel-3);
+  --el-fill-color-lighter: var(--cs2-panel-2);
+  --el-fill-color-extra-light: var(--cs2-bg-soft);
+  --el-fill-color-dark: var(--cs2-panel-3);
+  --el-fill-color-darker: var(--cs2-border-strong);
+
+  /* 文本 */
+  --el-text-color-primary: var(--cs2-text);
+  --el-text-color-regular: #c6ccd8;
+  --el-text-color-secondary: var(--cs2-text-muted);
+  --el-text-color-placeholder: #5f6a80;
+  --el-text-color-disabled: #4a5266;
+
+  /* 边框 */
+  --el-border-color: var(--cs2-border);
+  --el-border-color-light: var(--cs2-border);
+  --el-border-color-lighter: var(--cs2-panel-3);
+  --el-border-color-extra-light: var(--cs2-panel-2);
+  --el-border-color-dark: var(--cs2-border-strong);
+  --el-border-color-darker: #3d4860;
+
+  /* 组件配色微调 */
+  --el-border-color-hover: var(--cs2-border-strong);
+  --el-mask-color: rgba(7, 9, 13, 0.72);
+  --el-box-shadow-light: 0 8px 28px rgba(0, 0, 0, 0.45);
+  --el-box-shadow: 0 12px 36px rgba(0, 0, 0, 0.5);
+  --el-disabled-bg-color: var(--cs2-bg-soft);
+  --el-disabled-border-color: var(--cs2-border);
+}
+
+/* ---------- 基础 ---------- */
 * {
   box-sizing: border-box;
 }
@@ -11,19 +84,104 @@ body,
 }
 
 body {
-  font-family: 'Helvetica Neue', Helvetica, 'PingFang SC', 'Microsoft YaHei',
-    Arial, sans-serif;
-  background: #f5f7fa;
-  color: #303133;
+  font-family: var(--cs2-font);
+  background:
+    radial-gradient(1200px 500px at 80% -10%, rgba(255, 176, 32, 0.06), transparent 60%),
+    radial-gradient(900px 400px at -10% 20%, rgba(255, 157, 0, 0.04), transparent 55%),
+    var(--cs2-bg);
+  color: var(--cs2-text);
+  -webkit-font-smoothing: antialiased;
 }
 
 a {
-  color: #409eff;
+  color: var(--cs2-accent);
   text-decoration: none;
 }
 
+/* 页面容器 */
 .page-container {
-  max-width: 1100px;
+  max-width: 1120px;
   margin: 0 auto;
-  padding: 24px 16px;
+  padding: 28px 20px 40px;
+}
+
+/* 页面标题（斜切角战术风格） */
+.page-title {
+  display: inline-flex;
+  align-items: center;
+  margin: 0 0 20px;
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 1px;
+}
+
+/* 各页面沿用 <h2 class="title"> 时适配暗色 */
+.page-container h2.title {
+  color: var(--cs2-text);
+  margin-bottom: 16px;
+}
+
+.page-title::before {
+  content: '';
+  width: 4px;
+  height: 22px;
+  margin-right: 10px;
+  background: linear-gradient(180deg, var(--cs2-accent), transparent);
+  clip-path: polygon(0 0, 100% 20%, 100% 80%, 0 100%);
+}
+
+/* 斜切角卡片 */
+.clipped-card {
+  background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
+  border: 1px solid var(--cs2-border);
+  clip-path: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 0 100%);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.clipped-card:hover {
+  border-color: var(--cs2-accent);
+}
+
+/* 通用 section 标题 */
+.sec-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+
+.sec-title::before {
+  content: '';
+  width: 3px;
+  height: 16px;
+  background: var(--cs2-accent);
+}
+
+/* Element Plus 暗色下的微调 */
+html.dark .el-card {
+  background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
+  border-color: var(--cs2-border);
+}
+
+html.dark .el-table {
+  --el-table-header-bg-color: var(--cs2-panel-3);
+  --el-table-tr-bg-color: transparent;
+  --el-table-row-hover-bg-color: var(--cs2-panel-2);
+  --el-table-border-color: var(--cs2-border);
+}
+
+html.dark .el-tabs__item.is-active,
+html.dark .el-radio-button__original-radio:checked + .el-radio-button__inner {
+  color: var(--cs2-accent);
+}
+
+html.dark .el-radio-button__inner {
+  background: var(--cs2-panel);
+  border-color: var(--cs2-border);
+}
+
+html.dark .el-radio-button__inner:hover {
+  color: var(--cs2-accent);
 }

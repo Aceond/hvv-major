@@ -106,32 +106,45 @@ export interface TeamStatRow {
   stage_name: string | null
   group_id: string | null
   group_name: string | null
-  played: number
-  wins: number
-  losses: number
-  points: number
-  we: number // 胜率 / 获胜效率 %
-  adr: number // 每回合平均伤害（Average Damage per Round）
-  kd: number // 击杀/死亡比
-  rating: number
+  win_rate: number // 胜率 %
+  kd: number // K/D
+  matches: number // 比赛数
+  hs_rate: number // 爆头率 %
+  pistol_win_rate: number // 手枪局胜率 %
+  first_five_win_rate: number // 先胜 5 回合胜率 %
+  avg_kills: number // 场均击杀
+  avg_deaths: number // 场均死亡
+  avg_assists: number // 场均助攻
+  total_kills: number // 总击杀
+  total_deaths: number // 总死亡
+  total_assists: number // 总助攻
 }
 
 /** 个人数据排行行 */
 export interface PlayerStatRow {
   player_id: string
   player_name: string
+  pw_username?: string | null // 完美 ID（完美对战平台用户名）
   team_id: string
   team_name: string
   stage_id: string | null
   stage_name: string | null
   group_id: string | null
   group_name: string | null
-  matches: number
-  kills: number
-  deaths: number
-  assists: number
+  we: number // WE（获胜效率）
+  rating_pro: number // Rating PRO
+  win_rate: number // 胜率 %
+  kd: number // K/D
+  matches: number // 比赛数
   hs_rate: number // 爆头率 %
-  rating: number
+  kpr: number // 击杀/回合
+  dpr: number // 死亡/回合
+  adr: number // ADR
+  total_kills: number // 总击杀
+  total_deaths: number // 总死亡
+  total_assists: number // 总助攻
+  fpr: number // 首杀/回合
+  awp_kpr: number // AWP 击杀/回合
 }
 
 export const STAGE_FORMAT_LABEL: Record<StageFormat, string> = {

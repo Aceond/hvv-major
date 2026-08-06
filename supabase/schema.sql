@@ -170,22 +170,29 @@ left join public.groups g on g.id = t.group_id
 group by e.stage_id, e.team_id, t.name, t.tag, t.group_id, g.name;
 
 -- ============================================================
--- 6.5 数据统计表（个人 / 队伍排行，数据来自完美对战平台同步）
+-- 6.5 数据统计表（个人 / 队伍排行，数据由管理员在后台手动录入）
+-- 字段对应完美对战平台统计维度
+-- 注意：若已按旧版本建过库，需 drop 这两张表后重新执行本段。
 -- ============================================================
 create table if not exists public.team_stats (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references public.teams (id) on delete cascade,
   stage_id uuid references public.stages (id),
   group_id uuid references public.groups (id),
-  played int not null default 0,
-  wins int not null default 0,
-  losses int not null default 0,
-  points int not null default 0,
-  we numeric(5,2) not null default 0,   -- 胜率 / 获胜效率 %
-  adr numeric(5,2) not null default 0,  -- 每回合平均伤害
-  kd numeric(5,2) not null default 0,   -- 击杀/死亡比
-  rating numeric(4,2) not null default 0,
-  updated_at timestamptz not null default now()
+  win_rate numeric(5,2) not null default 0,      -- 胜率 %
+  kd numeric(5,2) not null default 0,           -- K/D
+  matches int not null default 0,               -- 比赛数
+  hs_rate numeric(5,2) not null default 0,      -- 爆头率 %
+  pistol_win_rate numeric(5,2) not null default 0,     -- 手枪局胜率 %
+  first_five_win_rate numeric(5,2) not null default 0, -- 先胜 5 回合胜率 %
+  avg_kills numeric(6,2) not null default 0,    -- 场均击杀
+  avg_deaths numeric(6,2) not null default 0,   -- 场均死亡
+  avg_assists numeric(6,2) not null default 0,  -- 场均助攻
+  total_kills int not null default 0,           -- 总击杀
+  total_deaths int not null default 0,          -- 总死亡
+  total_assists int not null default 0,         -- 总助攻
+  updated_at timestamptz not null default now(),
+  unique (team_id, stage_id)
 );
 
 create table if not exists public.player_stats (
@@ -194,13 +201,22 @@ create table if not exists public.player_stats (
   team_id uuid references public.teams (id),
   stage_id uuid references public.stages (id),
   group_id uuid references public.groups (id),
-  matches int not null default 0,
-  kills int not null default 0,
-  deaths int not null default 0,
-  assists int not null default 0,
-  hs_rate numeric(5,2) not null default 0,
-  rating numeric(4,2) not null default 0,
-  updated_at timestamptz not null default now()
+  we numeric(5,2) not null default 0,           -- WE（获胜效率）
+  rating_pro numeric(4,2) not null default 0,   -- Rating PRO
+  win_rate numeric(5,2) not null default 0,     -- 胜率 %
+  kd numeric(5,2) not null default 0,           -- K/D
+  matches int not null default 0,               -- 比赛数
+  hs_rate numeric(5,2) not null default 0,      -- 爆头率 %
+  kpr numeric(6,2) not null default 0,          -- 击杀/回合
+  dpr numeric(6,2) not null default 0,          -- 死亡/回合
+  adr numeric(6,2) not null default 0,          -- ADR
+  total_kills int not null default 0,           -- 总击杀
+  total_deaths int not null default 0,          -- 总死亡
+  total_assists int not null default 0,         -- 总助攻
+  fpr numeric(6,2) not null default 0,          -- 首杀/回合
+  awp_kpr numeric(6,2) not null default 0,      -- AWP 击杀/回合
+  updated_at timestamptz not null default now(),
+  unique (profile_id, stage_id)
 );
 
 -- ============================================================

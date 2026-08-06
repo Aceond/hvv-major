@@ -111,7 +111,7 @@ async function load() {
 }
 
 .points {
-  color: #409eff;
+  color: var(--cs2-accent);
   font-size: 16px;
 }
 </style>

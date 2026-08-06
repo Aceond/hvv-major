@@ -10,11 +10,17 @@ const auth = useAuthStore()
 
 <template>
   <el-container class="layout">
-    <el-header class="header">
-      <div class="logo" @click="router.push({ name: 'home' })">HVV Major</div>
-      <el-tag v-if="!isSupabaseConfigured" type="warning" size="small" effect="plain">
+    <el-header class="header" height="60px">
+      <div class="brand" @click="router.push({ name: 'home' })">
+        <span class="brand-mark">HVV</span>
+        <span class="brand-name">MAJOR</span>
+        <span class="brand-sub">CS2 赛事平台</span>
+      </div>
+
+      <el-tag v-if="!isSupabaseConfigured" class="demo-tag" size="small" effect="plain">
         演示模式
       </el-tag>
+
       <el-menu
         mode="horizontal"
         :ellipsis="false"
@@ -29,12 +35,13 @@ const auth = useAuthStore()
         <el-menu-item index="/standings">积分榜</el-menu-item>
         <el-menu-item index="/rankings">数据排行</el-menu-item>
       </el-menu>
+
       <div class="user-area">
         <template v-if="auth.isLoggedIn">
           <el-button
             v-if="auth.isAdmin"
-            text
-            type="primary"
+            class="admin-btn"
+            size="small"
             @click="router.push({ name: 'admin-dashboard' })"
           >
             管理后台
@@ -48,7 +55,7 @@ const auth = useAuthStore()
             </template>
           </el-dropdown>
         </template>
-        <el-button v-else type="primary" @click="router.push({ name: 'login' })">
+        <el-button v-else class="login-btn" size="small" @click="router.push({ name: 'login' })">
           登录 / 注册
         </el-button>
       </div>
@@ -58,7 +65,10 @@ const auth = useAuthStore()
       <router-view />
     </el-main>
 
-    <el-footer class="footer">HVV Major · 报名 / 数据 / 比赛 三合一平台</el-footer>
+    <el-footer class="footer" height="48px">
+      <span class="footer-line" />
+      HVV Major · 报名 / 数据 / 比赛 三合一赛事平台
+    </el-footer>
   </el-container>
 </template>
 
@@ -68,24 +78,86 @@ const auth = useAuthStore()
 }
 
 .header {
+  position: sticky;
+  top: 0;
+  z-index: 100;
   display: flex;
   align-items: center;
-  gap: 24px;
-  background: #fff;
-  border-bottom: 1px solid #e4e7ed;
+  gap: 20px;
+  padding: 0 28px;
+  background: rgba(11, 14, 20, 0.82);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--cs2-border);
 }
 
-.logo {
-  font-size: 20px;
-  font-weight: 700;
-  color: #409eff;
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
   cursor: pointer;
   white-space: nowrap;
+}
+
+.brand-mark {
+  font-size: 22px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--cs2-accent);
+  background: linear-gradient(180deg, #ffd27a, var(--cs2-accent-strong));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.brand-name {
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--cs2-text);
+}
+
+.brand-sub {
+  font-size: 11px;
+  letter-spacing: 2px;
+  color: var(--cs2-text-muted);
+  border-left: 1px solid var(--cs2-border-strong);
+  padding-left: 8px;
+}
+
+.demo-tag {
+  --el-tag-bg-color: var(--cs2-accent-soft);
+  --el-tag-border-color: rgba(255, 176, 32, 0.4);
+  --el-tag-text-color: var(--cs2-accent);
 }
 
 .nav {
   flex: 1;
   border-bottom: none;
+  --el-menu-bg-color: transparent;
+  --el-menu-hover-bg-color: transparent;
+  --el-menu-active-color: var(--cs2-accent);
+  --el-menu-text-color: var(--cs2-text-muted);
+  --el-menu-hover-text-color: var(--cs2-text);
+}
+
+.nav :deep(.el-menu-item) {
+  border-bottom: none;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.nav :deep(.el-menu-item.is-active) {
+  position: relative;
+}
+
+.nav :deep(.el-menu-item.is-active)::after {
+  content: '';
+  position: absolute;
+  left: 16px;
+  right: 16px;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--cs2-accent), transparent);
 }
 
 .user-area {
@@ -95,9 +167,22 @@ const auth = useAuthStore()
   white-space: nowrap;
 }
 
+.admin-btn {
+  --el-button-bg-color: var(--cs2-accent-soft);
+  --el-button-border-color: rgba(255, 176, 32, 0.4);
+  --el-button-text-color: var(--cs2-accent);
+}
+
+.login-btn {
+  --el-button-bg-color: var(--cs2-accent);
+  --el-button-border-color: var(--cs2-accent);
+  --el-button-text-color: #14100a;
+  font-weight: 700;
+}
+
 .username {
   cursor: pointer;
-  color: #606266;
+  color: var(--cs2-text-regular, #c6ccd8);
 }
 
 .main {
@@ -105,8 +190,20 @@ const auth = useAuthStore()
 }
 
 .footer {
-  text-align: center;
-  color: #909399;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--cs2-text-muted);
   font-size: 13px;
+  letter-spacing: 1px;
+  border-top: 1px solid var(--cs2-border);
+}
+
+.footer-line {
+  width: 26px;
+  height: 2px;
+  background: var(--cs2-accent);
+  opacity: 0.6;
 }
 </style>

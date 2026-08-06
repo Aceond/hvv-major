@@ -155,12 +155,12 @@ async function submit() {
 
 .option-steam {
   margin: 0 8px;
-  color: #909399;
+  color: var(--cs2-text-muted);
   font-size: 12px;
 }
 
 .count {
-  color: #606266;
+  color: var(--cs2-text-regular, #c6ccd8);
   width: 100%;
 }
 
