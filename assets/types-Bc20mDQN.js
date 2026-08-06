@@ -1,0 +1,1 @@
+const e={round_robin:"循环赛",single_elim:"单败淘汰",double_elim:"双败淘汰",swiss:"瑞士轮"},n={upcoming:"未开始",running:"进行中",ended:"已结束"},s={scheduled:"待开赛",completed:"已结束",cancelled:"已取消"};export{s as M,n as S,e as a};
