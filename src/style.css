@@ -167,9 +167,35 @@ html.dark .el-card {
 
 html.dark .el-table {
   --el-table-header-bg-color: var(--cs2-panel-3);
-  --el-table-tr-bg-color: transparent;
+  --el-table-tr-bg-color: var(--cs2-panel);
+  --el-table-striped-row-bg-color: var(--cs2-panel-2);
   --el-table-row-hover-bg-color: var(--cs2-panel-2);
   --el-table-border-color: var(--cs2-border);
+}
+
+/* 固定列与滚动内容分离（不透明背景 + 阴影，避免横向滚动时重叠） */
+html.dark .el-table__fixed-left,
+html.dark .el-table__fixed-right {
+  box-shadow: 4px 0 14px rgba(0, 0, 0, 0.45);
+}
+
+html.dark .el-table__fixed-right {
+  box-shadow: -4px 0 14px rgba(0, 0, 0, 0.45);
+}
+
+/* 表头紧凑：缩小字体并强制文字与排序箭头同一行 */
+html.dark .el-table__header .cell {
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  letter-spacing: 0.2px;
+  padding: 0 8px !important;
+}
+
+html.dark .el-table__header .caret-wrapper {
+  margin-left: 1px;
+  transform: scale(0.85);
+  transform-origin: center;
 }
 
 html.dark .el-tabs__item.is-active,

@@ -110,7 +110,7 @@ async function savePlayerRows() {
 </script>
 
 <template>
-  <div>
+  <div class="stats-page">
     <h2>数据录入</h2>
 
     <div class="filters">
@@ -256,6 +256,10 @@ async function savePlayerRows() {
 </template>
 
 <style scoped>
+.stats-page {
+  max-width: 1680px;
+}
+
 .filters {
   display: flex;
   align-items: center;

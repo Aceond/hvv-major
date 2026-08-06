@@ -1,9 +1,51 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import Sortable from 'sortablejs'
 import type { Group, PlayerStatRow, Stage, TeamStatRow } from '@/api/types'
 import { STAGE_STATUS_LABEL } from '@/api/types'
 import { listGroups, listStages } from '@/api/match'
 import { getPlayerStats, getTeamStats } from '@/api/stats'
+
+// 可排序列配置（拖拽表头可调整顺序）
+interface StatCol {
+  key: string
+  label: string
+  width: number
+  fmt?: 'int' | 'pct0' | 'pct1' | 'dec1' | 'dec2'
+  color?: 'trend' | 'pct' // 高值绿 / 低值红
+}
+
+const teamCols = ref<StatCol[]>([
+  { key: 'win_rate', label: '胜率', width: 78, fmt: 'pct0', color: 'pct' },
+  { key: 'kd', label: 'K/D', width: 82, fmt: 'dec2', color: 'trend' },
+  { key: 'matches', label: '比赛数', width: 88, fmt: 'int' },
+  { key: 'hs_rate', label: '爆头率', width: 92, fmt: 'pct1' },
+  { key: 'pistol_win_rate', label: '手枪局胜率', width: 120, fmt: 'pct0' },
+  { key: 'first_five_win_rate', label: '先胜5回合胜率', width: 144, fmt: 'pct0' },
+  { key: 'avg_kills', label: '场均击杀', width: 98, fmt: 'dec1' },
+  { key: 'avg_deaths', label: '场均死亡', width: 98, fmt: 'dec1' },
+  { key: 'avg_assists', label: '场均助攻', width: 98, fmt: 'dec1' },
+  { key: 'total_kills', label: '总击杀', width: 88, fmt: 'int' },
+  { key: 'total_deaths', label: '总死亡', width: 88, fmt: 'int' },
+  { key: 'total_assists', label: '总助攻', width: 88, fmt: 'int' },
+])
+
+const playerCols = ref<StatCol[]>([
+  { key: 'we', label: 'WE', width: 68, fmt: 'dec1', color: 'pct' },
+  { key: 'rating_pro', label: 'Rating PRO', width: 126, fmt: 'dec2', color: 'trend' },
+  { key: 'win_rate', label: '胜率', width: 78, fmt: 'pct0', color: 'pct' },
+  { key: 'kd', label: 'K/D', width: 82, fmt: 'dec2', color: 'trend' },
+  { key: 'matches', label: '比赛数', width: 88, fmt: 'int' },
+  { key: 'hs_rate', label: '爆头率', width: 92, fmt: 'pct1' },
+  { key: 'kpr', label: '击杀/回合', width: 112, fmt: 'dec2' },
+  { key: 'dpr', label: '死亡/回合', width: 112, fmt: 'dec2' },
+  { key: 'adr', label: 'ADR', width: 78, fmt: 'dec1' },
+  { key: 'total_kills', label: '总击杀', width: 88, fmt: 'int' },
+  { key: 'total_deaths', label: '总死亡', width: 88, fmt: 'int' },
+  { key: 'total_assists', label: '总助攻', width: 88, fmt: 'int' },
+  { key: 'fpr', label: '首杀/回合', width: 112, fmt: 'dec2' },
+  { key: 'awp_kpr', label: 'AWP击杀/回合', width: 140, fmt: 'dec2' },
+])
 
 const tab = ref<'team' | 'player'>('team')
 const stages = ref<Stage[]>([])
@@ -16,10 +58,34 @@ const teamRows = ref<TeamStatRow[]>([])
 const playerRows = ref<PlayerStatRow[]>([])
 const loading = ref(false)
 
+let sortable: Sortable | null = null
+
+const currentCols = ref<StatCol[]>(teamCols.value)
+const defaultSort = ref<{ prop: string; order: 'ascending' | 'descending' }>({
+  prop: 'win_rate',
+  order: 'descending',
+})
+
+watch(tab, async (v) => {
+  currentCols.value = v === 'team' ? teamCols.value : playerCols.value
+  defaultSort.value =
+    v === 'team'
+      ? { prop: 'win_rate', order: 'descending' }
+      : { prop: 'rating_pro', order: 'descending' }
+  await nextTick()
+  bindSortable()
+})
+
 onMounted(async () => {
   stages.value = await listStages()
   groups.value = await listGroups()
   await load()
+  await nextTick()
+  bindSortable()
+})
+
+onBeforeUnmount(() => {
+  sortable?.destroy()
 })
 
 async function load() {
@@ -32,6 +98,32 @@ async function load() {
   } finally {
     loading.value = false
   }
+}
+
+/** 表头拖拽排序：拖拽后按 DOM 顺序重排列配置 */
+function bindSortable() {
+  sortable?.destroy()
+  const header = document.querySelector('.el-table__header-wrapper .el-table__header')
+  if (!header) return
+  sortable = Sortable.create(header.querySelector('tr')!, {
+    animation: 150,
+    ghostClass: 'drag-ghost',
+    handle: '.cell',
+    onEnd: () => {
+      const cols = tab.value === 'team' ? teamCols.value : playerCols.value
+      const ths = header.querySelectorAll('th')
+      const next: StatCol[] = []
+      ths.forEach((th) => {
+        const mark = [...th.classList].find((c) => c.startsWith('drag-col-'))
+        const key = mark ? mark.slice('drag-col-'.length) : ''
+        const col = cols.find((c) => c.key === key)
+        if (col && !next.includes(col)) next.push(col)
+      })
+      if (next.length === cols.length) {
+        cols.splice(0, cols.length, ...next)
+      }
+    },
+  })
 }
 
 function rankColor(index: number) {
@@ -49,10 +141,24 @@ function trendClass(value: number, threshold = 1) {
 function pctClass(value: number) {
   return value >= 50 ? 'rating-pos' : 'rating-neg'
 }
+
+function cellClass(col: StatCol, value: number): string {
+  if (col.color === 'trend') return trendClass(value)
+  if (col.color === 'pct') return pctClass(value)
+  return ''
+}
+
+function format(col: StatCol, value: number): string {
+  if (col.fmt === 'pct0') return `${value}%`
+  if (col.fmt === 'pct1') return `${value.toFixed(1)}%`
+  if (col.fmt === 'dec1') return value.toFixed(1)
+  if (col.fmt === 'dec2') return value.toFixed(2)
+  return String(value)
+}
 </script>
 
 <template>
-  <div class="page-container">
+  <div class="page-container rankings-page">
     <h2 class="title">数据排行</h2>
 
     <div class="filters">
@@ -83,128 +189,87 @@ function pctClass(value: number) {
       >
         <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
       </el-select>
+      <span class="tip-hint">点击表头排序 · 拖动表头调整列顺序</span>
     </div>
 
     <!-- 队伍排行 -->
     <el-card v-if="tab === 'team'" v-loading="loading">
-      <el-table :data="teamRows" stripe empty-text="暂无队伍数据">
-        <el-table-column label="排名" width="64">
+      <el-table
+        :data="teamRows"
+        stripe
+        empty-text="暂无队伍数据"
+        :default-sort="defaultSort"
+        row-key="team_id"
+      >
+        <el-table-column label="排名" width="64" fixed>
           <template #default="{ $index }">
             <span :class="['rank', rankColor($index)]">{{ $index + 1 }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="队伍" min-width="150">
+        <el-table-column label="队伍" min-width="150" fixed>
           <template #default="{ row }">
             <span class="team-name">{{ row.team_name }}</span>
             <el-tag v-if="row.tag" size="small" effect="plain">{{ row.tag }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="阶段" width="104">
+        <el-table-column label="阶段" width="104" fixed>
           <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
         </el-table-column>
-        <el-table-column prop="group_name" label="组别" width="76" />
-        <el-table-column label="胜率" width="72">
+        <el-table-column prop="group_name" label="组别" width="76" fixed />
+        <el-table-column
+          v-for="col in currentCols"
+          :key="col.key"
+          :prop="col.key"
+          :label="col.label"
+          :width="col.width"
+          sortable
+          :label-class-name="'drag-col-' + col.key"
+        >
           <template #default="{ row }">
-            <b :class="pctClass(row.win_rate)">{{ row.win_rate }}%</b>
+            <b v-if="col.color" :class="cellClass(col, row[col.key])">
+              {{ format(col, row[col.key]) }}
+            </b>
+            <template v-else>{{ format(col, row[col.key]) }}</template>
           </template>
-        </el-table-column>
-        <el-table-column label="K/D" width="72">
-          <template #default="{ row }">
-            <b :class="trendClass(row.kd)">{{ row.kd.toFixed(2) }}</b>
-          </template>
-        </el-table-column>
-        <el-table-column prop="matches" label="比赛数" width="70" align="center" />
-        <el-table-column label="爆头率" width="80">
-          <template #default="{ row }">{{ row.hs_rate.toFixed(1) }}%</template>
-        </el-table-column>
-        <el-table-column label="手枪局胜率" width="104">
-          <template #default="{ row }">{{ row.pistol_win_rate }}%</template>
-        </el-table-column>
-        <el-table-column label="先胜5回合胜率" width="120">
-          <template #default="{ row }">{{ row.first_five_win_rate }}%</template>
-        </el-table-column>
-        <el-table-column label="场均击杀" width="82">
-          <template #default="{ row }">{{ row.avg_kills.toFixed(1) }}</template>
-        </el-table-column>
-        <el-table-column label="场均死亡" width="82">
-          <template #default="{ row }">{{ row.avg_deaths.toFixed(1) }}</template>
-        </el-table-column>
-        <el-table-column label="场均助攻" width="82">
-          <template #default="{ row }">{{ row.avg_assists.toFixed(1) }}</template>
-        </el-table-column>
-        <el-table-column label="总击杀" width="72">
-          <template #default="{ row }">{{ row.total_kills }}</template>
-        </el-table-column>
-        <el-table-column label="总死亡" width="72">
-          <template #default="{ row }">{{ row.total_deaths }}</template>
-        </el-table-column>
-        <el-table-column label="总助攻" width="72">
-          <template #default="{ row }">{{ row.total_assists }}</template>
         </el-table-column>
       </el-table>
     </el-card>
 
     <!-- 个人排行 -->
     <el-card v-else v-loading="loading">
-      <el-table :data="playerRows" stripe empty-text="暂无个人数据">
-        <el-table-column label="排名" width="64">
+      <el-table
+        :data="playerRows"
+        stripe
+        empty-text="暂无个人数据"
+        :default-sort="defaultSort"
+        row-key="player_id"
+      >
+        <el-table-column label="排名" width="64" fixed>
           <template #default="{ $index }">
             <span :class="['rank', rankColor($index)]">{{ $index + 1 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="player_name" label="选手" min-width="100" />
-        <el-table-column prop="team_name" label="战队" min-width="120" />
-        <el-table-column label="阶段" width="104">
+        <el-table-column prop="player_name" label="选手" min-width="100" fixed />
+        <el-table-column prop="team_name" label="战队" min-width="120" fixed />
+        <el-table-column label="阶段" width="104" fixed>
           <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
         </el-table-column>
-        <el-table-column prop="group_name" label="组别" width="76" />
-        <el-table-column label="WE" width="72">
+        <el-table-column prop="group_name" label="组别" width="76" fixed />
+        <el-table-column
+          v-for="col in currentCols"
+          :key="col.key"
+          :prop="col.key"
+          :label="col.label"
+          :width="col.width"
+          sortable
+          :label-class-name="'drag-col-' + col.key"
+        >
           <template #default="{ row }">
-            <b :class="pctClass(row.we)">{{ row.we.toFixed(1) }}</b>
+            <b v-if="col.color" :class="cellClass(col, row[col.key])">
+              {{ format(col, row[col.key]) }}
+            </b>
+            <template v-else>{{ format(col, row[col.key]) }}</template>
           </template>
-        </el-table-column>
-        <el-table-column label="Rating PRO" width="92">
-          <template #default="{ row }">
-            <b :class="trendClass(row.rating_pro)">{{ row.rating_pro.toFixed(2) }}</b>
-          </template>
-        </el-table-column>
-        <el-table-column label="胜率" width="72">
-          <template #default="{ row }">
-            <b :class="pctClass(row.win_rate)">{{ row.win_rate }}%</b>
-          </template>
-        </el-table-column>
-        <el-table-column label="K/D" width="72">
-          <template #default="{ row }">
-            <b :class="trendClass(row.kd)">{{ row.kd.toFixed(2) }}</b>
-          </template>
-        </el-table-column>
-        <el-table-column prop="matches" label="比赛数" width="70" align="center" />
-        <el-table-column label="爆头率" width="80">
-          <template #default="{ row }">{{ row.hs_rate.toFixed(1) }}%</template>
-        </el-table-column>
-        <el-table-column label="击杀/回合" width="92">
-          <template #default="{ row }">{{ row.kpr.toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column label="死亡/回合" width="92">
-          <template #default="{ row }">{{ row.dpr.toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column label="ADR" width="72">
-          <template #default="{ row }">{{ row.adr.toFixed(1) }}</template>
-        </el-table-column>
-        <el-table-column label="总击杀" width="72">
-          <template #default="{ row }">{{ row.total_kills }}</template>
-        </el-table-column>
-        <el-table-column label="总死亡" width="72">
-          <template #default="{ row }">{{ row.total_deaths }}</template>
-        </el-table-column>
-        <el-table-column label="总助攻" width="72">
-          <template #default="{ row }">{{ row.total_assists }}</template>
-        </el-table-column>
-        <el-table-column label="首杀/回合" width="92">
-          <template #default="{ row }">{{ row.fpr.toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column label="AWP击杀/回合" width="110">
-          <template #default="{ row }">{{ row.awp_kpr.toFixed(2) }}</template>
         </el-table-column>
       </el-table>
     </el-card>
@@ -214,6 +279,11 @@ function pctClass(value: number) {
 <style scoped>
 .title {
   margin: 0 0 16px;
+}
+
+/* 数据列较多，放大容器让更多列可见 */
+.rankings-page {
+  max-width: 1600px;
 }
 
 .filters {
@@ -226,6 +296,11 @@ function pctClass(value: number) {
 
 .filter-item {
   width: 200px;
+}
+
+.tip-hint {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
 }
 
 .rank {
@@ -254,5 +329,19 @@ function pctClass(value: number) {
 
 .rating-neg {
   color: #f56c6c;
+}
+
+/* 拖拽列时高亮目标位置 */
+:deep(.drag-ghost) {
+  opacity: 0.5;
+  background: var(--cs2-accent-soft);
+}
+
+:deep(.el-table__header th) {
+  cursor: grab;
+}
+
+:deep(.el-table__header th:active) {
+  cursor: grabbing;
 }
 </style>
