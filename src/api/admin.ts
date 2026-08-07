@@ -54,11 +54,12 @@ export async function updateTeamGroup(id: string, groupId: string | null) {
   await supabase.from('teams').update({ group_id: groupId }).eq('id', id)
 }
 
-/** 创建阶段 */
+/** 创建阶段（按赛事配置赛程：阶段属于某届赛事） */
 export async function createStage(stage: Partial<Stage>) {
   if (!isSupabaseConfigured || !supabase) {
     mockStages.push({
       id: `stage-${Date.now()}`,
+      event_id: stage.event_id ?? null,
       name: stage.name ?? '未命名阶段',
       format: stage.format ?? 'round_robin',
       status: stage.status ?? 'upcoming',
@@ -69,6 +70,26 @@ export async function createStage(stage: Partial<Stage>) {
     return
   }
   await supabase.from('stages').insert(stage)
+}
+
+/** 更新阶段（名称 / 赛制 / 状态 / 时间 / 排序等） */
+export async function updateStage(id: string, partial: Partial<Stage>) {
+  if (!isSupabaseConfigured || !supabase) {
+    const s = mockStages.find((x) => x.id === id)
+    if (s) Object.assign(s, partial)
+    return
+  }
+  await supabase.from('stages').update(partial).eq('id', id)
+}
+
+/** 删除阶段（其下对阵一并级联删除） */
+export async function deleteStage(id: string) {
+  if (!isSupabaseConfigured || !supabase) {
+    const idx = mockStages.findIndex((x) => x.id === id)
+    if (idx >= 0) mockStages.splice(idx, 1)
+    return
+  }
+  await supabase.from('stages').delete().eq('id', id)
 }
 
 /** 创建对阵（可指定组别） */

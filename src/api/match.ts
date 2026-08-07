@@ -18,10 +18,16 @@ export async function listGroups(): Promise<Group[]> {
   return (data as Group[]) ?? []
 }
 
-/** 阶段列表（多阶段混合赛制） */
-export async function listStages(): Promise<Stage[]> {
-  if (!isSupabaseConfigured || !supabase) return mockStages
-  const { data } = await supabase.from('stages').select('*').order('sort_order')
+/** 阶段列表（可按赛事过滤：每届赛事可自定义各自的赛制与阶段列表；不传则返回全部） */
+export async function listStages(eventId?: string): Promise<Stage[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return mockStages
+      .filter((s) => !eventId || s.event_id === eventId)
+      .sort((a, b) => a.sort_order - b.sort_order)
+  }
+  let query = supabase.from('stages').select('*').order('sort_order')
+  if (eventId) query = query.eq('event_id', eventId)
+  const { data } = await query
   return (data as Stage[]) ?? []
 }
 

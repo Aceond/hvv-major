@@ -89,6 +89,7 @@ export interface Group {
 
 export interface Stage {
   id: string
+  event_id: string | null // 所属赛事（每届赛事可自定义各自的赛制与阶段列表）
   name: string
   format: StageFormat
   status: StageStatus

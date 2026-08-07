@@ -3,14 +3,17 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { VideoCamera, Link } from '@element-plus/icons-vue'
 import SwissBracket from '@/components/SwissBracket.vue'
-import type { Group, Match, MatchMedia, MediaKind, Stage } from '@/api/types'
+import type { EventItem, Group, Match, MatchMedia, MediaKind, Stage } from '@/api/types'
 import { MATCH_STATUS_LABEL, MEDIA_KIND_LABEL, STAGE_STATUS_LABEL } from '@/api/types'
 import { listGroups, listMatches, listStages } from '@/api/match'
+import { listEvents } from '@/api/event'
 import { addMatchMedia, listAllMatchMedia, removeMatchMedia } from '@/api/media'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
 
+const events = ref<EventItem[]>([])
+const currentEventId = ref<string>('')
 const stages = ref<Stage[]>([])
 const groups = ref<Group[]>([])
 const currentStage = ref<string>('')
@@ -41,15 +44,28 @@ function mediaOf(match: Match): MatchMedia[] {
 }
 
 onMounted(async () => {
-  stages.value = await listStages()
+  events.value = await listEvents()
+  const active =
+    events.value.find((e) => e.status === 'running') ??
+    events.value.find((e) => e.status === 'signup') ??
+    events.value[0]
+  currentEventId.value = active?.id ?? ''
   groups.value = await listGroups()
-  if (stages.value.length > 0) currentStage.value = stages.value[0].id
   await loadMatches()
 })
+
+async function onEventChange() {
+  currentStage.value = ''
+  await loadMatches()
+}
 
 async function loadMatches() {
   loading.value = true
   try {
+    stages.value = await listStages(currentEventId.value || undefined)
+    if (!stages.value.some((s) => s.id === currentStage.value)) {
+      currentStage.value = stages.value[0]?.id ?? ''
+    }
     matches.value = await listMatches(currentStage.value, currentGroup.value || undefined)
     await loadMedia()
   } finally {
@@ -120,6 +136,17 @@ async function removeMedia(item: MatchMedia) {
 <template>
   <div class="page-container">
     <h2 class="title">赛程</h2>
+
+    <div class="event-bar">
+      <el-select v-model="currentEventId" class="event-select" placeholder="选择赛事" @change="onEventChange">
+        <el-option
+          v-for="e in events"
+          :key="e.id"
+          :label="`${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`"
+          :value="e.id"
+        />
+      </el-select>
+    </div>
 
     <el-tabs v-model="currentStage" @tab-change="loadMatches">
       <el-tab-pane
@@ -254,6 +281,14 @@ async function removeMedia(item: MatchMedia) {
 <style scoped>
 .title {
   margin: 0 0 16px;
+}
+
+.event-bar {
+  margin-bottom: 16px;
+}
+
+.event-select {
+  width: 280px;
 }
 
 .group-filter {

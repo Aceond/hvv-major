@@ -508,6 +508,8 @@ create table if not exists public.events (
 alter table public.player_applications add column if not exists event_id uuid references public.events (id);
 -- 战队报名关联赛事（兼容旧库：补充 event_id 列）
 alter table public.teams add column if not exists event_id uuid references public.events (id);
+-- 赛程阶段关联赛事（兼容旧库：每届赛事可自定义各自的赛制与阶段列表）
+alter table public.stages add column if not exists event_id uuid references public.events (id);
 
 -- events：公开可读（前台赛事入口），仅管理员写
 drop policy if exists events_select on public.events;
