@@ -17,7 +17,7 @@ const form = reactive({
   eventId: '',
   pwUsername: '',
   displayName: '',
-  employmentStatus: 'unemployed' as EmploymentStatus,
+  employmentStatus: 'employed' as EmploymentStatus,
   location: '',
   employeeNo: '',
 })
