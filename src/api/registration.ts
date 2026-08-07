@@ -19,13 +19,17 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
   return bytes.buffer
 }
 
-/** 个人选手注册申请：填写完美 ID 并上传最近 3-5 个赛季的截图，提交后由管理员审核 */
+/** 个人选手注册申请：填写选手姓名与完美 ID，上传最近 3-5 个赛季的截图，提交后由管理员审核 */
 export async function submitPlayerApplication(
   pwUsername: string,
+  displayName: string,
   screenshots: string[],
 ): Promise<PlayerApplication | null> {
   if (!PW_RE.test(pwUsername)) {
     throw new Error('完美 ID 需为 2-24 位字母、数字或下划线')
+  }
+  if (!displayName.trim()) {
+    throw new Error('请填写选手姓名')
   }
   if (!isSupabaseConfigured || !supabase) {
     const me = mockPlayers.find((p) => p.id === 'demo-player')
@@ -33,6 +37,7 @@ export async function submitPlayerApplication(
       id: `app-${Date.now()}`,
       profile_id: 'demo-player',
       pw_username: pwUsername,
+      display_name: displayName.trim(),
       nickname: me?.nickname ?? null,
       screenshots,
       status: 'pending',
@@ -63,7 +68,7 @@ export async function submitPlayerApplication(
   }
   const { data } = await supabase
     .from('player_applications')
-    .insert({ profile_id: user.id, pw_username: pwUsername, screenshots: urls })
+    .insert({ profile_id: user.id, pw_username: pwUsername, display_name: displayName.trim(), screenshots: urls })
     .select('*')
     .single()
   return (data as PlayerApplication) ?? null
@@ -107,7 +112,7 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
       const me = mockPlayers.find((p) => p.id === app.profile_id)
       if (me) {
         me.pw_username = app.pw_username
-        me.nickname = app.nickname ?? app.pw_username
+        me.nickname = app.display_name ?? me.nickname ?? app.pw_username
       }
     }
     return
@@ -124,7 +129,7 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
     if (app) {
       await supabase
         .from('profiles')
-        .update({ pw_username: app.pw_username, nickname: app.nickname ?? app.pw_username, role: 'player' })
+        .update({ pw_username: app.pw_username, nickname: app.display_name ?? app.nickname ?? app.pw_username, role: 'player' })
         .eq('id', app.profile_id)
     }
   }
@@ -134,7 +139,7 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
     .eq('id', id)
 }
 
-/** 注册选手池（可按完美 ID/昵称搜索；in_team 表示已加入战队，不可再选） */
+/** 选手池（仅完成个人注册审核通过的选手，可按完美 ID/姓名搜索；in_team 表示已加入战队，不可再选） */
 export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
   if (!isSupabaseConfigured || !supabase) {
     const kw = (keyword ?? '').trim().toLowerCase()
@@ -149,6 +154,7 @@ export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
     .from('profiles')
     .select('id, nickname, pw_username, team_members(team_id)')
     .eq('role', 'player')
+    .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
   const { data } = await query
   return ((data ?? []) as any[]).map((p) => ({

@@ -36,14 +36,15 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ============================================================
--- 1.5 个人选手注册申请（提交完美 ID + 最近 3-5 个赛季截图，管理员审核后进入选手池）
+-- 1.5 个人选手注册申请（提交选手姓名 + 完美 ID + 最近 3-5 个赛季截图，管理员审核后进入选手池）
 --     截图上传到 Storage 的 player-screenshots 桶（公开读），screenshots 存其 URL
 -- ============================================================
 create table if not exists public.player_applications (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid not null references public.profiles (id) on delete cascade,
-  pw_username text not null,             -- 完美 ID（完美对战平台用户名）
-  nickname text,                         -- 预留昵称（本次注册不再单独采集）
+  display_name text,                      -- 选手姓名（真实姓名，审核通过后回填 profiles.nickname）
+  pw_username text not null,              -- 完美 ID（完美对战平台用户名）
+  nickname text,                          -- 预留昵称（本次注册不再单独采集）
   screenshots jsonb not null default '[]'::jsonb, -- 最近 3-5 个赛季截图 URL
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   review_note text,
@@ -51,6 +52,9 @@ create table if not exists public.player_applications (
   reviewed_at timestamptz,
   reviewer_id uuid references public.profiles (id)
 );
+
+-- 兼容旧库：补充 display_name 列
+alter table public.player_applications add column if not exists display_name text;
 
 -- ============================================================
 -- 2. 组别（传奇组 / 大师组 / 挑战组，三个组别相互独立）

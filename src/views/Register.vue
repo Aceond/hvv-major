@@ -98,18 +98,18 @@ async function submit() {
             v-model="form.memberIds"
             multiple
             filterable
-            placeholder="搜索完美 ID 添加队员（已入队选手不可选）"
+            placeholder="按选手姓名 / 完美 ID 搜索添加队员（已入队选手不可选）"
             style="width: 100%"
           >
             <el-option
               v-for="p in players"
               :key="p.id"
-              :label="p.pw_username || p.nickname || p.id"
+              :label="`${p.nickname || '未命名'}${p.pw_username ? `（${p.pw_username}）` : ''}`"
               :value="p.id"
               :disabled="p.in_team && !form.memberIds.includes(p.id)"
             >
-              <span>{{ p.pw_username || p.nickname }}</span>
-              <span class="option-steam">{{ p.pw_username ? p.nickname : '' }}</span>
+              <span>{{ p.nickname || '未命名' }}</span>
+              <span class="option-steam">{{ p.pw_username }}</span>
               <el-tag v-if="p.in_team" size="small" type="info" effect="plain">已入队</el-tag>
             </el-option>
           </el-select>

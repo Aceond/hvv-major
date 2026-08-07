@@ -370,7 +370,7 @@ async function savePlayerRows() {
             <el-option
               v-for="p in players"
               :key="p.id"
-              :label="p.pw_username || p.nickname || p.id"
+              :label="`${p.nickname || '未命名'}${p.pw_username ? `（${p.pw_username}）` : ''}`"
               :value="p.id"
               :disabled="p.in_team"
             />
@@ -387,7 +387,7 @@ async function savePlayerRows() {
             <el-option
               v-for="p in players"
               :key="p.id"
-              :label="p.pw_username || p.nickname || p.id"
+              :label="`${p.nickname || '未命名'}${p.pw_username ? `（${p.pw_username}）` : ''}`"
               :value="p.id"
               :disabled="p.in_team || p.id === newTeam.captainId"
             />

@@ -30,9 +30,10 @@ async function load() {
 
 async function decide(app: PlayerApplication, status: ApplicationStatus) {
   const action = status === 'approved' ? '通过' : '拒绝'
+  const label = `${app.display_name || '未填写姓名'}（${app.pw_username}）`
   try {
     await ElMessageBox.confirm(
-      `确认${action}「${app.pw_username}」的个人注册申请吗？`,
+      `确认${action}「${label}」的个人注册申请吗？通过后将进入选手池。`,
       '审核确认',
       { type: 'warning', confirmButtonText: action, cancelButtonText: '取消' },
     )
@@ -40,7 +41,7 @@ async function decide(app: PlayerApplication, status: ApplicationStatus) {
     return
   }
   await reviewPlayerApplication(app.id, status)
-  ElMessage.success(`已${action}「${app.pw_username}」`)
+  ElMessage.success(`已${action}「${label}」`)
   load()
 }
 
@@ -59,6 +60,11 @@ onMounted(load)
     </el-radio-group>
 
     <el-table v-loading="loading" :data="filteredRows" stripe empty-text="暂无个人注册申请">
+      <el-table-column prop="display_name" label="选手姓名" min-width="110">
+        <template #default="{ row }">
+          <span class="pw-name">{{ row.display_name || '-' }}</span>
+        </template>
+      </el-table-column>
       <el-table-column prop="pw_username" label="完美 ID" min-width="140">
         <template #default="{ row }">
           <span class="pw-name">{{ row.pw_username }}</span>

@@ -24,11 +24,12 @@ export interface PlayerItem {
   in_team: boolean // 是否已加入某支战队
 }
 
-/** 个人选手注册申请（提交完美 ID + 最近 3-5 个赛季截图，管理员审核后进入选手池） */
+/** 个人选手注册申请（提交选手姓名 + 完美 ID + 最近 3-5 个赛季截图，管理员审核后进入选手池） */
 export interface PlayerApplication {
   id: string
   profile_id: string
   pw_username: string // 完美 ID（完美对战平台用户名）
+  display_name: string | null // 选手姓名（真实姓名，审核通过后回填 profiles.nickname）
   nickname: string | null // 预留昵称（本次注册不再单独采集）
   screenshots: string[] // 赛季截图（URL 或演示模式下的 data URL）
   status: ApplicationStatus

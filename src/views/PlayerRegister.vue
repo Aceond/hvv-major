@@ -12,6 +12,7 @@ const status = ref<ApplicationStatus | null>(null)
 
 const form = reactive({
   pwUsername: '',
+  displayName: '',
 })
 
 const fileList = ref<UploadUserFile[]>([])
@@ -50,6 +51,10 @@ async function submit() {
     ElMessage.warning('请先登录（演示模式可在登录页选择"以选手身份进入"）')
     return
   }
+  if (!form.displayName.trim()) {
+    ElMessage.warning('请填写选手姓名')
+    return
+  }
   if (!form.pwUsername) {
     ElMessage.warning('请填写完美 ID')
     return
@@ -64,7 +69,7 @@ async function submit() {
   }
   saving.value = true
   try {
-    const app = await submitPlayerApplication(form.pwUsername, screenshots.value)
+    const app = await submitPlayerApplication(form.pwUsername, form.displayName, screenshots.value)
     if (!app) {
       ElMessage.error('提交失败，请稍后重试')
       return
@@ -80,10 +85,12 @@ async function submit() {
 
 onMounted(async () => {
   form.pwUsername = auth.profile?.pw_username ?? ''
+  form.displayName = auth.profile?.nickname ?? ''
   const app = await listMyPlayerApplication()
   if (app) {
     status.value = app.status
     form.pwUsername = app.pw_username
+    form.displayName = app.display_name ?? ''
   }
 })
 </script>
@@ -128,13 +135,21 @@ onMounted(async () => {
         type="info"
         :closable="false"
         title="注册流程"
-        description="填写完美 ID（完美对战平台用户名）并上传最近 3-5 个赛季的截图，提交后由管理员审核。审核通过后进入选手池，队长创建战队时将从池中选择队员；每人只能加入一支战队。"
+        description="填写选手姓名与完美 ID（完美对战平台用户名）并上传最近 3-5 个赛季的截图，提交后由管理员审核。审核通过后进入选手池（以选手姓名展示），队长创建战队时将从池中选择队员；每人只能加入一支战队。"
         class="tip"
       />
 
       <el-form label-width="110px" class="form">
         <el-form-item label="账号邮箱">
           <el-input :model-value="auth.user?.email ?? '-'" disabled />
+        </el-form-item>
+        <el-form-item label="选手姓名">
+          <el-input
+            v-model="form.displayName"
+            placeholder="真实姓名，如 张伟"
+            maxlength="20"
+          />
+          <div class="form-tip">审核通过后将以该姓名展示在选手池中，供队长选人</div>
         </el-form-item>
         <el-form-item label="完美 ID">
           <el-input
