@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
+import { sendPasswordReset } from '@/api/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -11,6 +12,11 @@ const auth = useAuthStore()
 const mode = ref<'login' | 'register'>('login')
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
+
+// 忘记密码
+const forgotDialog = ref(false)
+const forgotEmail = ref('')
+const forgotSubmitting = ref(false)
 
 const form = reactive({
   email: '',
@@ -110,6 +116,31 @@ async function enterDemo(role: 'admin' | 'player') {
   ElMessage.success(`已进入演示模式（${role === 'admin' ? '管理员' : '选手'}）`)
   router.push(role === 'admin' ? { name: 'admin-dashboard' } : { name: 'home' })
 }
+
+async function sendReset() {
+  if (forgotSubmitting.value) return
+  if (!forgotEmail.value.trim()) {
+    ElMessage.warning('请输入注册邮箱')
+    return
+  }
+  forgotSubmitting.value = true
+  try {
+    const res = await sendPasswordReset(forgotEmail.value.trim())
+    if (res.demo) {
+      ElMessage.warning('未配置 Supabase，无法发送重置邮件')
+      return
+    }
+    if (res.error) {
+      ElMessage.error(res.error.message)
+      return
+    }
+    forgotDialog.value = false
+    forgotEmail.value = ''
+    ElMessage.success('重置链接已发送，请查收邮件（若该邮箱已注册）')
+  } finally {
+    forgotSubmitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -149,6 +180,9 @@ async function enterDemo(role: 'admin' | 'player') {
             @keyup.enter.prevent="submit"
           />
         </el-form-item>
+        <div v-if="mode === 'login' && isSupabaseConfigured" class="forgot-row">
+          <el-link type="primary" :underline="false" @click="forgotDialog = true">忘记密码？</el-link>
+        </div>
         <el-form-item v-if="mode === 'register'" class="strength-field">
           <div v-if="form.password" class="strength">
             <div class="strength-bar">
@@ -186,6 +220,16 @@ async function enterDemo(role: 'admin' | 'player') {
         </div>
       </template>
     </el-card>
+
+    <!-- 忘记密码 -->
+    <el-dialog v-model="forgotDialog" title="忘记密码" width="380px">
+      <el-alert type="info" :closable="false" title="输入注册邮箱，我们将发送密码重置链接。" class="tip" />
+      <el-input v-model="forgotEmail" placeholder="注册邮箱" size="large" @keyup.enter.prevent="sendReset" />
+      <template #footer>
+        <el-button @click="forgotDialog = false">取消</el-button>
+        <el-button type="primary" :loading="forgotSubmitting" @click="sendReset">发送重置链接</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -212,6 +256,12 @@ async function enterDemo(role: 'admin' | 'player') {
 
 .strength-field {
   margin-bottom: 2px;
+}
+
+.forgot-row {
+  display: flex;
+  justify-content: flex-end;
+  margin: -6px 0 12px;
 }
 
 .strength {

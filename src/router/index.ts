@@ -36,6 +36,8 @@ const router = createRouter({
         { path: 'settings', name: 'admin-settings', component: () => import('@/views/admin/Settings.vue') },
       ],
     },
+    // 重置密码落地页（邮件链接进入，独立页面不带导航）
+    { path: '/reset-password', name: 'reset-password', component: () => import('@/views/ResetPassword.vue') },
     { path: '/:pathMatch(.*)*', redirect: { name: 'home' } },
   ],
 })

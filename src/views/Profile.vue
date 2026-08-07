@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import Cs2Logo from '@/components/Cs2Logo.vue'
 import { useAuthStore } from '@/stores/auth'
+import { isSupabaseConfigured } from '@/lib/supabase'
+import { updatePassword } from '@/api/auth'
 import type { EventItem, Match, PlayerApplication, Team, TeamMember } from '@/api/types'
 import { MATCH_STATUS_LABEL } from '@/api/types'
 import { listEvents } from '@/api/event'
@@ -17,6 +19,11 @@ const rosters = ref<Record<string, TeamMember[]>>({})
 const myMatches = ref<Match[]>([])
 const events = ref<EventItem[]>([])
 const loading = ref(false)
+
+// 修改密码
+const pwdDialog = ref(false)
+const pwdSubmitting = ref(false)
+const pwdForm = reactive({ oldPassword: '', newPassword: '', confirm: '' })
 
 const myTeamIds = computed(() => teams.value.map((t) => t.id))
 
@@ -78,6 +85,39 @@ onMounted(async () => {
   if (!auth.isLoggedIn) await auth.refresh()
   await load()
 })
+
+async function savePassword() {
+  if (pwdSubmitting.value) return
+  if (!pwdForm.oldPassword || !pwdForm.newPassword) {
+    ElMessage.warning('请填写当前密码和新密码')
+    return
+  }
+  if (pwdForm.newPassword.length < 8) {
+    ElMessage.warning('新密码至少 8 位')
+    return
+  }
+  if (pwdForm.newPassword !== pwdForm.confirm) {
+    ElMessage.warning('两次输入的新密码不一致')
+    return
+  }
+  pwdSubmitting.value = true
+  try {
+    const res = await updatePassword(pwdForm.oldPassword, pwdForm.newPassword)
+    if (res.demo) {
+      ElMessage.warning('演示模式不支持修改密码')
+      return
+    }
+    if (res.error) {
+      ElMessage.error(res.error.message)
+      return
+    }
+    pwdDialog.value = false
+    Object.assign(pwdForm, { oldPassword: '', newPassword: '', confirm: '' })
+    ElMessage.success('密码已修改')
+  } finally {
+    pwdSubmitting.value = false
+  }
+}
 </script>
 
 <template>
@@ -131,6 +171,9 @@ onMounted(async () => {
                 </el-tag>
               </el-descriptions-item>
             </el-descriptions>
+            <div v-if="isSupabaseConfigured" class="pwd-entry">
+              <el-button size="small" @click="pwdDialog = true">修改密码</el-button>
+            </div>
           </el-card>
 
           <!-- 战绩统计 -->
@@ -205,6 +248,26 @@ onMounted(async () => {
           </el-table-column>
         </el-table>
       </el-card>
+
+      <!-- 修改密码 -->
+      <el-dialog v-model="pwdDialog" title="修改密码" width="400px">
+        <el-alert type="info" :closable="false" title="需验证当前密码后方可设置新密码。" class="tip" />
+        <el-form label-width="90px" class="form">
+          <el-form-item label="当前密码">
+            <el-input v-model="pwdForm.oldPassword" type="password" show-password placeholder="请输入当前密码" @keyup.enter.prevent="savePassword" />
+          </el-form-item>
+          <el-form-item label="新密码">
+            <el-input v-model="pwdForm.newPassword" type="password" show-password placeholder="至少 8 位" @keyup.enter.prevent="savePassword" />
+          </el-form-item>
+          <el-form-item label="确认新密码">
+            <el-input v-model="pwdForm.confirm" type="password" show-password placeholder="再次输入新密码" @keyup.enter.prevent="savePassword" />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="pwdDialog = false">取消</el-button>
+          <el-button type="primary" :loading="pwdSubmitting" @click="savePassword">保存</el-button>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
@@ -258,6 +321,11 @@ onMounted(async () => {
 
 .descriptions {
   --el-descriptions-item-label-color: var(--cs2-text-muted);
+}
+
+.pwd-entry {
+  margin-top: 12px;
+  text-align: right;
 }
 
 .stats-row {
