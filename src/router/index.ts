@@ -18,6 +18,7 @@ const router = createRouter({
         { path: 'booking', name: 'booking', component: () => import('@/views/Booking.vue') },
         { path: 'standings', name: 'standings', component: () => import('@/views/Standings.vue') },
         { path: 'rankings', name: 'rankings', component: () => import('@/views/Rankings.vue') },
+        { path: 'profile', name: 'profile', component: () => import('@/views/Profile.vue') },
         { path: 'login', name: 'login', component: () => import('@/views/Login.vue') },
       ],
     },

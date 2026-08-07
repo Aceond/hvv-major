@@ -350,14 +350,18 @@ export async function createTeamByAdmin(input: {
   return team
 }
 
-/** 查询当前用户所在战队 */
+/** 查询当前用户所在战队（队长或队员） */
 export async function listMyTeams(): Promise<Team[]> {
   if (!isSupabaseConfigured || !supabase) {
     return mockTeams.filter((t) => t.captain_id === 'demo-player')
   }
-  // TODO: 关联 team_members 后按 captain_id / member 过滤
-  const { data } = await supabase.from('teams').select('*')
-  return (data as Team[]) ?? []
+  const { data: { user } } = await supabase.auth.getUser()
+  if (!user) return []
+  const { data } = await supabase
+    .from('team_members')
+    .select('team:teams(*)')
+    .eq('profile_id', user.id)
+  return ((data ?? []) as any[]).map((r) => r.team as Team)
 }
 
 /** 查询战队名册（昵称/完美 ID 来自选手资料） */

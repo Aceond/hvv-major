@@ -155,6 +155,34 @@ export async function listMatches(stageId?: string, groupId?: string): Promise<M
   }))
 }
 
+/** 我所在战队参与的比赛（个人中心用，按开赛时间倒序） */
+export async function listMyMatches(teamIds: string[]): Promise<Match[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return decorate(
+      mockMatches.filter(
+        (m) =>
+          teamIds.includes(m.team_a_id ?? '') || teamIds.includes(m.team_b_id ?? ''),
+      ),
+    ).sort((a, b) => (b.scheduled_at ?? '').localeCompare(a.scheduled_at ?? ''))
+  }
+  if (teamIds.length === 0) return []
+  const ids = teamIds.join(',')
+  const { data } = await supabase
+    .from('matches')
+    .select(
+      '*, stage:stages(name), group:groups(name), team_a:teams!matches_team_a_id_fkey(name), team_b:teams!matches_team_b_id_fkey(name)',
+    )
+    .or(`team_a_id.in.(${ids}),team_b_id.in.(${ids})`)
+    .order('scheduled_at', { ascending: false })
+  return ((data ?? []) as any[]).map((m) => ({
+    ...m,
+    stage_name: m.stage?.name,
+    group_name: m.group?.name,
+    team_a_name: m.team_a?.name,
+    team_b_name: m.team_b?.name,
+  }))
+}
+
 /** 积分榜（可按阶段、组别过滤；三组相互独立） */
 export async function getStandings(stageId?: string, groupId?: string): Promise<StandingsRow[]> {
   if (!isSupabaseConfigured || !supabase) {
