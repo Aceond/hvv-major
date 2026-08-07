@@ -8,7 +8,6 @@ export interface Profile {
   username: string | null
   nickname: string | null
   pw_username: string | null
-  organization: string | null
   role: 'admin' | 'player' | null
 }
 
@@ -30,7 +29,7 @@ export const useAuthStore = defineStore('auth', () => {
       if (data.user) {
         const { data: p } = await supabase
           .from('profiles')
-          .select('id, username, nickname, pw_username, organization, role')
+          .select('id, username, nickname, pw_username, role')
           .eq('id', data.user.id)
           .maybeSingle()
         profile.value = (p as Profile | null) ?? null
@@ -57,7 +56,6 @@ export const useAuthStore = defineStore('auth', () => {
       username: role === 'admin' ? '演示管理员' : '演示选手',
       nickname: role === 'admin' ? 'KillerAce' : '炎龙',
       pw_username: role === 'admin' ? 'killerace' : 'yanlong',
-      organization: '演示单位',
       role,
     }
   }
