@@ -24,11 +24,18 @@ returns trigger
 language plpgsql security definer set search_path = public
 as $$
 begin
-  insert into public.profiles (id, username)
-  values (new.id, new.raw_user_meta_data ->> 'username');
+  -- 新注册账号默认 account_status='pending'，需管理员在后台「账号审核」中通过后才解锁全部功能
+  insert into public.profiles (id, username, email, account_status)
+  values (new.id, new.raw_user_meta_data ->> 'username', new.email, 'pending');
   return new;
 end;
 $$;
+
+-- 账号人工审核：account_status=pending(待审核)/approved(已通过)/rejected(已拒绝)
+-- 兼容旧库：老用户默认 approved（不受审核影响）
+alter table public.profiles add column if not exists account_status text not null default 'approved'
+  check (account_status in ('pending', 'approved', 'rejected'));
+alter table public.profiles add column if not exists email text;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -348,7 +355,7 @@ create policy profiles_select on public.profiles
   for select using (auth.uid() = id or public.is_admin());
 drop policy if exists profiles_update on public.profiles;
 create policy profiles_update on public.profiles
-  for update using (auth.uid() = id) with check (auth.uid() = id);
+  for update using (auth.uid() = id or public.is_admin()) with check (auth.uid() = id or public.is_admin());
 
 -- player_applications：本人可提交/查看自己的申请，管理员全量审核
 drop policy if exists player_applications_select on public.player_applications;

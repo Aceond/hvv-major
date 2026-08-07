@@ -4,6 +4,16 @@ export type Role = 'admin' | 'player'
 export type TeamStatus = 'pending' | 'approved' | 'rejected'
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected'
 export type EmploymentStatus = 'employed' | 'unemployed' // 在职 / 离职
+
+/** 账号（profiles.account_status：管理员人工审核新注册账号） */
+export interface AccountItem {
+  id: string
+  username: string | null
+  email: string | null
+  role: 'admin' | 'player' | null
+  account_status: ApplicationStatus | null
+  created_at: string
+}
 export type EventStatus = 'signup' | 'running' | 'ended'
 export type StageFormat = 'round_robin' | 'single_elim' | 'double_elim' | 'swiss'
 export type StageStatus = 'upcoming' | 'running' | 'ended'

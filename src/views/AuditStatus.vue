@@ -1,26 +1,18 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { listMyPlayerApplication } from '@/api/registration'
-import type { PlayerApplication } from '@/api/types'
 
 const router = useRouter()
 const auth = useAuthStore()
-const application = ref<PlayerApplication | null>(null)
 
 onMounted(async () => {
   if (!auth.isLoggedIn) {
     router.replace({ name: 'login' })
     return
   }
-  await auth.loadApplicationStatus()
-  application.value = await listMyPlayerApplication()
+  await auth.loadAccountStatus()
 })
-
-function goRegister() {
-  router.push({ name: 'player-register' })
-}
 
 function goHome() {
   router.push({ name: 'home' })
@@ -31,8 +23,8 @@ function goHome() {
   <div class="page-container">
     <div class="audit-card">
       <!-- 审核中 -->
-      <template v-if="auth.applicationStatus === 'pending'">
-        <el-result icon="info" title="账号审核中" sub-title="你的注册申请已提交，正在等待管理员审核。审核通过后即可使用全部功能。">
+      <template v-if="auth.accountStatus === 'pending'">
+        <el-result icon="info" title="账号审核中" sub-title="你的账号已注册成功，正在等待管理员审核。审核通过后即可使用全部功能。">
           <template #extra>
             <el-button type="primary" @click="goHome">返回首页</el-button>
           </template>
@@ -40,24 +32,22 @@ function goHome() {
       </template>
 
       <!-- 审核被拒 -->
-      <template v-else-if="auth.applicationStatus === 'rejected'">
-        <el-result icon="warning" title="审核未通过" :sub-title="application?.review_note || '你的注册申请未通过管理员审核，可重新提交。'">
+      <template v-else-if="auth.accountStatus === 'rejected'">
+        <el-result icon="warning" title="账号审核未通过" sub-title="你的账号未通过管理员审核，暂时无法使用系统功能。如有疑问请联系管理员。">
           <template #extra>
-            <el-button type="primary" @click="goRegister">重新提交申请</el-button>
-            <el-button @click="goHome">返回首页</el-button>
+            <el-button type="primary" @click="goHome">返回首页</el-button>
           </template>
         </el-result>
       </template>
 
-      <!-- 兜底：未提交申请 / 已通过 -->
+      <!-- 兜底：已通过 / 状态未知 -->
       <template v-else>
         <el-result
           icon="success"
           title="账号状态正常"
-          :sub-title="auth.applicationStatus === 'approved' ? '你的账号已通过审核。' : '你尚未提交个人注册申请。'"
+          :sub-title="auth.accountStatus === 'approved' ? '你的账号已通过审核，可以正常使用。' : '账号状态正常，可以正常使用。'"
         >
           <template #extra>
-            <el-button v-if="!auth.applicationStatus" type="primary" @click="goRegister">去提交注册申请</el-button>
             <el-button type="primary" @click="goHome">返回首页</el-button>
           </template>
         </el-result>

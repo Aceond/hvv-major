@@ -2,7 +2,7 @@
 // 未配置 Supabase（演示模式）时直接读写内存中的 mock 数据。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { mockMatches, mockStages, mockTeams } from '@/mock/data'
-import type { Match, Stage, Team, TeamStatus } from './types'
+import type { AccountItem, ApplicationStatus, Match, Stage, Team, TeamStatus } from './types'
 import { listGroups, listMatches, listStages } from './match'
 import {
   addTeamMember,
@@ -25,6 +25,23 @@ export {
   listPlayerApplications,
   reviewPlayerApplication,
   createTeamByAdmin,
+}
+
+/** 账号列表（账号审核用）：展示用户名/邮箱/角色/审核状态/注册时间 */
+export async function listAccounts(): Promise<AccountItem[]> {
+  if (!isSupabaseConfigured || !supabase) return []
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, username, email, role, account_status, created_at')
+    .order('created_at', { ascending: false })
+  return (data as AccountItem[]) ?? []
+}
+
+/** 账号审核：通过 / 拒绝（更新 profiles.account_status，RLS 允许管理员更新） */
+export async function reviewAccount(id: string, status: ApplicationStatus) {
+  if (!isSupabaseConfigured || !supabase) return
+  const { error } = await supabase.from('profiles').update({ account_status: status }).eq('id', id)
+  if (error) throw error
 }
 
 /** 战队列表 */
