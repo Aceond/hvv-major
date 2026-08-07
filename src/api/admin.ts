@@ -5,9 +5,12 @@ import { mockMatches, mockStages, mockTeams } from '@/mock/data'
 import type { Match, Stage, Team, TeamStatus } from './types'
 import { listGroups, listMatches, listStages } from './match'
 import {
+  addTeamMember,
   createTeamByAdmin,
   listMembers,
   listPlayerApplications,
+  listPlayers,
+  removeTeamMember,
   reviewPlayerApplication,
 } from './registration'
 
@@ -16,6 +19,9 @@ export {
   listMatches,
   listStages,
   listMembers,
+  listPlayers,
+  addTeamMember,
+  removeTeamMember,
   listPlayerApplications,
   reviewPlayerApplication,
   createTeamByAdmin,

@@ -1,14 +1,31 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { Group, Team, TeamMember, TeamStatus } from '@/api/types'
-import { listGroups, listMembers, listTeams, updateTeamGroup, updateTeamStatus } from '@/api/admin'
+import type { Group, PlayerItem, Team, TeamMember, TeamStatus } from '@/api/types'
+import {
+  addTeamMember,
+  listGroups,
+  listMembers,
+  listPlayers,
+  listTeams,
+  removeTeamMember,
+  updateTeamGroup,
+  updateTeamStatus,
+} from '@/api/admin'
 
 const rows = ref<Team[]>([])
 const groups = ref<Group[]>([])
 const membersMap = ref<Record<string, TeamMember[]>>({})
 const loading = ref(false)
 const filter = ref<'all' | TeamStatus>('all')
+
+// 管理名册对话框
+const rosterVisible = ref(false)
+const rosterTeam = ref<Team | null>(null)
+const roster = ref<TeamMember[]>([])
+const pool = ref<PlayerItem[]>([])
+const selectedPlayer = ref('')
+const adding = ref(false)
 
 const MIN_MEMBERS = 5
 
@@ -77,6 +94,44 @@ async function decide(team: Team, status: TeamStatus) {
   load()
 }
 
+function playerLabel(p: PlayerItem) {
+  return `${p.nickname || '未命名'}${p.pw_username ? `（${p.pw_username}）` : ''}`
+}
+
+async function openRoster(team: Team) {
+  rosterTeam.value = team
+  selectedPlayer.value = ''
+  roster.value = await listMembers(team.id)
+  pool.value = await listPlayers()
+  rosterVisible.value = true
+}
+
+async function addPlayer() {
+  if (!rosterTeam.value || !selectedPlayer.value) return
+  adding.value = true
+  try {
+    const ok = await addTeamMember(rosterTeam.value.id, selectedPlayer.value)
+    if (!ok) {
+      ElMessage.warning('添加失败（该选手可能已在其他战队）')
+      return
+    }
+    ElMessage.success('已添加队员')
+    roster.value = await listMembers(rosterTeam.value.id)
+    membersMap.value[rosterTeam.value.id] = roster.value
+    selectedPlayer.value = ''
+  } finally {
+    adding.value = false
+  }
+}
+
+async function removeMember(m: TeamMember) {
+  if (!rosterTeam.value) return
+  await removeTeamMember(rosterTeam.value.id, m.profile_id)
+  ElMessage.success('已移除队员')
+  roster.value = await listMembers(rosterTeam.value.id)
+  membersMap.value[rosterTeam.value.id] = roster.value
+}
+
 onMounted(load)
 </script>
 
@@ -95,7 +150,7 @@ onMounted(load)
       <el-table-column type="expand">
         <template #default="{ row }">
           <el-table :data="membersMap[row.id] ?? []" size="small" class="member-table">
-            <el-table-column prop="nickname" label="游戏昵称" min-width="120" />
+            <el-table-column prop="nickname" label="选手姓名" min-width="120" />
             <el-table-column prop="pw_username" label="完美 ID（用户名）" min-width="160" />
             <el-table-column label="角色" width="80">
               <template #default="{ row: m }">
@@ -138,26 +193,83 @@ onMounted(load)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="160">
+      <el-table-column label="操作" width="200">
         <template #default="{ row }">
+          <el-button size="small" type="primary" plain @click="openRoster(row)">管理名册</el-button>
           <template v-if="row.status === 'pending'">
             <el-button size="small" type="success" @click="decide(row, 'approved')">通过</el-button>
             <el-button size="small" type="danger" @click="decide(row, 'rejected')">拒绝</el-button>
           </template>
-          <span v-else class="done-text">已处理</span>
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 管理名册对话框 -->
+    <el-dialog v-model="rosterVisible" :title="`管理名册：${rosterTeam?.name ?? ''}`" width="580px">
+      <div class="add-bar">
+        <el-select
+          v-model="selectedPlayer"
+          filterable
+          placeholder="从选手池选择队员（已入队选手不可选）"
+          style="flex: 1"
+        >
+          <el-option
+            v-for="p in pool"
+            :key="p.id"
+            :label="playerLabel(p)"
+            :value="p.id"
+            :disabled="p.in_team"
+          />
+        </el-select>
+        <el-button
+          type="primary"
+          :loading="adding"
+          :disabled="!selectedPlayer"
+          @click="addPlayer"
+        >
+          添加
+        </el-button>
+      </div>
+
+      <el-alert
+        v-if="pool.length === 0"
+        type="warning"
+        :closable="false"
+        title="选手池为空"
+        description="请先在「个人选手审核」中通过个人注册申请，选手才会进入选手池。"
+        class="roster-tip"
+      />
+
+      <el-table :data="roster" stripe size="small">
+        <el-table-column prop="nickname" label="选手姓名" min-width="120">
+          <template #default="{ row: m }">{{ m.nickname ?? '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="pw_username" label="完美 ID" min-width="140" />
+        <el-table-column label="角色" width="70">
+          <template #default="{ row: m }">
+            <el-tag v-if="m.is_captain" size="small" type="warning">队长</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80">
+          <template #default="{ row: m }">
+            <el-button
+              v-if="!m.is_captain"
+              link
+              type="danger"
+              @click="removeMember(m)"
+            >
+              移除
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
 .filters {
   margin-bottom: 16px;
-}
-
-.done-text {
-  color: #c0c4cc;
 }
 
 .member-table {
@@ -167,5 +279,16 @@ onMounted(load)
 .insufficient {
   color: #f56c6c;
   font-weight: 700;
+}
+
+.add-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.roster-tip {
+  margin-bottom: 12px;
 }
 </style>

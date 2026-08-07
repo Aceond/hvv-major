@@ -368,6 +368,22 @@ create policy team_members_insert on public.team_members
     public.is_admin()
     or exists (select 1 from public.teams t where t.id = team_id and t.captain_id = auth.uid())
   );
+-- 后台选人：管理员可调整战队名册（队员添加/移除由管理员在「战队报名审核」中操作）
+drop policy if exists team_members_update on public.team_members;
+create policy team_members_update on public.team_members
+  for update using (
+    public.is_admin()
+    or exists (select 1 from public.teams t where t.id = team_id and t.captain_id = auth.uid())
+  ) with check (
+    public.is_admin()
+    or exists (select 1 from public.teams t where t.id = team_id and t.captain_id = auth.uid())
+  );
+drop policy if exists team_members_delete on public.team_members;
+create policy team_members_delete on public.team_members
+  for delete using (
+    public.is_admin()
+    or exists (select 1 from public.teams t where t.id = team_id and t.captain_id = auth.uid())
+  );
 
 -- stages / matches / match_maps：公开可读，仅管理员写
 drop policy if exists stages_select on public.stages;
@@ -461,7 +477,8 @@ grant select on public.profiles, public.groups, public.teams, public.team_member
 grant select on public.sync_logs to authenticated;
 grant select on public.player_applications to authenticated;
 
-grant insert, update on public.teams, public.team_members to authenticated;
+grant insert, update on public.teams to authenticated;
+grant insert, update, delete on public.team_members to authenticated;
 grant insert, update on public.site_config to authenticated;
 grant insert, update on public.player_applications to authenticated;
 grant insert, delete on public.matches to authenticated;

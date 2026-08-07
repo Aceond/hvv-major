@@ -166,13 +166,12 @@ export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
 }
 
 /**
- * 创建战队并加入成员：队长（当前用户）自动入队，
- * 其余成员从注册选手池中选择。
+ * 创建战队并登记队长（当前用户）：队员由管理员在后台为战队选择。
+ * 流程：前台提交战队信息 → 管理员在「战队报名审核」中为战队添加队员（≥5 人）→ 通过审核。
  */
 export async function createTeam(
   name: string,
   tag: string,
-  memberProfileIds: string[],
 ): Promise<Team | null> {
   if (!isSupabaseConfigured || !supabase) {
     const team: Team = {
@@ -196,19 +195,6 @@ export async function createTeam(
       is_captain: true,
       status: 'active',
     })
-    for (const pid of memberProfileIds) {
-      const p = mockPlayers.find((x) => x.id === pid)
-      list.push({
-        id: `m-${Date.now()}-${pid}`,
-        team_id: team.id,
-        profile_id: pid,
-        nickname: p?.nickname ?? null,
-        pw_username: p?.pw_username ?? null,
-        is_captain: false,
-        status: 'active',
-      })
-      if (p) p.in_team = true
-    }
     return team
   }
   const { data: { user } } = await supabase.auth.getUser()
@@ -220,13 +206,56 @@ export async function createTeam(
     .single()
   const team = data as Team | null
   if (team) {
-    const members = [
-      { team_id: team.id, profile_id: user.id, is_captain: true },
-      ...memberProfileIds.map((id) => ({ team_id: team.id, profile_id: id, is_captain: false })),
-    ]
-    await supabase.from('team_members').insert(members)
+    await supabase
+      .from('team_members')
+      .insert({ team_id: team.id, profile_id: user.id, is_captain: true })
   }
   return team
+}
+
+/** 管理员为战队添加队员（后台选人；一人一队，已在其他队则失败） */
+export async function addTeamMember(teamId: string, profileId: string): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) {
+    const list = mockMembers[teamId] ?? (mockMembers[teamId] = [])
+    if (list.some((m) => m.profile_id === profileId)) return false
+    const p = mockPlayers.find((x) => x.id === profileId)
+    list.push({
+      id: `m-${Date.now()}-${profileId}`,
+      team_id: teamId,
+      profile_id: profileId,
+      nickname: p?.nickname ?? null,
+      pw_username: p?.pw_username ?? null,
+      is_captain: false,
+      status: 'active',
+    })
+    if (p) p.in_team = true
+    return true
+  }
+  const { error } = await supabase
+    .from('team_members')
+    .insert({ team_id: teamId, profile_id: profileId, is_captain: false })
+  return !error
+}
+
+/** 管理员从战队移除队员（队长不可移除） */
+export async function removeTeamMember(teamId: string, profileId: string): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) {
+    const list = mockMembers[teamId] ?? []
+    const idx = list.findIndex((m) => m.profile_id === profileId)
+    if (idx >= 0 && !list[idx].is_captain) {
+      list.splice(idx, 1)
+      const p = mockPlayers.find((x) => x.id === profileId)
+      if (p) p.in_team = false
+      return true
+    }
+    return false
+  }
+  const { error } = await supabase
+    .from('team_members')
+    .delete()
+    .eq('team_id', teamId)
+    .eq('profile_id', profileId)
+  return !error
 }
 
 /** 管理员手动建队（数据录入页用）：直接以 approved 状态创建战队与名册 */
