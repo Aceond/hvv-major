@@ -5,6 +5,12 @@ import { useAuthStore } from '@/stores/auth'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+
+/** 退出登录并立即离开管理后台 */
+async function signOut() {
+  await auth.signOut()
+  router.push({ name: 'login' })
+}
 </script>
 
 <template>
@@ -52,7 +58,7 @@ const auth = useAuthStore()
           </el-button>
           <span class="divider" />
           <span class="admin-name">{{ auth.profile?.username || auth.user?.email }}</span>
-          <el-button class="ghost-btn" text size="small" @click="auth.signOut()">
+          <el-button class="ghost-btn" text size="small" @click="signOut">
             退出登录
           </el-button>
         </div>

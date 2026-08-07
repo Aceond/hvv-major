@@ -18,6 +18,12 @@ function goAdmin() {
     router.push({ name: 'login' })
   }
 }
+
+/** 退出登录并返回登录页 */
+async function signOut() {
+  await auth.signOut()
+  router.push({ name: 'login' })
+}
 </script>
 
 <template>
@@ -61,7 +67,7 @@ function goAdmin() {
             <span class="username">{{ auth.profile?.username || auth.user?.email }}</span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item @click="auth.signOut()">退出登录</el-dropdown-item>
+                <el-dropdown-item @click="signOut">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
