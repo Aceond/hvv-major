@@ -1,11 +1,22 @@
 <script setup lang="ts">
 import { useRoute, useRouter } from 'vue-router'
+import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+
+/** 进入管理后台：管理员直接进入，其他人引导到登录页 */
+function goAdmin() {
+  if (auth.isLoggedIn && auth.isAdmin) {
+    router.push({ name: 'admin-dashboard' })
+  } else {
+    ElMessage.info('请先以管理员身份登录后进入管理后台')
+    router.push({ name: 'login' })
+  }
+}
 </script>
 
 <template>
@@ -37,15 +48,10 @@ const auth = useAuthStore()
       </el-menu>
 
       <div class="user-area">
+        <el-button class="admin-btn" size="small" @click="goAdmin">
+          管理后台
+        </el-button>
         <template v-if="auth.isLoggedIn">
-          <el-button
-            v-if="auth.isAdmin"
-            class="admin-btn"
-            size="small"
-            @click="router.push({ name: 'admin-dashboard' })"
-          >
-            管理后台
-          </el-button>
           <el-dropdown>
             <span class="username">{{ auth.profile?.username || auth.user?.email }}</span>
             <template #dropdown>

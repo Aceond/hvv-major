@@ -28,6 +28,7 @@ const router = createRouter({
         { path: 'teams', name: 'admin-teams', component: () => import('@/views/admin/Teams.vue') },
         { path: 'matches', name: 'admin-matches', component: () => import('@/views/admin/Matches.vue') },
         { path: 'stats', name: 'admin-stats', component: () => import('@/views/admin/Stats.vue') },
+        { path: 'settings', name: 'admin-settings', component: () => import('@/views/admin/Settings.vue') },
       ],
     },
     { path: '/:pathMatch(.*)*', redirect: { name: 'home' } },

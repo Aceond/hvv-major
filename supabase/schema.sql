@@ -170,6 +170,28 @@ left join public.groups g on g.id = t.group_id
 group by e.stage_id, e.team_id, t.name, t.tag, t.group_id, g.name;
 
 -- ============================================================
+-- 6.5 站点配置（单行：首页 hero 标题等，后台可修改）
+-- ============================================================
+create table if not exists public.site_config (
+  id int primary key default 1 check (id = 1),  -- 仅允许单行
+  brand_title text not null default 'HVV MAJOR 11',
+  brand_overline text not null default 'HVV MAJOR 2026 · COUNTER-STRIKE 2',
+  brand_slogan text not null default '战队报名 · 赛程赛制 · 积分排名 — 一站式 CS2 赛事平台',
+  notice text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+insert into public.site_config (id, brand_title, brand_overline, brand_slogan, notice)
+values (
+  1,
+  'HVV MAJOR 11',
+  'HVV MAJOR 2026 · COUNTER-STRIKE 2',
+  '战队报名 · 赛程赛制 · 积分排名 — 一站式 CS2 赛事平台',
+  '本系统为框架阶段骨架，赛程、比分与统计由管理员在后台录入维护。'
+)
+on conflict (id) do nothing;
+
+-- ============================================================
 -- 6.5 数据统计表（个人 / 队伍排行，数据由管理员在后台手动录入）
 -- 字段对应完美对战平台统计维度
 -- 注意：若已按旧版本建过库，需 drop 这两张表后重新执行本段。
@@ -276,6 +298,7 @@ alter table public.match_maps     enable row level security;
 alter table public.team_stats     enable row level security;
 alter table public.player_stats   enable row level security;
 alter table public.sync_logs      enable row level security;
+alter table public.site_config     enable row level security;
 
 -- profiles：本人读写，管理员可读全部
 create policy profiles_select on public.profiles
@@ -337,6 +360,12 @@ create policy player_stats_admin_all on public.player_stats
 create policy sync_logs_admin_all on public.sync_logs
   for all using (public.is_admin()) with check (public.is_admin());
 
+-- site_config：公开可读（首页展示），仅管理员可写
+create policy site_config_select on public.site_config
+  for select using (true);
+create policy site_config_admin_all on public.site_config
+  for all using (public.is_admin()) with check (public.is_admin());
+
 -- ============================================================
 -- 9. 权限授予
 -- ============================================================
@@ -344,11 +373,12 @@ grant usage on schema public to anon, authenticated;
 
 grant select on public.profiles, public.groups, public.teams, public.team_members,
   public.stages, public.matches, public.match_maps, public.standings,
-  public.team_stats, public.player_stats
+  public.team_stats, public.player_stats, public.site_config
   to anon, authenticated;
 grant select on public.sync_logs to authenticated;
 
 grant insert, update on public.teams, public.team_members to authenticated;
+grant insert, update on public.site_config to authenticated;
 
 grant execute on function public.upsert_match_result(uuid, int, int) to authenticated;
 

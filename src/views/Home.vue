@@ -1,5 +1,11 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { MATCH_STATUS_LABEL } from '@/api/types'
+import type { Match } from '@/api/types'
+import { listThisWeekMatches, thisWeekRange } from '@/api/match'
+import { getSiteConfig, DEFAULT_SITE_CONFIG } from '@/api/config'
+import type { SiteConfig } from '@/api/config'
 
 const router = useRouter()
 
@@ -29,6 +35,43 @@ const features = [
     tag: 'RANKING',
   },
 ]
+
+const config = ref<SiteConfig>({ ...DEFAULT_SITE_CONFIG })
+const weekMatches = ref<Match[]>([])
+const weekLabel = ref('')
+
+/** hero 大标题拆分：首个单词正常色，其余部分高亮（如 "HVV" + "MAJOR 11"） */
+const heroTitleParts = computed(() => config.value.brand_title.split(' ').filter(Boolean))
+
+function matchStatusType(status: Match['status']) {
+  return status === 'completed' ? 'success' : status === 'cancelled' ? 'danger' : 'warning'
+}
+
+const pad = (n: number) => String(n).padStart(2, '0')
+
+function parseScheduled(s: string | null): Date | null {
+  if (!s) return null
+  const d = new Date(s.replace(' ', 'T'))
+  return isNaN(d.getTime()) ? null : d
+}
+
+function formatDate(s: string | null) {
+  const d = parseScheduled(s)
+  return d ? `${pad(d.getMonth() + 1)}.${pad(d.getDate())}` : '-'
+}
+
+function formatTime(s: string | null) {
+  const d = parseScheduled(s)
+  return d ? `${pad(d.getHours())}:${pad(d.getMinutes())}` : '-'
+}
+
+onMounted(async () => {
+  const [cfg, matches] = await Promise.all([getSiteConfig(), listThisWeekMatches()])
+  config.value = cfg
+  weekMatches.value = matches
+  const { start, end } = thisWeekRange()
+  weekLabel.value = `${start.slice(5).replace('-', '.')} - ${end.slice(5).replace('-', '.')}`
+})
 </script>
 
 <template>
@@ -36,13 +79,17 @@ const features = [
     <section class="hero">
       <div class="hero-overline">
         <span class="hero-line" />
-        HVV MAJOR 2026 · COUNTER-STRIKE 2
+        {{ config.brand_overline }}
         <span class="hero-line" />
       </div>
       <h1 class="hero-title">
-        HVV <span class="hero-accent">MAJOR</span>
+        <template v-if="heroTitleParts.length > 1">
+          {{ heroTitleParts[0] }}
+          <span class="hero-accent">{{ heroTitleParts.slice(1).join(' ') }}</span>
+        </template>
+        <span v-else class="hero-accent">{{ heroTitleParts[0] }}</span>
       </h1>
-      <p class="hero-slogan">战队报名 · 赛程赛制 · 积分排名 — 一站式 CS2 赛事平台</p>
+      <p class="hero-slogan">{{ config.brand_slogan }}</p>
       <div class="cta">
         <el-button class="cta-primary" size="large" @click="router.push({ name: 'register' })">
           立即报名
@@ -66,15 +113,63 @@ const features = [
       </el-col>
     </el-row>
 
+    <section class="week-matches">
+      <div class="week-header">
+        <div class="week-title">
+          <span class="notice-icon">!</span>
+          最近比赛
+        </div>
+        <span class="week-sub">本周赛程 {{ weekLabel }}</span>
+        <el-button
+          class="week-more"
+          text
+          size="small"
+          @click="router.push({ name: 'matches' })"
+        >
+          查看全部 →
+        </el-button>
+      </div>
+
+      <div v-if="weekMatches.length === 0" class="week-empty">本周暂无比赛</div>
+      <div v-else class="match-list">
+        <div
+          v-for="m in weekMatches"
+          :key="m.id"
+          class="match-row"
+          @click="router.push({ name: 'matches' })"
+        >
+          <div class="match-time">
+            <span class="match-date">{{ formatDate(m.scheduled_at) }}</span>
+            <span class="match-clock">{{ formatTime(m.scheduled_at) }}</span>
+          </div>
+          <div class="match-info">
+            <el-tag size="small" effect="plain">{{ m.group_name ?? '跨组' }}</el-tag>
+            <span class="match-stage">{{ m.stage_name }}</span>
+          </div>
+          <div class="matchup">
+            <span class="team" :class="{ win: m.winner_id === m.team_a_id }">
+              {{ m.team_a_name }}
+            </span>
+            <span class="score">
+              {{ m.status === 'scheduled' ? 'VS' : `${m.team_a_score} : ${m.team_b_score}` }}
+            </span>
+            <span class="team" :class="{ win: m.winner_id === m.team_b_id }">
+              {{ m.team_b_name }}
+            </span>
+          </div>
+          <el-tag :type="matchStatusType(m.status)" size="small">
+            {{ MATCH_STATUS_LABEL[m.status] }}
+          </el-tag>
+        </div>
+      </div>
+    </section>
+
     <section class="notice">
       <div class="notice-title">
         <span class="notice-icon">!</span>
         赛事公告
       </div>
-      <p>
-        本系统为框架阶段骨架，赛程、比分与统计由管理员在后台录入维护。
-        （此区域用于展示赛事公告）
-      </p>
+      <p>{{ config.notice }}</p>
     </section>
   </div>
 </template>
@@ -240,6 +335,137 @@ const features = [
   transition: color 0.2s, transform 0.2s;
 }
 
+/* 最近比赛（本周赛程） */
+.week-matches {
+  margin-top: 24px;
+  padding: 18px 22px 8px;
+  background: var(--cs2-panel);
+  border: 1px solid var(--cs2-border);
+}
+
+.week-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.week-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--cs2-text);
+}
+
+.week-sub {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--cs2-text-muted);
+}
+
+.week-more {
+  margin-left: auto;
+  color: var(--cs2-accent);
+}
+
+.notice-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: var(--cs2-accent);
+  color: #14100a;
+  font-size: 12px;
+  font-weight: 800;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%);
+}
+
+.week-empty {
+  padding: 28px 0;
+  text-align: center;
+  color: var(--cs2-text-muted);
+  font-size: 13px;
+}
+
+.match-row {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
+  border: 1px solid var(--cs2-border);
+  cursor: pointer;
+  transition: border-color 0.2s;
+}
+
+.match-row:hover {
+  border-color: var(--cs2-accent);
+}
+
+.match-time {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 58px;
+}
+
+.match-date {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cs2-accent);
+}
+
+.match-clock {
+  font-size: 11px;
+  color: var(--cs2-text-muted);
+}
+
+.match-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+
+.match-stage {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
+}
+
+.matchup {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.team {
+  min-width: 90px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  color: var(--cs2-text-regular, #c6ccd8);
+}
+
+.team.win {
+  color: #67c23a;
+  font-weight: 700;
+}
+
+.score {
+  font-weight: 700;
+  color: var(--cs2-accent);
+  white-space: nowrap;
+}
+
 .notice {
   margin-top: 24px;
   padding: 18px 22px;
@@ -256,19 +482,6 @@ const features = [
   letter-spacing: 1px;
   margin-bottom: 8px;
   color: var(--cs2-text);
-}
-
-.notice-icon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 18px;
-  height: 18px;
-  background: var(--cs2-accent);
-  color: #14100a;
-  font-size: 12px;
-  font-weight: 800;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%);
 }
 
 .notice p {
