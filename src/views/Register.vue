@@ -70,8 +70,8 @@ async function submit() {
         <el-form-item label="战队名称">
           <el-input v-model="form.teamName" placeholder="例如：Nova Velocity" />
         </el-form-item>
-        <el-form-item label="队标缩写">
-          <el-input v-model="form.tag" placeholder="例如：NV（2-4 位英文）" maxlength="4" />
+        <el-form-item label="战队 ID">
+          <el-input v-model="form.tag" placeholder="例如：NV11（2-6 位字母数字）" maxlength="6" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="next">下一步：选择队员</el-button>
@@ -81,7 +81,7 @@ async function submit() {
         type="info"
         :closable="false"
         title="报名流程"
-        description="队长（当前登录选手）自动入队；下一步从已注册的个人选手中选择 4 名以上队友（共 ≥5 人）。还没有个人注册？先去「个人注册」填写昵称与完美 ID。"
+        description="队长（当前登录选手）自动入队；下一步从已通过审核的个人选手中选择 4 名以上队友（共 ≥5 人）。还没有个人注册？先去「个人注册」提交完美 ID 与赛季截图，审核通过后即可被选入。"
       />
     </el-card>
 
@@ -90,7 +90,7 @@ async function submit() {
       <el-form label-width="90px">
         <el-form-item label="队长">
           <el-tag type="warning">
-            {{ auth.profile?.nickname || auth.profile?.username }}（自动入队）
+            {{ auth.profile?.pw_username || auth.profile?.nickname || auth.profile?.username }}（自动入队）
           </el-tag>
         </el-form-item>
         <el-form-item label="选择队员">
@@ -98,18 +98,18 @@ async function submit() {
             v-model="form.memberIds"
             multiple
             filterable
-            placeholder="搜索昵称添加队员（已入队选手不可选）"
+            placeholder="搜索完美 ID 添加队员（已入队选手不可选）"
             style="width: 100%"
           >
             <el-option
               v-for="p in players"
               :key="p.id"
-              :label="p.nickname ?? p.id"
+              :label="p.pw_username || p.nickname || p.id"
               :value="p.id"
               :disabled="p.in_team && !form.memberIds.includes(p.id)"
             >
-              <span>{{ p.nickname }}</span>
-              <span class="option-steam">{{ p.pw_username }}</span>
+              <span>{{ p.pw_username || p.nickname }}</span>
+              <span class="option-steam">{{ p.pw_username ? p.nickname : '' }}</span>
               <el-tag v-if="p.in_team" size="small" type="info" effect="plain">已入队</el-tag>
             </el-option>
           </el-select>

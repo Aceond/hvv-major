@@ -36,6 +36,23 @@ create trigger on_auth_user_created
   for each row execute function public.handle_new_user();
 
 -- ============================================================
+-- 1.5 个人选手注册申请（提交完美 ID + 最近 3-5 个赛季截图，管理员审核后进入选手池）
+--     截图上传到 Storage 的 player-screenshots 桶（公开读），screenshots 存其 URL
+-- ============================================================
+create table if not exists public.player_applications (
+  id uuid primary key default gen_random_uuid(),
+  profile_id uuid not null references public.profiles (id) on delete cascade,
+  pw_username text not null,             -- 完美 ID（完美对战平台用户名）
+  nickname text,                         -- 预留昵称（本次注册不再单独采集）
+  screenshots jsonb not null default '[]'::jsonb, -- 最近 3-5 个赛季截图 URL
+  status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
+  review_note text,
+  created_at timestamptz not null default now(),
+  reviewed_at timestamptz,
+  reviewer_id uuid references public.profiles (id)
+);
+
+-- ============================================================
 -- 2. 组别（传奇组 / 大师组 / 挑战组，三个组别相互独立）
 -- ============================================================
 create table if not exists public.groups (
@@ -289,6 +306,7 @@ $$;
 -- 8. 行级安全（RLS）
 -- ============================================================
 alter table public.profiles       enable row level security;
+alter table public.player_applications enable row level security;
 alter table public.groups         enable row level security;
 alter table public.teams          enable row level security;
 alter table public.team_members   enable row level security;
@@ -305,6 +323,14 @@ create policy profiles_select on public.profiles
   for select using (auth.uid() = id or public.is_admin());
 create policy profiles_update on public.profiles
   for update using (auth.uid() = id) with check (auth.uid() = id);
+
+-- player_applications：本人可提交/查看自己的申请，管理员全量审核
+create policy player_applications_select on public.player_applications
+  for select using (auth.uid() = profile_id or public.is_admin());
+create policy player_applications_insert on public.player_applications
+  for insert with check (auth.uid() = profile_id);
+create policy player_applications_update on public.player_applications
+  for update using (public.is_admin()) with check (public.is_admin());
 
 -- teams：公开可读（含待审核状态需管理员/本人可见）；创建者建队；管理员全量
 create policy teams_select on public.teams
@@ -376,9 +402,11 @@ grant select on public.profiles, public.groups, public.teams, public.team_member
   public.team_stats, public.player_stats, public.site_config
   to anon, authenticated;
 grant select on public.sync_logs to authenticated;
+grant select on public.player_applications to authenticated;
 
 grant insert, update on public.teams, public.team_members to authenticated;
 grant insert, update on public.site_config to authenticated;
+grant insert, update on public.player_applications to authenticated;
 
 grant execute on function public.upsert_match_result(uuid, int, int) to authenticated;
 

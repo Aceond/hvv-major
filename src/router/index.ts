@@ -25,6 +25,7 @@ const router = createRouter({
       meta: { requiresAdmin: true },
       children: [
         { path: '', name: 'admin-dashboard', component: () => import('@/views/admin/Dashboard.vue') },
+        { path: 'players', name: 'admin-players', component: () => import('@/views/admin/Players.vue') },
         { path: 'teams', name: 'admin-teams', component: () => import('@/views/admin/Teams.vue') },
         { path: 'matches', name: 'admin-matches', component: () => import('@/views/admin/Matches.vue') },
         { path: 'stats', name: 'admin-stats', component: () => import('@/views/admin/Stats.vue') },

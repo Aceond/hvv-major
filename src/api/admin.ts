@@ -4,9 +4,16 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { mockMatches, mockStages, mockTeams } from '@/mock/data'
 import type { Match, Stage, Team, TeamStatus } from './types'
 import { listGroups, listMatches, listStages } from './match'
-import { listMembers } from './registration'
+import { listMembers, listPlayerApplications, reviewPlayerApplication } from './registration'
 
-export { listGroups, listMatches, listStages, listMembers }
+export {
+  listGroups,
+  listMatches,
+  listStages,
+  listMembers,
+  listPlayerApplications,
+  reviewPlayerApplication,
+}
 
 /** 战队列表 */
 export async function listTeams(): Promise<Team[]> {

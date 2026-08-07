@@ -106,7 +106,7 @@ onMounted(load)
         </template>
       </el-table-column>
       <el-table-column prop="name" label="战队名称" min-width="150" />
-      <el-table-column prop="tag" label="队标" width="70">
+      <el-table-column prop="tag" label="战队 ID" width="90">
         <template #default="{ row }">{{ row.tag ?? '-' }}</template>
       </el-table-column>
       <el-table-column label="组别" width="120">

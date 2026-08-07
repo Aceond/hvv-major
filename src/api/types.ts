@@ -2,6 +2,7 @@
 
 export type Role = 'admin' | 'player'
 export type TeamStatus = 'pending' | 'approved' | 'rejected'
+export type ApplicationStatus = 'pending' | 'approved' | 'rejected'
 export type StageFormat = 'round_robin' | 'single_elim' | 'double_elim' | 'swiss'
 export type StageStatus = 'upcoming' | 'running' | 'ended'
 export type MatchStatus = 'scheduled' | 'completed' | 'cancelled'
@@ -21,6 +22,19 @@ export interface PlayerItem {
   nickname: string | null
   pw_username: string | null
   in_team: boolean // 是否已加入某支战队
+}
+
+/** 个人选手注册申请（提交完美 ID + 最近 3-5 个赛季截图，管理员审核后进入选手池） */
+export interface PlayerApplication {
+  id: string
+  profile_id: string
+  pw_username: string // 完美 ID（完美对战平台用户名）
+  nickname: string | null // 预留昵称（本次注册不再单独采集）
+  screenshots: string[] // 赛季截图（URL 或演示模式下的 data URL）
+  status: ApplicationStatus
+  review_note: string | null
+  created_at: string
+  reviewed_at: string | null
 }
 
 export interface Team {
