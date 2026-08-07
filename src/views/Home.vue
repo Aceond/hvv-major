@@ -296,7 +296,8 @@ onMounted(async () => {
   color: var(--cs2-accent);
   opacity: 0.13;
   pointer-events: none;
-  animation: crosshair-pulse 4s ease-in-out infinite;
+  animation: crosshair-pulse 6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+  will-change: transform, opacity;
 }
 
 .hero-crosshair svg {
@@ -311,8 +312,8 @@ onMounted(async () => {
     transform: translateY(-50%) rotate(45deg) scale(1);
   }
   50% {
-    opacity: 0.2;
-    transform: translateY(-50%) rotate(45deg) scale(1.04);
+    opacity: 0.18;
+    transform: translateY(-50%) rotate(45deg) scale(1.03);
   }
 }
 
@@ -343,26 +344,28 @@ onMounted(async () => {
   color: var(--cs2-text);
 }
 
-/* 标题金属扫光 */
+/* 标题金属扫光（transform 驱动，GPU 加速更顺滑） */
 .hero-title::after {
   content: '';
   position: absolute;
-  top: 0;
-  bottom: 0;
-  left: -70%;
+  top: -8%;
+  bottom: -8%;
+  left: 0;
   width: 55%;
-  background: linear-gradient(100deg, transparent, rgba(255, 176, 32, 0.22), transparent);
-  animation: hero-sheen 5.5s ease-in-out infinite;
+  background: linear-gradient(100deg, transparent, rgba(255, 176, 32, 0.2), transparent);
+  transform: translateX(-140%) skewX(-14deg);
+  animation: hero-sheen 5.5s cubic-bezier(0.4, 0, 0.2, 1) infinite;
   pointer-events: none;
+  will-change: transform;
 }
 
 @keyframes hero-sheen {
   0%,
-  55% {
-    left: -70%;
+  62% {
+    transform: translateX(-140%) skewX(-14deg);
   }
   100% {
-    left: 130%;
+    transform: translateX(300%) skewX(-14deg);
   }
 }
 
@@ -490,7 +493,9 @@ onMounted(async () => {
   background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
   border: 1px solid var(--cs2-border);
   clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
-  transition: border-color 0.2s, transform 0.2s;
+  transition:
+    border-color 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.3s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .feature-card:hover {
@@ -597,11 +602,16 @@ onMounted(async () => {
   background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
   border: 1px solid var(--cs2-border);
   cursor: pointer;
-  transition: border-color 0.2s;
+  transition:
+    border-color 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.25s cubic-bezier(0.22, 1, 0.36, 1),
+    background 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .match-row:hover {
   border-color: var(--cs2-accent);
+  transform: translateX(4px);
+  background: linear-gradient(180deg, var(--cs2-panel-3), var(--cs2-panel-2));
 }
 
 .match-time {
