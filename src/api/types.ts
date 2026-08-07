@@ -90,12 +90,14 @@ export interface Group {
 export interface Stage {
   id: string
   event_id: string | null // 所属赛事（每届赛事可自定义各自的赛制与阶段列表）
+  group_id: string | null // 所属组别（每个组别的赛程单独管理，跨组/决赛阶段为空）
   name: string
   format: StageFormat
   status: StageStatus
   sort_order: number
   start_at: string | null
   end_at: string | null
+  group_name?: string | null // 联表展示：组别名称
 }
 
 export interface Match {

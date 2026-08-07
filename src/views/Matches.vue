@@ -14,10 +14,10 @@ const auth = useAuthStore()
 
 const events = ref<EventItem[]>([])
 const currentEventId = ref<string>('')
+const currentGroupId = ref<string>('')
 const stages = ref<Stage[]>([])
 const groups = ref<Group[]>([])
 const currentStage = ref<string>('')
-const currentGroup = ref<string>('')
 const matches = ref<Match[]>([])
 const loading = ref(false)
 const viewMode = ref<'list' | 'bracket'>('list')
@@ -62,11 +62,11 @@ async function onEventChange() {
 async function loadMatches() {
   loading.value = true
   try {
-    stages.value = await listStages(currentEventId.value || undefined)
+    stages.value = await listStages(currentEventId.value || undefined, currentGroupId.value || undefined)
     if (!stages.value.some((s) => s.id === currentStage.value)) {
       currentStage.value = stages.value[0]?.id ?? ''
     }
-    matches.value = await listMatches(currentStage.value, currentGroup.value || undefined)
+    matches.value = await listMatches(currentStage.value)
     await loadMedia()
   } finally {
     loading.value = false
@@ -146,6 +146,10 @@ async function removeMedia(item: MatchMedia) {
           :value="e.id"
         />
       </el-select>
+      <el-select v-model="currentGroupId" class="event-select" placeholder="选择组别" @change="onEventChange">
+        <el-option label="全部组别" value="" />
+        <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
+      </el-select>
     </div>
 
     <el-tabs v-model="currentStage" @tab-change="loadMatches">
@@ -156,13 +160,6 @@ async function removeMedia(item: MatchMedia) {
         :name="s.id"
       />
     </el-tabs>
-
-    <el-radio-group v-model="currentGroup" class="group-filter" @change="loadMatches">
-      <el-radio-button value="">全部组别</el-radio-button>
-      <el-radio-button v-for="g in groups" :key="g.id" :value="g.id">
-        {{ g.name }}
-      </el-radio-button>
-    </el-radio-group>
 
     <div class="view-switch">
       <el-radio-group v-model="viewMode">
@@ -284,11 +281,13 @@ async function removeMedia(item: MatchMedia) {
 }
 
 .event-bar {
+  display: flex;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
 .event-select {
-  width: 280px;
+  width: 240px;
 }
 
 .group-filter {

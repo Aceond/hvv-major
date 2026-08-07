@@ -60,6 +60,7 @@ export async function createStage(stage: Partial<Stage>) {
     mockStages.push({
       id: `stage-${Date.now()}`,
       event_id: stage.event_id ?? null,
+      group_id: stage.group_id ?? null,
       name: stage.name ?? '未命名阶段',
       format: stage.format ?? 'round_robin',
       status: stage.status ?? 'upcoming',

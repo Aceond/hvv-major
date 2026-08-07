@@ -288,9 +288,9 @@ export const mockMembers: Record<string, TeamMember[]> = Object.fromEntries(
 
 // ---------------- 阶段 ----------------
 export const mockStages: Stage[] = [
-  { id: 'stage-1', event_id: 'event-11', name: '海选 · 小组循环赛', format: 'round_robin', status: 'running', sort_order: 1, start_at: '2026-08-01 10:00', end_at: '2026-08-07 22:00' },
-  { id: 'stage-2', event_id: 'event-11', name: '正赛 · 单败淘汰', format: 'single_elim', status: 'upcoming', sort_order: 2, start_at: '2026-08-15 13:00', end_at: '2026-08-16 20:00' },
-  { id: 'stage-3', event_id: 'event-11', name: '瑞士轮 · 小组赛', format: 'swiss', status: 'running', sort_order: 3, start_at: '2026-08-10 10:00', end_at: '2026-08-12 22:00' },
+  { id: 'stage-1', event_id: 'event-11', group_id: 'g1', name: '传奇组 · 小组循环赛', format: 'round_robin', status: 'running', sort_order: 1, start_at: '2026-08-01 10:00', end_at: '2026-08-07 22:00' },
+  { id: 'stage-2', event_id: 'event-11', group_id: null, name: '总决赛 · 单败淘汰', format: 'single_elim', status: 'upcoming', sort_order: 2, start_at: '2026-08-15 13:00', end_at: '2026-08-16 20:00' },
+  { id: 'stage-3', event_id: 'event-11', group_id: 'g2', name: '大师组 · 瑞士轮', format: 'swiss', status: 'running', sort_order: 3, start_at: '2026-08-10 10:00', end_at: '2026-08-12 22:00' },
 ]
 
 // ---------------- 对阵（组内循环赛 + 跨组淘汰赛） ----------------

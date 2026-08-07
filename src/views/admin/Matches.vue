@@ -18,11 +18,11 @@ import { listEvents } from '@/api/event'
 
 const events = ref<EventItem[]>([])
 const currentEventId = ref<string>('')
+const currentGroupId = ref<string>('')
 const stages = ref<Stage[]>([])
 const groups = ref<Group[]>([])
 const teams = ref<Team[]>([])
 const currentStage = ref<string>('')
-const currentGroup = ref<string>('')
 const matches = ref<Match[]>([])
 const loading = ref(false)
 
@@ -37,9 +37,10 @@ const stageForm = reactive<{
   name: string
   format: StageFormat
   status: StageStatus
+  groupId: string
   startAt: string
   endAt: string
-}>({ name: '', format: 'round_robin', status: 'upcoming', startAt: '', endAt: '' })
+}>({ name: '', format: 'round_robin', status: 'upcoming', groupId: '', startAt: '', endAt: '' })
 
 // 新建对阵
 const matchDialog = ref(false)
@@ -58,6 +59,10 @@ const currentEventName = computed(
   () => events.value.find((e) => e.id === currentEventId.value)?.name ?? '',
 )
 
+const currentGroupName = computed(
+  () => groups.value.find((g) => g.id === currentGroupId.value)?.name ?? '',
+)
+
 async function load() {
   events.value = await listEvents()
   if (!events.value.some((e) => e.id === currentEventId.value)) {
@@ -73,20 +78,25 @@ async function load() {
 async function loadStagesAndMatches() {
   loading.value = true
   try {
-    stages.value = await listStages(currentEventId.value || undefined)
+    stages.value = await listStages(currentEventId.value || undefined, currentGroupId.value || undefined)
     if (!stages.value.some((s) => s.id === currentStage.value)) {
       currentStage.value = stages.value[0]?.id ?? ''
     }
     groups.value = await listGroups()
     teams.value = await listTeams()
-    matches.value = await listMatches(currentStage.value, currentGroup.value || undefined)
+    matches.value = await listMatches(currentStage.value)
   } finally {
     loading.value = false
   }
 }
 
+async function onGroupChange() {
+  currentStage.value = ''
+  await loadStagesAndMatches()
+}
+
 async function onFilterChange() {
-  matches.value = await listMatches(currentStage.value, currentGroup.value || undefined)
+  matches.value = await listMatches(currentStage.value)
 }
 
 function openScore(row: Match) {
@@ -108,6 +118,7 @@ function openStageDialog(stage?: Stage) {
   stageForm.name = stage?.name ?? ''
   stageForm.format = stage?.format ?? 'round_robin'
   stageForm.status = stage?.status ?? 'upcoming'
+  stageForm.groupId = stage?.group_id ?? currentGroupId.value
   stageForm.startAt = stage?.start_at ?? ''
   stageForm.endAt = stage?.end_at ?? ''
   stageDialog.value = true
@@ -122,6 +133,7 @@ async function saveStage() {
     name: stageForm.name.trim(),
     format: stageForm.format,
     status: stageForm.status,
+    group_id: stageForm.groupId || null,
     start_at: stageForm.startAt || null,
     end_at: stageForm.endAt || null,
   }
@@ -193,32 +205,53 @@ onMounted(load)
   <div>
     <div class="toolbar">
       <h2>赛程管理</h2>
-      <el-select
-        v-model="currentEventId"
-        class="event-select"
-        placeholder="选择赛事"
-        @change="loadStagesAndMatches"
-      >
-        <el-option
-          v-for="e in events"
-          :key="e.id"
-          :label="`${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`"
-          :value="e.id"
-        />
-      </el-select>
+      <div class="filters">
+        <el-select
+          v-model="currentEventId"
+          class="filter-select"
+          placeholder="选择赛事"
+          @change="onGroupChange"
+        >
+          <el-option
+            v-for="e in events"
+            :key="e.id"
+            :label="`${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`"
+            :value="e.id"
+          />
+        </el-select>
+        <el-select
+          v-model="currentGroupId"
+          class="filter-select"
+          placeholder="选择组别"
+          @change="onGroupChange"
+        >
+          <el-option label="全部组别" value="" />
+          <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
+        </el-select>
+      </div>
     </div>
 
-    <!-- 阶段配置：每届赛事可自定义赛程列表（赛制 / 状态 / 排序 / 时间） -->
+    <!-- 阶段配置：每个组别的赛程单独管理（赛制 / 状态 / 排序 / 时间） -->
     <el-card class="stage-card">
       <div class="stage-head">
-        <span class="stage-title">赛程阶段配置（{{ currentEventName || '未选择赛事' }}）</span>
+        <span class="stage-title">
+          赛程阶段配置（{{ currentEventName || '未选择赛事' }}
+          {{ currentGroupName ? ' · ' + currentGroupName : ' · 全部组别' }}）
+        </span>
         <el-button type="primary" size="small" :disabled="!currentEventId" @click="openStageDialog()">
           新建阶段
         </el-button>
       </div>
-      <el-table :data="stages" size="small" empty-text="该赛事尚未配置赛程，点击「新建阶段」添加">
+      <el-table :data="stages" size="small" empty-text="该赛事当前组别尚未配置赛程，点击「新建阶段」添加">
         <el-table-column prop="sort_order" label="顺序" width="60" />
         <el-table-column prop="name" label="阶段名称" min-width="170" />
+        <el-table-column label="组别" width="100">
+          <template #default="{ row }">
+            <el-tag size="small" :type="row.group_id ? 'primary' : 'info'" effect="plain">
+              {{ row.group_name || '跨组' }}
+            </el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="赛制" width="110">
           <template #default="{ row }">{{ STAGE_FORMAT_LABEL[row.format as StageFormat] }}</template>
         </el-table-column>
@@ -272,11 +305,6 @@ onMounted(load)
           :name="s.id"
         />
       </el-tabs>
-
-      <el-radio-group v-model="currentGroup" class="group-filter" @change="onFilterChange">
-        <el-radio-button value="">全部组别</el-radio-button>
-        <el-radio-button v-for="g in groups" :key="g.id" :value="g.id">{{ g.name }}</el-radio-button>
-      </el-radio-group>
 
       <div class="toolbar">
         <span class="match-count">对阵 {{ matches.length }} 场</span>
@@ -362,6 +390,12 @@ onMounted(load)
             <el-option label="已结束" value="ended" />
           </el-select>
         </el-form-item>
+        <el-form-item label="所属组别">
+          <el-select v-model="stageForm.groupId" style="width: 100%">
+            <el-option label="跨组（决赛 / 总决赛）" value="" />
+            <el-option v-for="g in groups" :key="g.id" :label="g.name" :value="g.id" />
+          </el-select>
+        </el-form-item>
         <el-form-item label="开始时间">
           <el-date-picker
             v-model="stageForm.startAt"
@@ -434,8 +468,13 @@ onMounted(load)
   margin-bottom: 16px;
 }
 
-.event-select {
-  width: 280px;
+.filters {
+  display: flex;
+  gap: 12px;
+}
+
+.filter-select {
+  width: 220px;
 }
 
 .stage-card {

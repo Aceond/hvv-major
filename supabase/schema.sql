@@ -107,6 +107,7 @@ create table if not exists public.team_members (
 -- ============================================================
 create table if not exists public.stages (
   id uuid primary key default gen_random_uuid(),
+  group_id uuid references public.groups (id), -- 所属组别（跨组/决赛阶段可空；所属赛事见下方兼容列）
   name text not null,                    -- 海选 / 预选赛 / 正赛
   format text not null default 'round_robin'
     check (format in ('round_robin', 'single_elim', 'double_elim', 'swiss')),
@@ -510,6 +511,8 @@ alter table public.player_applications add column if not exists event_id uuid re
 alter table public.teams add column if not exists event_id uuid references public.events (id);
 -- 赛程阶段关联赛事（兼容旧库：每届赛事可自定义各自的赛制与阶段列表）
 alter table public.stages add column if not exists event_id uuid references public.events (id);
+-- 赛程阶段关联组别（兼容旧库：每个组别的赛程单独管理，跨组/决赛阶段为空）
+alter table public.stages add column if not exists group_id uuid references public.groups (id);
 
 -- events：公开可读（前台赛事入口），仅管理员写
 drop policy if exists events_select on public.events;

@@ -18,17 +18,19 @@ export async function listGroups(): Promise<Group[]> {
   return (data as Group[]) ?? []
 }
 
-/** 阶段列表（可按赛事过滤：每届赛事可自定义各自的赛制与阶段列表；不传则返回全部） */
-export async function listStages(eventId?: string): Promise<Stage[]> {
+/** 阶段列表（可按赛事 + 组别过滤：每届赛事每个组别的赛程单独管理；选组别时包含跨组/决赛阶段；不传则返回全部） */
+export async function listStages(eventId?: string, groupId?: string): Promise<Stage[]> {
   if (!isSupabaseConfigured || !supabase) {
     return mockStages
       .filter((s) => !eventId || s.event_id === eventId)
+      .filter((s) => !groupId || s.group_id === groupId || s.group_id === null)
       .sort((a, b) => a.sort_order - b.sort_order)
   }
-  let query = supabase.from('stages').select('*').order('sort_order')
+  let query = supabase.from('stages').select('*, group:groups(name)').order('sort_order')
   if (eventId) query = query.eq('event_id', eventId)
+  if (groupId) query = query.or(`group_id.eq.${groupId},group_id.is.null`)
   const { data } = await query
-  return (data as Stage[]) ?? []
+  return ((data ?? []) as any[]).map((s) => ({ ...s, group_name: s.group?.name ?? null }))
 }
 
 /** 演示模式下补全联表展示字段 */
