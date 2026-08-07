@@ -6,9 +6,14 @@ export interface AuthResult {
   error?: { message: string }
 }
 
+/** 站点根地址（含子路径 base，如 https://aceond.github.io/hvv-major/） */
+export function siteUrl() {
+  return `${window.location.origin}${import.meta.env.BASE_URL}`
+}
+
 /** 重置密码落地页地址（需在 Supabase 控制台 Redirect URLs 中添加白名单） */
 export function resetPasswordUrl() {
-  return `${window.location.origin}${import.meta.env.BASE_URL}reset-password`
+  return `${siteUrl()}reset-password`
 }
 
 /** 忘记密码：向邮箱发送重置链接（演示模式不可用，返回 demo 标志） */

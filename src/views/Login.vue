@@ -4,7 +4,7 @@ import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
-import { sendPasswordReset } from '@/api/auth'
+import { sendPasswordReset, siteUrl } from '@/api/auth'
 
 const router = useRouter()
 const auth = useAuthStore()
@@ -89,7 +89,11 @@ async function submit() {
       const { data, error } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
-        options: { data: { username: form.username } },
+        options: {
+          data: { username: form.username },
+          // 显式指定验证邮件回调地址，避免受 Supabase 控制台 Site URL 配置影响
+          emailRedirectTo: siteUrl(),
+        },
       })
       if (error) throw error
       // 未开启「Confirm email」时 signUp 直接返回 session（注册即登录）；开启后需先验证邮件
