@@ -73,15 +73,30 @@ export async function saveTeamStat(row: TeamStatRow) {
         hs_rate: row.hs_rate,
         pistol_win_rate: row.pistol_win_rate,
         first_five_win_rate: row.first_five_win_rate,
-        avg_kills: row.avg_kills,
-        avg_deaths: row.avg_deaths,
-        avg_assists: row.avg_assists,
         total_kills: row.total_kills,
         total_deaths: row.total_deaths,
         total_assists: row.total_assists,
       },
       { onConflict: 'team_id,stage_id' },
     )
+}
+
+/** 实时净胜分（小分=净胜局）：根据已完成的比赛比分，逐场累加每队的净胜局 */
+export async function getTeamNetPoints(groupId?: string, stageId?: string): Promise<Record<string, number>> {
+  if (!isSupabaseConfigured || !supabase) return {}
+  let query = supabase
+    .from('matches')
+    .select('team_a_id, team_b_id, team_a_score, team_b_score, status, group_id, stage_id')
+  if (groupId) query = query.eq('group_id', groupId)
+  if (stageId) query = query.eq('stage_id', stageId)
+  const { data } = await query
+  const net: Record<string, number> = {}
+  for (const m of (data ?? []) as any[]) {
+    if (m.status !== 'completed' || !m.team_a_id || !m.team_b_id) continue
+    net[m.team_a_id] = (net[m.team_a_id] ?? 0) + (m.team_a_score - m.team_b_score)
+    net[m.team_b_id] = (net[m.team_b_id] ?? 0) + (m.team_b_score - m.team_a_score)
+  }
+  return net
 }
 
 /** 保存/更新个人统计数据（按 player_id + stage_id 覆盖） */

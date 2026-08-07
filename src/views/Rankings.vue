@@ -4,7 +4,7 @@ import Sortable from 'sortablejs'
 import type { Group, PlayerStatRow, Stage, TeamStatRow } from '@/api/types'
 import { STAGE_STATUS_LABEL } from '@/api/types'
 import { listGroups, listStages } from '@/api/match'
-import { getPlayerStats, getTeamStats } from '@/api/stats'
+import { getPlayerStats, getTeamNetPoints, getTeamStats } from '@/api/stats'
 
 // 可排序列配置（拖拽表头可调整顺序）
 interface StatCol {
@@ -17,14 +17,12 @@ interface StatCol {
 
 const teamCols = ref<StatCol[]>([
   { key: 'win_rate', label: '胜率', width: 78, fmt: 'pct0', color: 'pct' },
+  { key: 'net', label: '净胜分', width: 88, fmt: 'int' },
   { key: 'kd', label: 'K/D', width: 82, fmt: 'dec2', color: 'trend' },
   { key: 'matches', label: '比赛数', width: 88, fmt: 'int' },
   { key: 'hs_rate', label: '爆头率', width: 92, fmt: 'pct1' },
   { key: 'pistol_win_rate', label: '手枪局胜率', width: 120, fmt: 'pct0' },
   { key: 'first_five_win_rate', label: '先胜5回合胜率', width: 144, fmt: 'pct0' },
-  { key: 'avg_kills', label: '场均击杀', width: 98, fmt: 'dec1' },
-  { key: 'avg_deaths', label: '场均死亡', width: 98, fmt: 'dec1' },
-  { key: 'avg_assists', label: '场均助攻', width: 98, fmt: 'dec1' },
   { key: 'total_kills', label: '总击杀', width: 88, fmt: 'int' },
   { key: 'total_deaths', label: '总死亡', width: 88, fmt: 'int' },
   { key: 'total_assists', label: '总助攻', width: 88, fmt: 'int' },
@@ -93,7 +91,10 @@ async function load() {
   try {
     const groupId = currentGroup.value || undefined
     const stageId = currentStage.value || undefined
-    teamRows.value = await getTeamStats(groupId, stageId)
+    const teamStats = await getTeamStats(groupId, stageId)
+    // 净胜分（小分）实时从已完成比赛计算
+    const netMap = await getTeamNetPoints(groupId, stageId)
+    teamRows.value = teamStats.map((r) => ({ ...r, net: netMap[r.team_id] ?? 0 }))
     playerRows.value = await getPlayerStats(groupId, stageId)
   } finally {
     loading.value = false

@@ -119,9 +119,7 @@ async function load() {
           group_id: t.group_id, group_name: groupName,
           win_rate: ex?.win_rate ?? 0, kd: ex?.kd ?? 0, matches: ex?.matches ?? 0,
           hs_rate: ex?.hs_rate ?? 0, pistol_win_rate: ex?.pistol_win_rate ?? 0,
-          first_five_win_rate: ex?.first_five_win_rate ?? 0,
-          avg_kills: ex?.avg_kills ?? 0, avg_deaths: ex?.avg_deaths ?? 0,
-          avg_assists: ex?.avg_assists ?? 0,
+          first_five_win_rate: ex?.first_five_win_rate ?? 0, net: 0,
           total_kills: ex?.total_kills ?? 0, total_deaths: ex?.total_deaths ?? 0,
           total_assists: ex?.total_assists ?? 0,
         } as TeamStatRow
@@ -280,15 +278,6 @@ async function savePlayerRows() {
         </el-table-column>
         <el-table-column label="先胜5回合胜率%" width="128">
           <template #default="{ row }"><el-input-number v-model="row.first_five_win_rate" :min="0" :max="100" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="场均击杀" width="86">
-          <template #default="{ row }"><el-input-number v-model="row.avg_kills" :min="0" :precision="1" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="场均死亡" width="86">
-          <template #default="{ row }"><el-input-number v-model="row.avg_deaths" :min="0" :precision="1" size="small" :controls="false" /></template>
-        </el-table-column>
-        <el-table-column label="场均助攻" width="86">
-          <template #default="{ row }"><el-input-number v-model="row.avg_assists" :min="0" :precision="1" size="small" :controls="false" /></template>
         </el-table-column>
         <el-table-column label="总击杀" width="76">
           <template #default="{ row }"><el-input-number v-model="row.total_kills" :min="0" size="small" :controls="false" /></template>

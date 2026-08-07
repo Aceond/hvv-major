@@ -169,12 +169,10 @@ export interface TeamStatRow {
   win_rate: number // 胜率 %
   kd: number // K/D
   matches: number // 比赛数
+  net: number // 净胜分（小分=净胜局，由已完成比赛实时计算）
   hs_rate: number // 爆头率 %
   pistol_win_rate: number // 手枪局胜率 %
   first_five_win_rate: number // 先胜 5 回合胜率 %
-  avg_kills: number // 场均击杀
-  avg_deaths: number // 场均死亡
-  avg_assists: number // 场均助攻
   total_kills: number // 总击杀
   total_deaths: number // 总死亡
   total_assists: number // 总助攻
