@@ -30,9 +30,9 @@ const loading = ref(false)
 const scoreDialog = ref(false)
 const scoreForm = reactive({ matchId: '', aScore: 0, bScore: 0, map: '', scheduledAt: '' })
 
-// 常用地图（可输入自定义）
+// 服役图池（Active Duty）7 张
 const MAP_OPTIONS = [
-  '荒漠迷城', '炙热沙城Ⅱ', '炼狱小镇', '远古遗迹', '核子危机', '阿努比斯', '死城之谜', '殒命大厦', '游乐园', '水城',
+  '荒漠迷城', '炙热沙城Ⅱ', '炼狱小镇', '核子危机', '远古遗迹', '阿努比斯', '游乐园',
 ]
 
 // 阶段新增/编辑（同一弹窗：stageEditId 为空 = 新增，非空 = 编辑）
@@ -525,15 +525,7 @@ onMounted(load)
           <el-input-number v-model="scoreForm.bScore" :min="0" />
         </el-form-item>
         <el-form-item label="地图">
-          <el-select
-            v-model="scoreForm.map"
-            filterable
-            allow-create
-            default-first-option
-            clearable
-            placeholder="选择或输入地图"
-            style="width: 100%"
-          >
+          <el-select v-model="scoreForm.map" filterable clearable placeholder="选择服役图池地图" style="width: 100%">
             <el-option v-for="m in MAP_OPTIONS" :key="m" :label="m" :value="m" />
           </el-select>
         </el-form-item>
