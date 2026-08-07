@@ -82,6 +82,15 @@ onMounted(load)
           <el-tag size="small" effect="plain">{{ eventName(row.event_id) }}</el-tag>
         </template>
       </el-table-column>
+      <el-table-column label="在职状态" min-width="140">
+        <template #default="{ row }">
+          <template v-if="row.employment_status === 'employed'">
+            <el-tag size="small" type="success" effect="plain">在职</el-tag>
+            <div class="emp-sub">{{ row.location }} · 工号 {{ row.employee_no }}</div>
+          </template>
+          <el-tag v-else size="small" type="info" effect="plain">离职</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column label="赛季截图" min-width="260">
         <template #default="{ row }">
           <div class="shots">
@@ -134,6 +143,12 @@ onMounted(load)
 .pw-name {
   font-weight: 700;
   color: var(--cs2-accent);
+}
+
+.emp-sub {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
+  line-height: 1.5;
 }
 
 .shots {

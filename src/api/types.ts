@@ -3,6 +3,7 @@
 export type Role = 'admin' | 'player'
 export type TeamStatus = 'pending' | 'approved' | 'rejected'
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected'
+export type EmploymentStatus = 'employed' | 'unemployed' // 在职 / 离职
 export type EventStatus = 'signup' | 'running' | 'ended'
 export type StageFormat = 'round_robin' | 'single_elim' | 'double_elim' | 'swiss'
 export type StageStatus = 'upcoming' | 'running' | 'ended'
@@ -48,6 +49,9 @@ export interface PlayerApplication {
   display_name: string | null // 选手姓名（真实姓名，审核通过后回填 profiles.nickname）
   nickname: string | null // 预留昵称（本次注册不再单独采集）
   screenshots: string[] // 赛季截图（URL 或演示模式下的 data URL）
+  employment_status: EmploymentStatus | null // 在职状态（在职需填驻地与工号）
+  location: string | null // 驻地（在职时必填）
+  employee_no: string | null // 工号（在职时必填）
   status: ApplicationStatus
   review_note: string | null
   created_at: string

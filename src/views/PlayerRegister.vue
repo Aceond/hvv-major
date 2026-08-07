@@ -3,7 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, type UploadFile, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
-import type { ApplicationStatus, EventItem } from '@/api/types'
+import type { ApplicationStatus, EmploymentStatus, EventItem } from '@/api/types'
 import { listSignupEvents } from '@/api/event'
 import { listMyPlayerApplication, submitPlayerApplication } from '@/api/registration'
 
@@ -17,6 +17,9 @@ const form = reactive({
   eventId: '',
   pwUsername: '',
   displayName: '',
+  employmentStatus: 'unemployed' as EmploymentStatus,
+  location: '',
+  employeeNo: '',
 })
 
 const fileList = ref<UploadUserFile[]>([])
@@ -67,6 +70,14 @@ async function submit() {
     ElMessage.warning('请填写完美 ID')
     return
   }
+  if (form.employmentStatus === 'employed' && !form.location.trim()) {
+    ElMessage.warning('在职状态请填写驻地')
+    return
+  }
+  if (form.employmentStatus === 'employed' && !form.employeeNo.trim()) {
+    ElMessage.warning('在职状态请填写工号')
+    return
+  }
   if (screenshots.value.length < MIN_SHOTS) {
     ElMessage.warning(`请至少上传 ${MIN_SHOTS} 张赛季截图（当前 ${screenshots.value.length} 张）`)
     return
@@ -82,6 +93,11 @@ async function submit() {
       form.displayName,
       form.eventId,
       screenshots.value,
+      {
+        status: form.employmentStatus,
+        location: form.employmentStatus === 'employed' ? form.location : null,
+        employeeNo: form.employmentStatus === 'employed' ? form.employeeNo : null,
+      },
     )
     if (!app) {
       ElMessage.error('提交失败，请稍后重试')
@@ -108,6 +124,9 @@ onMounted(async () => {
     form.eventId = app.event_id ?? form.eventId
     form.pwUsername = app.pw_username
     form.displayName = app.display_name ?? ''
+    form.employmentStatus = app.employment_status ?? 'unemployed'
+    form.location = app.location ?? ''
+    form.employeeNo = app.employee_no ?? ''
   }
 })
 </script>
@@ -152,7 +171,7 @@ onMounted(async () => {
         type="info"
         :closable="false"
         title="注册流程"
-        description="选择要报名的赛事，填写选手姓名与完美 ID（完美对战平台用户名）并上传最近 3-5 个赛季的截图，提交后由管理员审核。审核通过后进入该赛事选手池（以选手姓名展示），队长创建战队时将从池中选择队员；每人只能加入一支战队。"
+        description="选择要报名的赛事，填写选手姓名、完美 ID（完美对战平台用户名）与在职状态（在职需填驻地和工号），并上传最近 3-5 个赛季的截图，提交后由管理员审核。审核通过后进入该赛事选手池（以选手姓名展示），队长创建战队时将从池中选择队员；每人只能加入一支战队。"
         class="tip"
       />
 
@@ -192,6 +211,19 @@ onMounted(async () => {
             maxlength="20"
           />
           <div class="form-tip">审核通过后将以该姓名展示在选手池中，供队长选人</div>
+        </el-form-item>
+        <el-form-item label="在职状态">
+          <el-radio-group v-model="form.employmentStatus">
+            <el-radio-button value="employed">在职</el-radio-button>
+            <el-radio-button value="unemployed">离职</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="form.employmentStatus === 'employed'" label="驻地">
+          <el-input v-model="form.location" placeholder="当前工作驻地，如 上海" maxlength="50" />
+        </el-form-item>
+        <el-form-item v-if="form.employmentStatus === 'employed'" label="工号">
+          <el-input v-model="form.employeeNo" placeholder="员工工号，如 HVV001234" maxlength="30" />
+          <div class="form-tip">在职选手需提供驻地与工号，供后台核验</div>
         </el-form-item>
         <el-form-item label="完美 ID">
           <el-input

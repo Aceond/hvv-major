@@ -46,6 +46,9 @@ create table if not exists public.player_applications (
   pw_username text not null,              -- 完美 ID（完美对战平台用户名）
   nickname text,                          -- 预留昵称（本次注册不再单独采集）
   screenshots jsonb not null default '[]'::jsonb, -- 最近 3-5 个赛季截图 URL
+  employment_status text check (employment_status in ('employed', 'unemployed')), -- 在职 / 离职
+  location text,                          -- 驻地（在职时必填）
+  employee_no text,                       -- 工号（在职时必填）
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
   review_note text,
   created_at timestamptz not null default now(),
@@ -55,6 +58,11 @@ create table if not exists public.player_applications (
 
 -- 兼容旧库：补充 display_name 列
 alter table public.player_applications add column if not exists display_name text;
+
+-- 兼容旧库：补充在职状态字段（在职需填驻地和工号）
+alter table public.player_applications add column if not exists employment_status text check (employment_status in ('employed', 'unemployed'));
+alter table public.player_applications add column if not exists location text;
+alter table public.player_applications add column if not exists employee_no text;
 
 -- ============================================================
 -- 2. 组别（传奇组 / 大师组 / 挑战组，三个组别相互独立）

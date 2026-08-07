@@ -3,7 +3,7 @@
 // 未配置 Supabase（演示模式）时返回 mock 数据，配置密钥并执行 schema.sql 后为真实调用。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { mockMembers, mockPlayers, mockTeams } from '@/mock/data'
-import type { ApplicationStatus, PlayerApplication, PlayerItem, Team, TeamMember } from './types'
+import type { ApplicationStatus, EmploymentStatus, PlayerApplication, PlayerItem, Team, TeamMember } from './types'
 
 // 演示模式下的注册申请（内存存储，页面刷新后清空；真实环境存 player_applications 表）
 const demoApplications: PlayerApplication[] = []
@@ -19,12 +19,17 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
   return bytes.buffer
 }
 
-/** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，上传最近 3-5 个赛季的截图，提交后由管理员审核 */
+/** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，选择在职状态（在职需填驻地和工号），上传最近 3-5 个赛季的截图，提交后由管理员审核 */
 export async function submitPlayerApplication(
   pwUsername: string,
   displayName: string,
   eventId: string,
   screenshots: string[],
+  employment: {
+    status: EmploymentStatus
+    location: string | null
+    employeeNo: string | null
+  },
 ): Promise<PlayerApplication | null> {
   if (!PW_RE.test(pwUsername)) {
     throw new Error('完美 ID 需为 2-24 位字母、数字或下划线')
@@ -34,6 +39,12 @@ export async function submitPlayerApplication(
   }
   if (!eventId) {
     throw new Error('请选择报名的赛事')
+  }
+  if (employment.status === 'employed' && !employment.location?.trim()) {
+    throw new Error('在职状态请填写驻地')
+  }
+  if (employment.status === 'employed' && !employment.employeeNo?.trim()) {
+    throw new Error('在职状态请填写工号')
   }
   if (!isSupabaseConfigured || !supabase) {
     const me = mockPlayers.find((p) => p.id === 'demo-player')
@@ -45,6 +56,9 @@ export async function submitPlayerApplication(
       display_name: displayName.trim(),
       nickname: me?.nickname ?? null,
       screenshots,
+      employment_status: employment.status,
+      location: employment.status === 'employed' ? employment.location?.trim() ?? null : null,
+      employee_no: employment.status === 'employed' ? employment.employeeNo?.trim() ?? null : null,
       status: 'pending',
       review_note: null,
       created_at: new Date().toISOString(),
@@ -79,6 +93,9 @@ export async function submitPlayerApplication(
       pw_username: pwUsername,
       display_name: displayName.trim(),
       screenshots: urls,
+      employment_status: employment.status,
+      location: employment.status === 'employed' ? employment.location?.trim() ?? null : null,
+      employee_no: employment.status === 'employed' ? employment.employeeNo?.trim() ?? null : null,
     })
     .select('*')
     .single()
