@@ -92,12 +92,13 @@ async function submit() {
         options: { data: { username: form.username } },
       })
       if (error) throw error
-      // 服务端关闭「Confirm email（邮箱确认）」后 signUp 会直接返回 session，即注册即登录
+      // 未开启「Confirm email」时 signUp 直接返回 session（注册即登录）；开启后需先验证邮件
       if (data.session) {
         form.password = '' // 成功后清空，避免密码残留在内存/DevTools 中
         ElMessage.success('注册成功，已自动登录')
       } else {
-        ElMessage.warning('注册已提交，但当前开启了邮箱验证，请查收邮件完成验证后登录。若验证邮件无法打开，请让管理员在 Supabase 后台关闭邮箱确认（Authentication → Sign In / Providers → Email → Confirm email）。')
+        form.password = ''
+        ElMessage.success('注册成功！请查收邮箱中的验证邮件，点击邮件内链接完成验证后即可登录（如未收到请检查垃圾邮件）。')
         return
       }
     }
