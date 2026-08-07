@@ -12,13 +12,19 @@ export async function getTeamStats(groupId?: string, stageId?: string): Promise<
       .filter((s) => !stageId || s.stage_id === stageId)
       .sort((a, b) => b.win_rate - a.win_rate || b.kd - a.kd)
   }
-  let query = supabase.from('team_stats').select('*')
+  let query = supabase
+    .from('team_stats')
+    .select('*, team:teams(name, tag), group:groups(name), stage:stages(name)')
   if (groupId) query = query.eq('group_id', groupId)
   if (stageId) query = query.eq('stage_id', stageId)
   const { data } = await query
-  return ((data ?? []) as TeamStatRow[]).sort(
-    (a, b) => b.win_rate - a.win_rate || b.kd - a.kd,
-  )
+  return ((data ?? []) as any[]).map((s) => ({
+    ...s,
+    team_name: s.team?.name ?? null,
+    tag: s.team?.tag ?? null,
+    group_name: s.group?.name ?? null,
+    stage_name: s.stage?.name ?? null,
+  })).sort((a, b) => b.win_rate - a.win_rate || b.kd - a.kd)
 }
 
 /** 个人数据排行（可按组别、阶段筛选；stageId 为空 = 总阶段汇总） */
@@ -29,13 +35,19 @@ export async function getPlayerStats(groupId?: string, stageId?: string): Promis
       .filter((s) => !stageId || s.stage_id === stageId)
       .sort((a, b) => b.rating_pro - a.rating_pro)
   }
-  let query = supabase.from('player_stats').select('*')
+  let query = supabase
+    .from('player_stats')
+    .select('*, player:profiles(nickname, pw_username), team:teams(name), group:groups(name), stage:stages(name)')
   if (groupId) query = query.eq('group_id', groupId)
   if (stageId) query = query.eq('stage_id', stageId)
   const { data } = await query
-  return ((data ?? []) as PlayerStatRow[]).sort(
-    (a, b) => b.rating_pro - a.rating_pro,
-  )
+  return ((data ?? []) as any[]).map((s) => ({
+    ...s,
+    player_name: s.player?.nickname ?? s.player?.pw_username ?? null,
+    team_name: s.team?.name ?? null,
+    group_name: s.group?.name ?? null,
+    stage_name: s.stage?.name ?? null,
+  })).sort((a, b) => b.rating_pro - a.rating_pro)
 }
 
 /** 保存/更新队伍统计数据（按 team_id + stage_id 覆盖） */
