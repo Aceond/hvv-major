@@ -47,7 +47,12 @@ async function decide(app: PlayerApplication, status: ApplicationStatus) {
   } catch {
     return
   }
-  await reviewPlayerApplication(app.id, status)
+  try {
+    await reviewPlayerApplication(app.id, status)
+  } catch (e: any) {
+    ElMessage.error(e.message || '审核操作失败，请检查数据库权限')
+    return
+  }
   ElMessage.success(`已${action}「${label}」`)
   load()
 }
