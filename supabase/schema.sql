@@ -319,28 +319,37 @@ alter table public.sync_logs      enable row level security;
 alter table public.site_config     enable row level security;
 
 -- profiles：本人读写，管理员可读全部
+drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles
   for select using (auth.uid() = id or public.is_admin());
+drop policy if exists profiles_update on public.profiles;
 create policy profiles_update on public.profiles
   for update using (auth.uid() = id) with check (auth.uid() = id);
 
 -- player_applications：本人可提交/查看自己的申请，管理员全量审核
+drop policy if exists player_applications_select on public.player_applications;
 create policy player_applications_select on public.player_applications
   for select using (auth.uid() = profile_id or public.is_admin());
+drop policy if exists player_applications_insert on public.player_applications;
 create policy player_applications_insert on public.player_applications
   for insert with check (auth.uid() = profile_id);
+drop policy if exists player_applications_update on public.player_applications;
 create policy player_applications_update on public.player_applications
   for update using (public.is_admin()) with check (public.is_admin());
 
 -- teams：公开可读（含待审核状态需管理员/本人可见）；创建者建队；管理员全量
+drop policy if exists teams_select on public.teams;
 create policy teams_select on public.teams
   for select using (true);
+drop policy if exists teams_insert on public.teams;
 create policy teams_insert on public.teams
-  for insert with check (captain_id = auth.uid());
+  for insert with check (captain_id = auth.uid() or public.is_admin());
+drop policy if exists teams_update on public.teams;
 create policy teams_update on public.teams
   for update using (public.is_admin() or captain_id = auth.uid());
 
 -- team_members：本人可读自己的队员记录；队长/管理员管理
+drop policy if exists team_members_select on public.team_members;
 create policy team_members_select on public.team_members
   for select using (
     profile_id = auth.uid()
@@ -349,46 +358,63 @@ create policy team_members_select on public.team_members
       select 1 from public.teams t where t.id = team_id and t.captain_id = auth.uid()
     )
   );
+drop policy if exists team_members_insert on public.team_members;
 create policy team_members_insert on public.team_members
   for insert with check (
-    exists (select 1 from public.teams t where t.id = team_id and t.captain_id = auth.uid())
+    public.is_admin()
+    or exists (select 1 from public.teams t where t.id = team_id and t.captain_id = auth.uid())
   );
 
 -- stages / matches / match_maps：公开可读，仅管理员写
+drop policy if exists stages_select on public.stages;
 create policy stages_select on public.stages
   for select using (true);
+drop policy if exists stages_admin_all on public.stages;
 create policy stages_admin_all on public.stages
   for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists matches_select on public.matches;
 create policy matches_select on public.matches
   for select using (true);
+drop policy if exists matches_admin_all on public.matches;
 create policy matches_admin_all on public.matches
   for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists match_maps_select on public.match_maps;
 create policy match_maps_select on public.match_maps
   for select using (true);
+drop policy if exists match_maps_admin_all on public.match_maps;
 create policy match_maps_admin_all on public.match_maps
   for all using (public.is_admin()) with check (public.is_admin());
 
 -- groups / team_stats / player_stats：公开可读，仅管理员写
+drop policy if exists groups_select on public.groups;
 create policy groups_select on public.groups
   for select using (true);
+drop policy if exists groups_admin_all on public.groups;
 create policy groups_admin_all on public.groups
   for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists team_stats_select on public.team_stats;
 create policy team_stats_select on public.team_stats
   for select using (true);
+drop policy if exists team_stats_admin_all on public.team_stats;
 create policy team_stats_admin_all on public.team_stats
   for all using (public.is_admin()) with check (public.is_admin());
+drop policy if exists player_stats_select on public.player_stats;
 create policy player_stats_select on public.player_stats
   for select using (true);
+drop policy if exists player_stats_admin_all on public.player_stats;
 create policy player_stats_admin_all on public.player_stats
   for all using (public.is_admin()) with check (public.is_admin());
 
 -- sync_logs：仅管理员可见
+drop policy if exists sync_logs_admin_all on public.sync_logs;
 create policy sync_logs_admin_all on public.sync_logs
   for all using (public.is_admin()) with check (public.is_admin());
 
 -- site_config：公开可读（首页展示），仅管理员可写
+drop policy if exists site_config_select on public.site_config;
 create policy site_config_select on public.site_config
   for select using (true);
+drop policy if exists site_config_admin_all on public.site_config;
 create policy site_config_admin_all on public.site_config
   for all using (public.is_admin()) with check (public.is_admin());
 

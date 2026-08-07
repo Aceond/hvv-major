@@ -223,6 +223,65 @@ export async function createTeam(
   return team
 }
 
+/** 管理员手动建队（数据录入页用）：直接以 approved 状态创建战队与名册 */
+export async function createTeamByAdmin(input: {
+  name: string
+  tag: string
+  groupId: string | null
+  captainId: string
+  memberIds: string[]
+}): Promise<Team | null> {
+  if (!isSupabaseConfigured || !supabase) {
+    const team: Team = {
+      id: `team-${Date.now()}`,
+      name: input.name,
+      tag: input.tag,
+      captain_id: input.captainId,
+      group_id: input.groupId,
+      status: 'approved',
+      created_at: new Date().toISOString(),
+    }
+    mockTeams.push(team)
+    const list = mockMembers[team.id] ?? (mockMembers[team.id] = [])
+    const push = (pid: string, isCaptain: boolean) => {
+      const p = mockPlayers.find((x) => x.id === pid)
+      list.push({
+        id: `m-${team.id}-${pid}`,
+        team_id: team.id,
+        profile_id: pid,
+        nickname: p?.nickname ?? null,
+        pw_username: p?.pw_username ?? null,
+        is_captain: isCaptain,
+        status: 'active',
+      })
+      if (p) p.in_team = true
+    }
+    push(input.captainId, true)
+    for (const pid of input.memberIds) push(pid, false)
+    return team
+  }
+  const { data } = await supabase
+    .from('teams')
+    .insert({
+      name: input.name,
+      tag: input.tag,
+      captain_id: input.captainId,
+      group_id: input.groupId,
+      status: 'approved',
+    })
+    .select('*')
+    .single()
+  const team = data as Team | null
+  if (team) {
+    const members = [
+      { team_id: team.id, profile_id: input.captainId, is_captain: true },
+      ...input.memberIds.map((id) => ({ team_id: team.id, profile_id: id, is_captain: false })),
+    ]
+    await supabase.from('team_members').insert(members)
+  }
+  return team
+}
+
 /** 查询当前用户所在战队 */
 export async function listMyTeams(): Promise<Team[]> {
   if (!isSupabaseConfigured || !supabase) {

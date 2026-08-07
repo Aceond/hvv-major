@@ -4,7 +4,12 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { mockMatches, mockStages, mockTeams } from '@/mock/data'
 import type { Match, Stage, Team, TeamStatus } from './types'
 import { listGroups, listMatches, listStages } from './match'
-import { listMembers, listPlayerApplications, reviewPlayerApplication } from './registration'
+import {
+  createTeamByAdmin,
+  listMembers,
+  listPlayerApplications,
+  reviewPlayerApplication,
+} from './registration'
 
 export {
   listGroups,
@@ -13,6 +18,7 @@ export {
   listMembers,
   listPlayerApplications,
   reviewPlayerApplication,
+  createTeamByAdmin,
 }
 
 /** 战队列表 */
