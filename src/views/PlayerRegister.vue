@@ -104,6 +104,7 @@ async function submit() {
       return
     }
     status.value = 'pending'
+    await auth.loadApplicationStatus()
     ElMessage.success('注册申请已提交，等待管理员审核')
   } catch (e: any) {
     ElMessage.error(e.message || '提交失败')

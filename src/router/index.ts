@@ -20,6 +20,7 @@ const router = createRouter({
         { path: 'rankings', name: 'rankings', component: () => import('@/views/Rankings.vue') },
         { path: 'profile', name: 'profile', component: () => import('@/views/Profile.vue') },
         { path: 'login', name: 'login', component: () => import('@/views/Login.vue') },
+        { path: 'review-status', name: 'review-status', component: () => import('@/views/AuditStatus.vue') },
       ],
     },
     {
@@ -42,12 +43,15 @@ const router = createRouter({
   ],
 })
 
-// 路由守卫：进入 /admin 前校验管理员角色
+// 路由守卫：进入 /admin 前校验管理员角色；待审核/被拒账号只能访问审核状态页
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.isLoggedIn) await auth.refresh()
   if (to.meta.requiresAdmin && !auth.isAdmin) {
     return { name: 'home' }
+  }
+  if (auth.reviewBlocked && to.name !== 'review-status' && to.name !== 'login') {
+    return { name: 'review-status' }
   }
 })
 
