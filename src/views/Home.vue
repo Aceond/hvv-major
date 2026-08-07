@@ -128,13 +128,6 @@ onMounted(async () => {
           查看积分榜
         </el-button>
       </div>
-      <div class="hero-stats" aria-hidden="true">
-        <span>自由约战制</span>
-        <i />
-        <span>BO1 / BO3</span>
-        <i />
-        <span>传奇 · 大师 · 挑战</span>
-      </div>
       <div class="hero-corner hero-corner-tl" />
       <div class="hero-corner hero-corner-br" />
     </section>
@@ -381,31 +374,6 @@ onMounted(async () => {
   color: var(--cs2-text-muted);
 }
 
-/* HUD 信息条 */
-.hero-stats {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-  margin-top: 32px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 2px;
-  color: var(--cs2-text-muted);
-}
-
-.hero-stats span {
-  white-space: nowrap;
-}
-
-.hero-stats i {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
-  background: var(--cs2-accent);
-  opacity: 0.7;
-}
-
 @media (prefers-reduced-motion: reduce) {
   .hero-title::after,
   .hero-crosshair {
@@ -422,11 +390,6 @@ onMounted(async () => {
   .hero-title {
     font-size: 36px;
     letter-spacing: 3px;
-  }
-
-  .hero-stats {
-    flex-wrap: wrap;
-    gap: 8px 14px;
   }
 }
 
