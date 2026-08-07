@@ -11,6 +11,7 @@ const router = createRouter({
       component: DefaultLayout,
       children: [
         { path: '', name: 'home', component: () => import('@/views/Home.vue') },
+        { path: 'events', name: 'events', component: () => import('@/views/Events.vue') },
         { path: 'player/register', name: 'player-register', component: () => import('@/views/PlayerRegister.vue') },
         { path: 'register', name: 'register', component: () => import('@/views/Register.vue') },
         { path: 'matches', name: 'matches', component: () => import('@/views/Matches.vue') },
@@ -26,6 +27,7 @@ const router = createRouter({
       meta: { requiresAdmin: true },
       children: [
         { path: '', name: 'admin-dashboard', component: () => import('@/views/admin/Dashboard.vue') },
+        { path: 'events', name: 'admin-events', component: () => import('@/views/admin/Events.vue') },
         { path: 'players', name: 'admin-players', component: () => import('@/views/admin/Players.vue') },
         { path: 'teams', name: 'admin-teams', component: () => import('@/views/admin/Teams.vue') },
         { path: 'matches', name: 'admin-matches', component: () => import('@/views/admin/Matches.vue') },

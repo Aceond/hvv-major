@@ -3,9 +3,24 @@
 export type Role = 'admin' | 'player'
 export type TeamStatus = 'pending' | 'approved' | 'rejected'
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected'
+export type EventStatus = 'signup' | 'running' | 'ended'
 export type StageFormat = 'round_robin' | 'single_elim' | 'double_elim' | 'swiss'
 export type StageStatus = 'upcoming' | 'running' | 'ended'
 export type MatchStatus = 'scheduled' | 'completed' | 'cancelled'
+
+/** 赛事（一届一届持续举办，如 HVV MAJOR 11） */
+export interface EventItem {
+  id: string
+  name: string // 赛事名称，如 HVV MAJOR 11
+  edition: number | null // 届数（第几届）
+  status: EventStatus // 报名中 / 进行中 / 已结束
+  signup_start: string | null // 报名开始时间
+  signup_end: string | null // 报名截止时间
+  start_at: string | null // 开赛时间
+  end_at: string | null // 结束时间
+  description: string | null // 赛事简介
+  created_at: string
+}
 
 export interface Profile {
   id: string
@@ -28,6 +43,7 @@ export interface PlayerItem {
 export interface PlayerApplication {
   id: string
   profile_id: string
+  event_id: string | null // 报名赛事
   pw_username: string // 完美 ID（完美对战平台用户名）
   display_name: string | null // 选手姓名（真实姓名，审核通过后回填 profiles.nickname）
   nickname: string | null // 预留昵称（本次注册不再单独采集）
@@ -167,6 +183,12 @@ export const STAGE_FORMAT_LABEL: Record<StageFormat, string> = {
   single_elim: '单败淘汰',
   double_elim: '双败淘汰',
   swiss: '瑞士轮',
+}
+
+export const EVENT_STATUS_LABEL: Record<EventStatus, string> = {
+  signup: '报名中',
+  running: '进行中',
+  ended: '已结束',
 }
 
 export const STAGE_STATUS_LABEL: Record<StageStatus, string> = {

@@ -19,10 +19,11 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
   return bytes.buffer
 }
 
-/** 个人选手注册申请：填写选手姓名与完美 ID，上传最近 3-5 个赛季的截图，提交后由管理员审核 */
+/** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，上传最近 3-5 个赛季的截图，提交后由管理员审核 */
 export async function submitPlayerApplication(
   pwUsername: string,
   displayName: string,
+  eventId: string,
   screenshots: string[],
 ): Promise<PlayerApplication | null> {
   if (!PW_RE.test(pwUsername)) {
@@ -31,11 +32,15 @@ export async function submitPlayerApplication(
   if (!displayName.trim()) {
     throw new Error('请填写选手姓名')
   }
+  if (!eventId) {
+    throw new Error('请选择报名的赛事')
+  }
   if (!isSupabaseConfigured || !supabase) {
     const me = mockPlayers.find((p) => p.id === 'demo-player')
     const app: PlayerApplication = {
       id: `app-${Date.now()}`,
       profile_id: 'demo-player',
+      event_id: eventId,
       pw_username: pwUsername,
       display_name: displayName.trim(),
       nickname: me?.nickname ?? null,
@@ -68,7 +73,13 @@ export async function submitPlayerApplication(
   }
   const { data } = await supabase
     .from('player_applications')
-    .insert({ profile_id: user.id, pw_username: pwUsername, display_name: displayName.trim(), screenshots: urls })
+    .insert({
+      profile_id: user.id,
+      event_id: eventId,
+      pw_username: pwUsername,
+      display_name: displayName.trim(),
+      screenshots: urls,
+    })
     .select('*')
     .single()
   return (data as PlayerApplication) ?? null

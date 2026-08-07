@@ -40,6 +40,7 @@ function goAdmin() {
         class="nav"
       >
         <el-menu-item index="/">首页</el-menu-item>
+        <el-menu-item index="/events">赛事</el-menu-item>
         <el-menu-item index="/player/register">个人注册</el-menu-item>
         <el-menu-item index="/register">战队报名</el-menu-item>
         <el-menu-item index="/matches">赛程</el-menu-item>

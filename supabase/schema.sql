@@ -457,6 +457,33 @@ drop policy if exists sync_logs_admin_all on public.sync_logs;
 create policy sync_logs_admin_all on public.sync_logs
   for all using (public.is_admin()) with check (public.is_admin());
 
+-- ============================================================
+-- 6.5 赛事（一届一届持续举办，选手按赛事报名，管理员发布赛事）
+-- ============================================================
+create table if not exists public.events (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,                     -- 赛事名称，如 HVV MAJOR 11
+  edition int,                            -- 届数（第几届，用于排序展示）
+  status text not null default 'signup' check (status in ('signup', 'running', 'ended')),
+  signup_start timestamptz,               -- 报名开始
+  signup_end timestamptz,                 -- 报名截止
+  start_at timestamptz,                   -- 开赛时间
+  end_at timestamptz,                     -- 结束时间
+  description text,                       -- 赛事简介
+  created_at timestamptz not null default now()
+);
+
+-- 个人注册申请关联报名赛事（兼容旧库：补充 event_id 列）
+alter table public.player_applications add column if not exists event_id uuid references public.events (id);
+
+-- events：公开可读（前台赛事入口），仅管理员写
+drop policy if exists events_select on public.events;
+create policy events_select on public.events
+  for select using (true);
+drop policy if exists events_admin_all on public.events;
+create policy events_admin_all on public.events
+  for all using (public.is_admin()) with check (public.is_admin());
+
 -- site_config：公开可读（首页展示），仅管理员可写
 drop policy if exists site_config_select on public.site_config;
 create policy site_config_select on public.site_config
@@ -472,7 +499,7 @@ grant usage on schema public to anon, authenticated;
 
 grant select on public.profiles, public.groups, public.teams, public.team_members,
   public.stages, public.matches, public.match_maps, public.standings,
-  public.team_stats, public.player_stats, public.site_config
+  public.team_stats, public.player_stats, public.site_config, public.events
   to anon, authenticated;
 grant select on public.sync_logs to authenticated;
 grant select on public.player_applications to authenticated;
@@ -480,6 +507,7 @@ grant select on public.player_applications to authenticated;
 grant insert, update on public.teams to authenticated;
 grant insert, update, delete on public.team_members to authenticated;
 grant insert, update on public.site_config to authenticated;
+grant insert, update on public.events to authenticated;
 grant insert, update on public.player_applications to authenticated;
 grant insert, delete on public.matches to authenticated;
 

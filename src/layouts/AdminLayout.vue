@@ -22,6 +22,9 @@ const auth = useAuthStore()
         <el-menu-item index="/admin">
           <span class="menu-label">仪表盘</span>
         </el-menu-item>
+        <el-menu-item index="/admin/events">
+          <span class="menu-label">赛事管理</span>
+        </el-menu-item>
         <el-menu-item index="/admin/players">
           <span class="menu-label">选手审核</span>
         </el-menu-item>

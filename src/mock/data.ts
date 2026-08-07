@@ -5,6 +5,7 @@
 // 接入真实后端后，此文件不再被引用，可整体删除。
 // ============================================================
 import type {
+  EventItem,
   Group,
   Match,
   PlayerItem,
@@ -15,6 +16,31 @@ import type {
   TeamMember,
   TeamStatRow,
 } from '@/api/types'
+
+// ---------------- 赛事（一届一届持续举办） ----------------
+export const mockEvents: EventItem[] = [
+  {
+    id: 'event-11', name: 'HVV MAJOR 11', edition: 11, status: 'signup',
+    signup_start: '2026-08-01 00:00', signup_end: '2026-08-20 23:59',
+    start_at: '2026-08-22 10:00', end_at: null,
+    description: 'CS2 自由约战制赛事 · 第十一届。战队自行约对手、定时间，录入后在赛程页公开展示。',
+    created_at: '2026-07-25 10:00',
+  },
+  {
+    id: 'event-10', name: 'HVV MAJOR 10', edition: 10, status: 'ended',
+    signup_start: '2026-06-01 00:00', signup_end: '2026-06-20 23:59',
+    start_at: '2026-06-22 10:00', end_at: '2026-07-05 22:00',
+    description: 'CS2 自由约战制赛事 · 第十届。',
+    created_at: '2026-05-25 10:00',
+  },
+  {
+    id: 'event-9', name: 'HVV MAJOR 9', edition: 9, status: 'ended',
+    signup_start: '2026-04-01 00:00', signup_end: '2026-04-20 23:59',
+    start_at: '2026-04-22 10:00', end_at: '2026-05-05 22:00',
+    description: 'CS2 自由约战制赛事 · 第九届。',
+    created_at: '2026-03-25 10:00',
+  },
+]
 
 // ---------------- 组别（三个组别相互独立） ----------------
 export const mockGroups: Group[] = [

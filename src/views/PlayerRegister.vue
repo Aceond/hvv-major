@@ -3,14 +3,18 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, type UploadFile, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
-import type { ApplicationStatus } from '@/api/types'
+import type { ApplicationStatus, EventItem } from '@/api/types'
+import { listSignupEvents } from '@/api/event'
 import { listMyPlayerApplication, submitPlayerApplication } from '@/api/registration'
 
 const auth = useAuthStore()
 const saving = ref(false)
 const status = ref<ApplicationStatus | null>(null)
+const events = ref<EventItem[]>([])
+const eventsLoaded = ref(false)
 
 const form = reactive({
+  eventId: '',
   pwUsername: '',
   displayName: '',
 })
@@ -51,6 +55,10 @@ async function submit() {
     ElMessage.warning('请先登录（演示模式可在登录页选择"以选手身份进入"）')
     return
   }
+  if (!form.eventId) {
+    ElMessage.warning('请选择报名的赛事')
+    return
+  }
   if (!form.displayName.trim()) {
     ElMessage.warning('请填写选手姓名')
     return
@@ -69,7 +77,12 @@ async function submit() {
   }
   saving.value = true
   try {
-    const app = await submitPlayerApplication(form.pwUsername, form.displayName, screenshots.value)
+    const app = await submitPlayerApplication(
+      form.pwUsername,
+      form.displayName,
+      form.eventId,
+      screenshots.value,
+    )
     if (!app) {
       ElMessage.error('提交失败，请稍后重试')
       return
@@ -84,11 +97,15 @@ async function submit() {
 }
 
 onMounted(async () => {
+  events.value = await listSignupEvents()
+  eventsLoaded.value = true
+  form.eventId = events.value[0]?.id ?? ''
   form.pwUsername = auth.profile?.pw_username ?? ''
   form.displayName = auth.profile?.nickname ?? ''
   const app = await listMyPlayerApplication()
   if (app) {
     status.value = app.status
+    form.eventId = app.event_id ?? form.eventId
     form.pwUsername = app.pw_username
     form.displayName = app.display_name ?? ''
   }
@@ -135,13 +152,38 @@ onMounted(async () => {
         type="info"
         :closable="false"
         title="注册流程"
-        description="填写选手姓名与完美 ID（完美对战平台用户名）并上传最近 3-5 个赛季的截图，提交后由管理员审核。审核通过后进入选手池（以选手姓名展示），队长创建战队时将从池中选择队员；每人只能加入一支战队。"
+        description="选择要报名的赛事，填写选手姓名与完美 ID（完美对战平台用户名）并上传最近 3-5 个赛季的截图，提交后由管理员审核。审核通过后进入该赛事选手池（以选手姓名展示），队长创建战队时将从池中选择队员；每人只能加入一支战队。"
+        class="tip"
+      />
+
+      <el-alert
+        v-if="eventsLoaded && events.length === 0"
+        type="warning"
+        :closable="false"
+        title="暂无可报名赛事"
+        description="当前没有处于「报名中」状态的赛事，请联系管理员发布赛事后再来报名。"
         class="tip"
       />
 
       <el-form label-width="110px" class="form">
         <el-form-item label="账号邮箱">
           <el-input :model-value="auth.user?.email ?? '-'" disabled />
+        </el-form-item>
+        <el-form-item label="报名赛事">
+          <el-select
+            v-model="form.eventId"
+            placeholder="选择本次报名的赛事"
+            style="width: 100%"
+            :disabled="events.length === 0"
+          >
+            <el-option
+              v-for="e in events"
+              :key="e.id"
+              :label="`${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`"
+              :value="e.id"
+            />
+          </el-select>
+          <div class="form-tip">赛事一届一届举办，请选择本次要参加的赛事</div>
         </el-form-item>
         <el-form-item label="选手姓名">
           <el-input
