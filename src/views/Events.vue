@@ -54,11 +54,12 @@ onMounted(load)
           <div class="meta">
             <div v-if="e.signup_start || e.signup_end" class="meta-line">
               <span class="meta-label">报名时间</span>
-              {{ e.signup_start }} ~ {{ e.signup_end ?? '未定' }}
+              {{ e.signup_start ? e.signup_start.slice(0, 10) : '未定' }}
+              ~ {{ e.signup_end ? e.signup_end.slice(0, 10) : '未定' }}
             </div>
             <div v-if="e.start_at" class="meta-line">
               <span class="meta-label">开赛时间</span>
-              {{ e.start_at }}{{ e.end_at ? ` ~ ${e.end_at}` : '' }}
+              {{ e.start_at.slice(0, 10) }}{{ e.end_at ? ` ~ ${e.end_at.slice(0, 10)}` : '' }}
             </div>
           </div>
         </div>

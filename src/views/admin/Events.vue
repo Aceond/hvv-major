@@ -137,14 +137,16 @@ onMounted(load)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="报名时间" min-width="200">
+      <el-table-column label="报名时间" min-width="170">
         <template #default="{ row }">
-          {{ row.signup_start ?? '-' }} ~ {{ row.signup_end ?? '-' }}
+          {{ row.signup_start ? row.signup_start.slice(0, 10) : '-' }}
+          ~ {{ row.signup_end ? row.signup_end.slice(0, 10) : '-' }}
         </template>
       </el-table-column>
-      <el-table-column label="比赛时间" min-width="200">
+      <el-table-column label="比赛时间" min-width="170">
         <template #default="{ row }">
-          {{ row.start_at ?? '-' }}{{ row.end_at ? ` ~ ${row.end_at}` : '' }}
+          {{ row.start_at ? row.start_at.slice(0, 10) : '-' }}
+          {{ row.end_at ? `~ ${row.end_at.slice(0, 10)}` : '' }}
         </template>
       </el-table-column>
       <el-table-column prop="description" label="简介" min-width="220" show-overflow-tooltip />
