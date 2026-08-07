@@ -28,7 +28,12 @@ const loading = ref(false)
 
 // 比分录入
 const scoreDialog = ref(false)
-const scoreForm = reactive({ matchId: '', aScore: 0, bScore: 0 })
+const scoreForm = reactive({ matchId: '', aScore: 0, bScore: 0, map: '', scheduledAt: '' })
+
+// 常用地图（可输入自定义）
+const MAP_OPTIONS = [
+  '荒漠迷城', '炙热沙城Ⅱ', '炼狱小镇', '远古遗迹', '核子危机', '阿努比斯', '死城之谜', '殒命大厦', '游乐园', '水城',
+]
 
 // 阶段新增/编辑（同一弹窗：stageEditId 为空 = 新增，非空 = 编辑）
 const stageDialog = ref(false)
@@ -103,11 +108,19 @@ function openScore(row: Match) {
   scoreForm.matchId = row.id
   scoreForm.aScore = row.team_a_score
   scoreForm.bScore = row.team_b_score
+  scoreForm.map = row.map ?? ''
+  scoreForm.scheduledAt = row.scheduled_at?.slice(0, 10) ?? ''
   scoreDialog.value = true
 }
 
 async function saveScore() {
-  await updateMatchResult(scoreForm.matchId, scoreForm.aScore, scoreForm.bScore)
+  await updateMatchResult(
+    scoreForm.matchId,
+    scoreForm.aScore,
+    scoreForm.bScore,
+    scoreForm.map || null,
+    scoreForm.scheduledAt || null,
+  )
   scoreDialog.value = false
   ElMessage.success('比分已录入')
   onFilterChange()
@@ -504,12 +517,34 @@ onMounted(load)
     </div>
 
     <!-- 比分录入 -->
-    <el-dialog v-model="scoreDialog" title="录入比分" width="420px">
+    <el-dialog v-model="scoreDialog" title="录入比分" width="440px">
       <el-alert type="info" :closable="false" title="按地图比分填写，系统自动判定胜者并计入积分榜。" class="tip" />
       <el-form label-width="90px" class="form">
         <el-form-item label="比分">
           <el-input-number v-model="scoreForm.aScore" :min="0" /> <span class="vs">:</span>
           <el-input-number v-model="scoreForm.bScore" :min="0" />
+        </el-form-item>
+        <el-form-item label="地图">
+          <el-select
+            v-model="scoreForm.map"
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="选择或输入地图"
+            style="width: 100%"
+          >
+            <el-option v-for="m in MAP_OPTIONS" :key="m" :label="m" :value="m" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="比赛日期">
+          <el-date-picker
+            v-model="scoreForm.scheduledAt"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="选择比赛日期"
+            style="width: 100%"
+          />
         </el-form-item>
       </el-form>
       <template #footer>

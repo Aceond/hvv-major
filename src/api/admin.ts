@@ -116,8 +116,14 @@ export async function createMatch(m: Partial<Match>) {
   await supabase.from('matches').insert(m)
 }
 
-/** 录入/更新比赛结果（真实环境走数据库函数自动判定胜者） */
-export async function updateMatchResult(matchId: string, aScore: number, bScore: number) {
+/** 录入/更新比赛结果（真实环境走数据库函数自动判定胜者，并同步地图/时间） */
+export async function updateMatchResult(
+  matchId: string,
+  aScore: number,
+  bScore: number,
+  map?: string | null,
+  scheduledAt?: string | null,
+) {
   if (!isSupabaseConfigured || !supabase) {
     const m = mockMatches.find((x) => x.id === matchId)
     if (m) {
@@ -125,6 +131,8 @@ export async function updateMatchResult(matchId: string, aScore: number, bScore:
       m.team_b_score = bScore
       m.winner_id = aScore > bScore ? m.team_a_id : bScore > aScore ? m.team_b_id : null
       m.status = 'completed'
+      if (map !== undefined) m.map = map
+      if (scheduledAt !== undefined) m.scheduled_at = scheduledAt
     }
     return
   }
@@ -133,4 +141,11 @@ export async function updateMatchResult(matchId: string, aScore: number, bScore:
     p_team_a_score: aScore,
     p_team_b_score: bScore,
   })
+  // 地图 / 时间有改动时单独更新（matches_admin_all 策略允许管理员更新）
+  if (map !== undefined || scheduledAt !== undefined) {
+    const patch: Record<string, unknown> = {}
+    if (map !== undefined) patch.map = map || null
+    if (scheduledAt !== undefined) patch.scheduled_at = scheduledAt || null
+    await supabase.from('matches').update(patch).eq('id', matchId)
+  }
 }
