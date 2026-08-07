@@ -124,7 +124,7 @@ onMounted(async () => {
     form.eventId = app.event_id ?? form.eventId
     form.pwUsername = app.pw_username
     form.displayName = app.display_name ?? ''
-    form.employmentStatus = app.employment_status ?? 'unemployed'
+    form.employmentStatus = app.employment_status ?? 'employed'
     form.location = app.location ?? ''
     form.employeeNo = app.employee_no ?? ''
   }
