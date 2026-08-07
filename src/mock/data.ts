@@ -239,6 +239,7 @@ export const mockTeams: Team[] = teamSeed.map((t, i) => ({
   name: t.name,
   tag: t.tag,
   captain_id: t.captain[0],
+  event_id: 'event-11', // 种子战队均报名当前届（HVV MAJOR 11）
   group_id: t.groupId,
   status: t.status,
   created_at: createdAt[i % createdAt.length],

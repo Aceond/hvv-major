@@ -59,6 +59,7 @@ export interface Team {
   name: string
   tag: string | null
   captain_id: string
+  event_id: string | null // 报名赛事（战队按赛事报名）
   group_id: string | null // 所属组别（传奇组/大师组/挑战组）
   status: TeamStatus
   created_at: string

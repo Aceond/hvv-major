@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { ApplicationStatus, PlayerApplication } from '@/api/types'
+import type { ApplicationStatus, EventItem, PlayerApplication } from '@/api/types'
+import { listEvents } from '@/api/event'
 import { listPlayerApplications, reviewPlayerApplication } from '@/api/admin'
 
 const rows = ref<PlayerApplication[]>([])
+const events = ref<EventItem[]>([])
 const loading = ref(false)
 const filter = ref<'all' | ApplicationStatus>('all')
 
@@ -23,9 +25,14 @@ async function load() {
   loading.value = true
   try {
     rows.value = await listPlayerApplications()
+    events.value = await listEvents()
   } finally {
     loading.value = false
   }
+}
+
+function eventName(eventId: string | null) {
+  return events.value.find((e) => e.id === eventId)?.name ?? '-'
 }
 
 async function decide(app: PlayerApplication, status: ApplicationStatus) {
@@ -68,6 +75,11 @@ onMounted(load)
       <el-table-column prop="pw_username" label="完美 ID" min-width="140">
         <template #default="{ row }">
           <span class="pw-name">{{ row.pw_username }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="报名赛事" min-width="130">
+        <template #default="{ row }">
+          <el-tag size="small" effect="plain">{{ eventName(row.event_id) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="赛季截图" min-width="260">

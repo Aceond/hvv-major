@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { Group, PlayerItem, Team, TeamMember, TeamStatus } from '@/api/types'
+import type { EventItem, Group, PlayerItem, Team, TeamMember, TeamStatus } from '@/api/types'
 import {
   addTeamMember,
   listGroups,
@@ -12,12 +12,15 @@ import {
   updateTeamGroup,
   updateTeamStatus,
 } from '@/api/admin'
+import { listEvents } from '@/api/event'
 
 const rows = ref<Team[]>([])
 const groups = ref<Group[]>([])
+const events = ref<EventItem[]>([])
 const membersMap = ref<Record<string, TeamMember[]>>({})
 const loading = ref(false)
 const filter = ref<'all' | TeamStatus>('all')
+const currentEvent = ref('') // 赛事筛选：'' = 全部
 
 // 管理名册对话框
 const rosterVisible = ref(false)
@@ -30,9 +33,9 @@ const adding = ref(false)
 const MIN_MEMBERS = 5
 
 const filteredRows = computed(() =>
-  filter.value === 'all'
-    ? rows.value
-    : rows.value.filter((t) => t.status === filter.value),
+  rows.value
+    .filter((t) => (filter.value === 'all' ? true : t.status === filter.value))
+    .filter((t) => !currentEvent.value || t.event_id === currentEvent.value),
 )
 
 function memberCount(teamId: string) {
@@ -41,6 +44,10 @@ function memberCount(teamId: string) {
 
 function groupName(groupId: string | null) {
   return groups.value.find((g) => g.id === groupId)?.name ?? '未分组'
+}
+
+function eventName(eventId: string | null) {
+  return events.value.find((e) => e.id === eventId)?.name ?? '未指定赛事'
 }
 
 const counts = computed(() => ({
@@ -55,6 +62,7 @@ async function load() {
   try {
     rows.value = await listTeams()
     groups.value = await listGroups()
+    events.value = await listEvents()
     // 拉取各战队名册，供展开行展示与成员数校验
     const map: Record<string, TeamMember[]> = {}
     await Promise.all(
@@ -146,6 +154,16 @@ onMounted(load)
       <el-radio-button value="rejected">已拒绝（{{ counts.rejected }}）</el-radio-button>
     </el-radio-group>
 
+    <el-select
+      v-model="currentEvent"
+      placeholder="按赛事筛选"
+      clearable
+      class="event-filter"
+      @change="load"
+    >
+      <el-option v-for="e in events" :key="e.id" :label="e.name" :value="e.id" />
+    </el-select>
+
     <el-table v-loading="loading" :data="filteredRows" stripe>
       <el-table-column type="expand">
         <template #default="{ row }">
@@ -161,6 +179,11 @@ onMounted(load)
         </template>
       </el-table-column>
       <el-table-column prop="name" label="战队名称" min-width="150" />
+      <el-table-column label="赛事" min-width="140">
+        <template #default="{ row }">
+          <el-tag size="small" effect="plain">{{ eventName(row.event_id) }}</el-tag>
+        </template>
+      </el-table-column>
       <el-table-column prop="tag" label="战队 ID" width="90">
         <template #default="{ row }">{{ row.tag ?? '-' }}</template>
       </el-table-column>
@@ -270,6 +293,11 @@ onMounted(load)
 <style scoped>
 .filters {
   margin-bottom: 16px;
+}
+
+.event-filter {
+  margin: 0 0 16px 12px;
+  width: 200px;
 }
 
 .member-table {

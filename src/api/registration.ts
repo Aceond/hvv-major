@@ -177,12 +177,13 @@ export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
 }
 
 /**
- * 创建战队并登记队长（当前用户）：队员由管理员在后台为战队选择。
- * 流程：前台提交战队信息 → 管理员在「战队报名审核」中为战队添加队员（≥5 人）→ 通过审核。
+ * 创建战队并登记队长（当前用户）：按赛事报名，队员由管理员在后台为战队选择。
+ * 流程：前台选择赛事并提交战队信息 → 管理员在「战队报名审核」中为战队添加队员（≥5 人）→ 通过审核。
  */
 export async function createTeam(
   name: string,
   tag: string,
+  eventId: string,
 ): Promise<Team | null> {
   if (!isSupabaseConfigured || !supabase) {
     const team: Team = {
@@ -190,6 +191,7 @@ export async function createTeam(
       name,
       tag,
       captain_id: 'demo-player',
+      event_id: eventId,
       group_id: null, // 组别由管理员审核时分配
       status: 'pending',
       created_at: new Date().toISOString(),
@@ -212,7 +214,7 @@ export async function createTeam(
   if (!user) return null
   const { data } = await supabase
     .from('teams')
-    .insert({ name, tag, captain_id: user.id })
+    .insert({ name, tag, captain_id: user.id, event_id: eventId })
     .select('*')
     .single()
   const team = data as Team | null
@@ -273,6 +275,7 @@ export async function removeTeamMember(teamId: string, profileId: string): Promi
 export async function createTeamByAdmin(input: {
   name: string
   tag: string
+  eventId: string | null
   groupId: string | null
   captainId: string
   memberIds: string[]
@@ -283,6 +286,7 @@ export async function createTeamByAdmin(input: {
       name: input.name,
       tag: input.tag,
       captain_id: input.captainId,
+      event_id: input.eventId,
       group_id: input.groupId,
       status: 'approved',
       created_at: new Date().toISOString(),
@@ -312,6 +316,7 @@ export async function createTeamByAdmin(input: {
       name: input.name,
       tag: input.tag,
       captain_id: input.captainId,
+      event_id: input.eventId,
       group_id: input.groupId,
       status: 'approved',
     })

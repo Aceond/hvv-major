@@ -1,14 +1,16 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import type { Group, PlayerItem, PlayerStatRow, Stage, Team, TeamStatRow } from '@/api/types'
+import type { EventItem, Group, PlayerItem, PlayerStatRow, Stage, Team, TeamStatRow } from '@/api/types'
 import { createTeamByAdmin, listGroups, listMembers, listStages, listTeams } from '@/api/admin'
+import { listEvents } from '@/api/event'
 import { listPlayers } from '@/api/registration'
 import { getPlayerStats, getTeamStats, savePlayerStat, saveTeamStat } from '@/api/stats'
 
 const tab = ref<'team' | 'player'>('team')
 const stages = ref<Stage[]>([])
 const groups = ref<Group[]>([])
+const events = ref<EventItem[]>([])
 const teams = ref<Team[]>([])
 const players = ref<PlayerItem[]>([])
 const currentStage = ref<string>('')
@@ -27,6 +29,7 @@ const teamSaving = ref(false)
 const newTeam = reactive({
   name: '',
   tag: '',
+  eventId: '',
   groupId: '',
   captainId: '',
   memberIds: [] as string[],
@@ -44,13 +47,25 @@ onMounted(async () => {
 
 async function openTeamDialog() {
   players.value = await listPlayers()
-  Object.assign(newTeam, { name: '', tag: '', groupId: '', captainId: '', memberIds: [] })
+  events.value = await listEvents()
+  Object.assign(newTeam, {
+    name: '',
+    tag: '',
+    eventId: events.value.find((e) => e.status === 'signup')?.id ?? events.value[0]?.id ?? '',
+    groupId: '',
+    captainId: '',
+    memberIds: [],
+  })
   teamDialogVisible.value = true
 }
 
 async function submitNewTeam() {
   if (!newTeam.name) {
     ElMessage.warning('请填写战队名称')
+    return
+  }
+  if (!newTeam.eventId) {
+    ElMessage.warning('请选择赛事')
     return
   }
   const count = 1 + newTeam.memberIds.length
@@ -63,6 +78,7 @@ async function submitNewTeam() {
     const team = await createTeamByAdmin({
       name: newTeam.name,
       tag: newTeam.tag,
+      eventId: newTeam.eventId,
       groupId: newTeam.groupId || null,
       captainId: newTeam.captainId,
       memberIds: newTeam.memberIds,
@@ -349,6 +365,16 @@ async function savePlayerRows() {
         description="请先在前台「个人注册」提交完美 ID 与赛季截图并通过「选手审核」，本对话框才能选择队长与队员。"
       />
       <el-form :model="newTeam" label-width="90px">
+        <el-form-item label="赛事">
+          <el-select v-model="newTeam.eventId" placeholder="选择赛事" style="width: 100%">
+            <el-option
+              v-for="e in events"
+              :key="e.id"
+              :label="`${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`"
+              :value="e.id"
+            />
+          </el-select>
+        </el-form-item>
         <el-form-item label="战队名称">
           <el-input v-model="newTeam.name" placeholder="如 Nova Velocity" />
         </el-form-item>
