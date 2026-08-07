@@ -46,6 +46,7 @@ const strength = computed(() => {
 })
 
 async function submit() {
+  if (submitting.value) return
   if (!formRef.value) return
   await formRef.value.validate()
   if (!isSupabaseConfigured || !supabase) {
@@ -127,13 +128,16 @@ async function enterDemo(role: 'admin' | 'player') {
         :rules="rules"
         label-width="0"
         size="large"
-        @submit.prevent="submit"
       >
         <el-form-item v-if="mode === 'register'" prop="username">
-          <el-input v-model="form.username" placeholder="昵称 / 队伍联系人" />
+          <el-input
+            v-model="form.username"
+            placeholder="昵称 / 队伍联系人"
+            @keyup.enter.prevent="submit"
+          />
         </el-form-item>
         <el-form-item prop="email">
-          <el-input v-model="form.email" placeholder="邮箱" />
+          <el-input v-model="form.email" placeholder="邮箱" @keyup.enter.prevent="submit" />
         </el-form-item>
         <el-form-item prop="password">
           <el-input
@@ -142,6 +146,7 @@ async function enterDemo(role: 'admin' | 'player') {
             placeholder="密码"
             show-password
             :autocomplete="mode === 'login' ? 'current-password' : 'new-password'"
+            @keyup.enter.prevent="submit"
           />
         </el-form-item>
         <el-form-item v-if="mode === 'register'" class="strength-field">
