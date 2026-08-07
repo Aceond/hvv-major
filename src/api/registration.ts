@@ -147,24 +147,29 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
   }
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
+  // 先更新申请审核状态（核心，保证审核一定生效）
+  const { error } = await supabase
+    .from('player_applications')
+    .update({ status, reviewed_at: new Date().toISOString(), reviewer_id: user.id })
+    .eq('id', id)
+  if (error) throw error
+  // 通过时回填选手资料（完美 ID / 昵称回填，角色置为 player）；失败不阻断审核
   if (status === 'approved') {
-    const { data } = await supabase
+    const { data, error: selErr } = await supabase
       .from('player_applications')
       .select('*')
       .eq('id', id)
       .single()
+    if (selErr) throw selErr
     const app = data as PlayerApplication | null
     if (app) {
-      await supabase
+      const { error: profErr } = await supabase
         .from('profiles')
         .update({ pw_username: app.pw_username, nickname: app.display_name ?? app.nickname ?? app.pw_username, role: 'player' })
         .eq('id', app.profile_id)
+      if (profErr) console.warn('选手资料回填失败（不影响审核结果）：', profErr.message)
     }
   }
-  await supabase
-    .from('player_applications')
-    .update({ status, reviewed_at: new Date().toISOString(), reviewer_id: user.id })
-    .eq('id', id)
 }
 
 /** 选手池（仅完成个人注册审核通过的选手，可按完美 ID/姓名搜索；in_team 表示已加入战队，不可再选） */
