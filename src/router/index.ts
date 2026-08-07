@@ -43,15 +43,18 @@ const router = createRouter({
   ],
 })
 
-// 路由守卫：进入 /admin 前校验管理员角色；待审核/被拒账号只能访问审核状态页
+// 待审核/被拒账号仅可访问的页面白名单（公开浏览 + 审核状态提示页）
+const REVIEW_OPEN_PAGES = ['home', 'events', 'matches', 'standings', 'rankings', 'review-status', 'login']
+
+// 路由守卫：进入 /admin 前校验管理员角色；未过审账号仅开放白名单页面
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.isLoggedIn) await auth.refresh()
   if (to.meta.requiresAdmin && !auth.isAdmin) {
     return { name: 'home' }
   }
-  if (auth.reviewBlocked && to.name !== 'review-status' && to.name !== 'login') {
-    return { name: 'review-status' }
+  if (auth.reviewBlocked && !REVIEW_OPEN_PAGES.includes(to.name as string)) {
+    return { name: 'home' }
   }
 })
 
