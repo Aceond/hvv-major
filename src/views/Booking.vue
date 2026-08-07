@@ -129,7 +129,7 @@ onMounted(init)
   <div class="page-container booking-page">
     <h2 class="title">约战录入</h2>
     <p class="subtitle">
-      本次比赛为自由约战制：由战队自行约对手、定时间。录入后会在「赛程」页公开展示，双方战队均可看到。
+      本次比赛为自由约战制：由各战队队长自行约对手、定时间（仅队长可录入）。录入后会在「赛程」页公开展示，双方战队均可看到。
     </p>
 
     <!-- 未登录 -->
@@ -137,9 +137,12 @@ onMounted(init)
       <el-button type="primary" @click="router.push({ name: 'login' })">去登录</el-button>
     </el-empty>
 
-    <!-- 已登录但无战队 -->
-    <el-empty v-else-if="!myTeam" description="你还未加入任何已审核战队，无法录入约战">
-      <el-button type="primary" plain @click="router.push({ name: 'register' })">去战队报名</el-button>
+    <!-- 已登录但不是队长 -->
+    <el-empty
+      v-else-if="!myTeam"
+      description="仅战队队长可录入约战。请使用队长账号登录，或联系本队队长录入。"
+    >
+      <el-button type="primary" plain @click="router.push({ name: 'home' })">返回首页</el-button>
     </el-empty>
 
     <template v-else>

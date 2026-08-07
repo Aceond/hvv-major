@@ -3,32 +3,26 @@
 //       录入结果写入 matches（status=scheduled），在赛程页公开展示。
 // 未配置 Supabase（演示模式）时返回 mock 数据。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
-import { mockMatches, mockMembers, mockTeams } from '@/mock/data'
+import { mockMatches, mockTeams } from '@/mock/data'
 import type { Match, Team } from './types'
 
-/** 当前登录用户所在战队（仅已审核战队；一人一队，取第一条名册记录） */
+/** 当前登录用户作为队长的战队（仅已审核战队；约战仅队长可录入，管理员不受限） */
 export async function listMyTeam(userId?: string | null): Promise<Team | null> {
   if (!isSupabaseConfigured || !supabase) {
     if (!userId) return null
     return (
-      mockTeams.find(
-        (t) =>
-          t.status === 'approved' &&
-          (t.captain_id === userId ||
-            (mockMembers[t.id] ?? []).some((m) => m.profile_id === userId)),
-      ) ?? null
+      mockTeams.find((t) => t.status === 'approved' && t.captain_id === userId) ?? null
     )
   }
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
   const { data } = await supabase
-    .from('team_members')
-    .select('team:teams(*)')
-    .eq('profile_id', user.id)
-    .eq('status', 'active')
+    .from('teams')
+    .select('*')
+    .eq('captain_id', user.id)
+    .eq('status', 'approved')
     .maybeSingle()
-  const team = (data as any)?.team as Team | null
-  return team?.status === 'approved' ? team : null
+  return (data as Team | null) ?? null
 }
 
 /** 已审核战队列表（约战对手候选，可排除自己所在战队） */

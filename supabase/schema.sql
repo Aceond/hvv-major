@@ -398,19 +398,21 @@ create policy matches_select on public.matches
 drop policy if exists matches_admin_all on public.matches;
 create policy matches_admin_all on public.matches
   for all using (public.is_admin()) with check (public.is_admin());
--- 约战录入：本队成员可录入本队参与的待开赛比赛（自由约战制，战队自行约对手、定时间）
+-- 约战录入：本队队长可录入本队参与的待开赛比赛（自由约战制，仅队长约对手、定时间）
 drop policy if exists matches_insert on public.matches;
 create policy matches_insert on public.matches
   for insert with check (
     public.is_admin()
     or exists (
-      select 1 from public.team_members m
-      where m.profile_id = auth.uid()
-        and m.status = 'active'
-        and (m.team_id = team_a_id or m.team_id = team_b_id)
+      select 1 from public.teams t
+      where t.id = team_a_id and t.captain_id = auth.uid()
+    )
+    or exists (
+      select 1 from public.teams t
+      where t.id = team_b_id and t.captain_id = auth.uid()
     )
   );
--- 约战删除：本队成员可删除本队参与的待开赛比赛（已开赛/已结束的不允许删）
+-- 约战删除：本队队长可删除本队参与的待开赛比赛（已开赛/已结束的不允许删）
 drop policy if exists matches_team_delete on public.matches;
 create policy matches_team_delete on public.matches
   for delete using (
@@ -418,10 +420,12 @@ create policy matches_team_delete on public.matches
     and (
       public.is_admin()
       or exists (
-        select 1 from public.team_members m
-        where m.profile_id = auth.uid()
-          and m.status = 'active'
-          and (m.team_id = team_a_id or m.team_id = team_b_id)
+        select 1 from public.teams t
+        where t.id = team_a_id and t.captain_id = auth.uid()
+      )
+      or exists (
+        select 1 from public.teams t
+        where t.id = team_b_id and t.captain_id = auth.uid()
       )
     )
   );
