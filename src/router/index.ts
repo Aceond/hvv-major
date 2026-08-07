@@ -14,6 +14,7 @@ const router = createRouter({
         { path: 'player/register', name: 'player-register', component: () => import('@/views/PlayerRegister.vue') },
         { path: 'register', name: 'register', component: () => import('@/views/Register.vue') },
         { path: 'matches', name: 'matches', component: () => import('@/views/Matches.vue') },
+        { path: 'booking', name: 'booking', component: () => import('@/views/Booking.vue') },
         { path: 'standings', name: 'standings', component: () => import('@/views/Standings.vue') },
         { path: 'rankings', name: 'rankings', component: () => import('@/views/Rankings.vue') },
         { path: 'login', name: 'login', component: () => import('@/views/Login.vue') },

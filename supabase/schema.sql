@@ -378,6 +378,33 @@ create policy matches_select on public.matches
 drop policy if exists matches_admin_all on public.matches;
 create policy matches_admin_all on public.matches
   for all using (public.is_admin()) with check (public.is_admin());
+-- 约战录入：本队成员可录入本队参与的待开赛比赛（自由约战制，战队自行约对手、定时间）
+drop policy if exists matches_insert on public.matches;
+create policy matches_insert on public.matches
+  for insert with check (
+    public.is_admin()
+    or exists (
+      select 1 from public.team_members m
+      where m.profile_id = auth.uid()
+        and m.status = 'active'
+        and (m.team_id = team_a_id or m.team_id = team_b_id)
+    )
+  );
+-- 约战删除：本队成员可删除本队参与的待开赛比赛（已开赛/已结束的不允许删）
+drop policy if exists matches_team_delete on public.matches;
+create policy matches_team_delete on public.matches
+  for delete using (
+    status = 'scheduled'
+    and (
+      public.is_admin()
+      or exists (
+        select 1 from public.team_members m
+        where m.profile_id = auth.uid()
+          and m.status = 'active'
+          and (m.team_id = team_a_id or m.team_id = team_b_id)
+      )
+    )
+  );
 drop policy if exists match_maps_select on public.match_maps;
 create policy match_maps_select on public.match_maps
   for select using (true);
@@ -433,6 +460,7 @@ grant select on public.player_applications to authenticated;
 grant insert, update on public.teams, public.team_members to authenticated;
 grant insert, update on public.site_config to authenticated;
 grant insert, update on public.player_applications to authenticated;
+grant insert, delete on public.matches to authenticated;
 
 grant execute on function public.upsert_match_result(uuid, int, int) to authenticated;
 

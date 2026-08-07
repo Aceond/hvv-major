@@ -43,6 +43,7 @@ function goAdmin() {
         <el-menu-item index="/player/register">个人注册</el-menu-item>
         <el-menu-item index="/register">战队报名</el-menu-item>
         <el-menu-item index="/matches">赛程</el-menu-item>
+        <el-menu-item index="/booking">约战录入</el-menu-item>
         <el-menu-item index="/standings">积分榜</el-menu-item>
         <el-menu-item index="/rankings">数据排行</el-menu-item>
       </el-menu>
