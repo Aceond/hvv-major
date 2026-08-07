@@ -151,6 +151,16 @@ create table if not exists public.match_maps (
   winner_id uuid references public.teams (id)
 );
 
+-- 比赛媒体链接（每场比赛的直播 / 录像等，管理员登记，观众可查看）
+create table if not exists public.match_media (
+  id uuid primary key default gen_random_uuid(),
+  match_id uuid not null references public.matches (id) on delete cascade,
+  kind text not null default 'live' check (kind in ('live', 'vod', 'other')), -- 直播 / 录像 / 其他
+  label text not null default '',        -- 备注，如 "B站第一视角" / "官方直播间"
+  url text not null,                     -- 链接地址
+  created_at timestamptz not null default now()
+);
+
 -- ============================================================
 -- 5. 自动同步记录（第三方平台 API，如完美对战平台 / 5E / FACEIT）
 -- ============================================================
@@ -325,6 +335,7 @@ alter table public.team_members   enable row level security;
 alter table public.stages         enable row level security;
 alter table public.matches        enable row level security;
 alter table public.match_maps     enable row level security;
+alter table public.match_media    enable row level security;
 alter table public.team_stats     enable row level security;
 alter table public.player_stats   enable row level security;
 alter table public.sync_logs      enable row level security;
@@ -405,6 +416,14 @@ create policy matches_select on public.matches
   for select using (true);
 drop policy if exists matches_admin_all on public.matches;
 create policy matches_admin_all on public.matches
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- match_media：公开可读，管理员登记/管理
+drop policy if exists match_media_select on public.match_media;
+create policy match_media_select on public.match_media
+  for select using (true);
+drop policy if exists match_media_admin_all on public.match_media;
+create policy match_media_admin_all on public.match_media
   for all using (public.is_admin()) with check (public.is_admin());
 -- 约战录入：本队队长可录入本队参与的待开赛比赛（自由约战制，仅队长约对手、定时间）
 drop policy if exists matches_insert on public.matches;

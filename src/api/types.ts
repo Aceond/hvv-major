@@ -8,6 +8,7 @@ export type EventStatus = 'signup' | 'running' | 'ended'
 export type StageFormat = 'round_robin' | 'single_elim' | 'double_elim' | 'swiss'
 export type StageStatus = 'upcoming' | 'running' | 'ended'
 export type MatchStatus = 'scheduled' | 'completed' | 'cancelled'
+export type MediaKind = 'live' | 'vod' | 'other' // 直播 / 录像 / 其他
 
 /** 赛事（一届一届持续举办，如 HVV MAJOR 11） */
 export interface EventItem {
@@ -133,6 +134,16 @@ export interface StandingsRow {
   points: number
 }
 
+/** 比赛媒体链接（每场比赛的直播 / 录像 / 其他，管理员登记） */
+export interface MatchMedia {
+  id: string
+  match_id: string
+  kind: MediaKind
+  label: string
+  url: string
+  created_at: string
+}
+
 /** 队伍数据排行行 */
 export interface TeamStatRow {
   team_id: string
@@ -206,4 +217,10 @@ export const MATCH_STATUS_LABEL: Record<MatchStatus, string> = {
   scheduled: '待开赛',
   completed: '已结束',
   cancelled: '已取消',
+}
+
+export const MEDIA_KIND_LABEL: Record<MediaKind, string> = {
+  live: '直播',
+  vod: '录像',
+  other: '其他',
 }
