@@ -21,10 +21,16 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => user.value !== null)
   const isAdmin = computed(() => profile.value?.role === 'admin')
-  // 账号是否被审核拦截（待审核 / 被拒）
-  const reviewBlocked = computed(
-    () => isLoggedIn.value && !isAdmin.value && (applicationStatus.value === 'pending' || applicationStatus.value === 'rejected'),
-  )
+
+  // 管理员人工审核于 2026-08-07 上线：该时间之前注册的用户视为已认可老用户，不受审核限制
+  const REVIEW_SINCE = '2026-08-06T16:00:00Z' // 2026-08-07 00:00 Asia/Hong_Kong
+
+  // 账号是否被审核拦截（仅限审核上线后注册的新用户：待审核 / 被拒）
+  const reviewBlocked = computed(() => {
+    if (!isLoggedIn.value || isAdmin.value) return false
+    if (!user.value?.created_at || user.value.created_at < REVIEW_SINCE) return false
+    return applicationStatus.value === 'pending' || applicationStatus.value === 'rejected'
+  })
 
   /** 拉取当前用户最新一条注册申请的审核状态 */
   async function loadApplicationStatus() {
