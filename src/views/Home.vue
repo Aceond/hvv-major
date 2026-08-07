@@ -43,6 +43,13 @@ const weekLabel = ref('')
 /** hero 大标题拆分：首个单词正常色，其余部分高亮（如 "HVV" + "MAJOR 11"） */
 const heroTitleParts = computed(() => config.value.brand_title.split(' ').filter(Boolean))
 
+/** HUD 角标赛季信息：从标题末段提取数字（如 HVV MAJOR 11 → SEASON 11） */
+const editionLabel = computed(() => {
+  const last = heroTitleParts.value[heroTitleParts.value.length - 1] ?? ''
+  const num = last.replace(/\D/g, '')
+  return num ? `SEASON ${num}` : 'SEASON 2026'
+})
+
 function matchStatusType(status: Match['status']) {
   return status === 'completed' ? 'success' : status === 'cancelled' ? 'danger' : 'warning'
 }
@@ -77,6 +84,29 @@ onMounted(async () => {
 <template>
   <div class="page-container home">
     <section class="hero">
+      <div class="hero-hud hero-hud-tl">{{ editionLabel }}</div>
+      <div class="hero-hud hero-hud-tr">COUNTER-STRIKE 2</div>
+
+      <div class="hero-crosshair" aria-hidden="true">
+        <svg viewBox="0 0 120 120" fill="none">
+          <circle cx="60" cy="60" r="46" stroke="currentColor" stroke-width="1.5" />
+          <circle cx="60" cy="60" r="30" stroke="currentColor" stroke-width="1" />
+          <circle cx="60" cy="60" r="6" fill="currentColor" />
+          <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="60" y1="8" x2="60" y2="22" />
+            <line x1="60" y1="98" x2="60" y2="112" />
+            <line x1="8" y1="60" x2="22" y2="60" />
+            <line x1="98" y1="60" x2="112" y2="60" />
+          </g>
+          <g stroke="currentColor" stroke-width="1" opacity="0.6">
+            <line x1="60" y1="0" x2="60" y2="5" />
+            <line x1="60" y1="115" x2="60" y2="120" />
+            <line x1="0" y1="60" x2="5" y2="60" />
+            <line x1="115" y1="60" x2="120" y2="60" />
+          </g>
+        </svg>
+      </div>
+
       <div class="hero-overline">
         <span class="hero-line" />
         {{ config.brand_overline }}
@@ -97,6 +127,13 @@ onMounted(async () => {
         <el-button class="cta-ghost" size="large" @click="router.push({ name: 'standings' })">
           查看积分榜
         </el-button>
+      </div>
+      <div class="hero-stats" aria-hidden="true">
+        <span>自由约战制</span>
+        <i />
+        <span>BO1 / BO3</span>
+        <i />
+        <span>传奇 · 大师 · 挑战</span>
       </div>
       <div class="hero-corner hero-corner-tl" />
       <div class="hero-corner hero-corner-br" />
@@ -182,7 +219,7 @@ onMounted(async () => {
 .hero {
   position: relative;
   text-align: center;
-  padding: 72px 16px 56px;
+  padding: 72px 16px 48px;
   margin-bottom: 32px;
   background:
     linear-gradient(180deg, rgba(255, 176, 32, 0.05), transparent 70%),
@@ -190,6 +227,93 @@ onMounted(async () => {
   border: 1px solid var(--cs2-border);
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 26px), calc(100% - 26px) 100%, 0 100%);
   overflow: hidden;
+}
+
+/* 战术网格背景（中心放射淡出） */
+.hero::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 176, 32, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 176, 32, 0.06) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(circle at 50% 42%, #000 20%, transparent 78%);
+  mask-image: radial-gradient(circle at 50% 42%, #000 20%, transparent 78%);
+  pointer-events: none;
+}
+
+/* HUD 角标 */
+.hero-hud {
+  position: absolute;
+  top: 20px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: rgba(255, 176, 32, 0.7);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.hero-hud::before {
+  content: '';
+  width: 30px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--cs2-accent));
+}
+
+.hero-hud-tl {
+  left: 78px;
+}
+
+.hero-hud-tr {
+  right: 78px;
+}
+
+.hero-hud-tr::before {
+  display: none;
+}
+
+.hero-hud-tr::after {
+  content: '';
+  width: 30px;
+  height: 1px;
+  background: linear-gradient(90deg, var(--cs2-accent), transparent);
+}
+
+/* 右侧雷达准星装饰 */
+.hero-crosshair {
+  position: absolute;
+  top: 50%;
+  right: 5%;
+  transform: translateY(-50%) rotate(45deg);
+  width: 220px;
+  height: 220px;
+  color: var(--cs2-accent);
+  opacity: 0.13;
+  pointer-events: none;
+  animation: crosshair-pulse 4s ease-in-out infinite;
+}
+
+.hero-crosshair svg {
+  width: 100%;
+  height: 100%;
+}
+
+@keyframes crosshair-pulse {
+  0%,
+  100% {
+    opacity: 0.1;
+    transform: translateY(-50%) rotate(45deg) scale(1);
+  }
+  50% {
+    opacity: 0.2;
+    transform: translateY(-50%) rotate(45deg) scale(1.04);
+  }
 }
 
 .hero-overline {
@@ -210,11 +334,36 @@ onMounted(async () => {
 }
 
 .hero-title {
+  position: relative;
+  display: inline-block;
   margin: 0 0 16px;
   font-size: 56px;
   font-weight: 800;
   letter-spacing: 6px;
   color: var(--cs2-text);
+}
+
+/* 标题金属扫光 */
+.hero-title::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -70%;
+  width: 55%;
+  background: linear-gradient(100deg, transparent, rgba(255, 176, 32, 0.22), transparent);
+  animation: hero-sheen 5.5s ease-in-out infinite;
+  pointer-events: none;
+}
+
+@keyframes hero-sheen {
+  0%,
+  55% {
+    left: -70%;
+  }
+  100% {
+    left: 130%;
+  }
 }
 
 .hero-accent {
@@ -227,6 +376,55 @@ onMounted(async () => {
   font-size: 17px;
   letter-spacing: 2px;
   color: var(--cs2-text-muted);
+}
+
+/* HUD 信息条 */
+.hero-stats {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  margin-top: 32px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: var(--cs2-text-muted);
+}
+
+.hero-stats span {
+  white-space: nowrap;
+}
+
+.hero-stats i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--cs2-accent);
+  opacity: 0.7;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hero-title::after,
+  .hero-crosshair {
+    animation: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .hero-hud,
+  .hero-crosshair {
+    display: none;
+  }
+
+  .hero-title {
+    font-size: 36px;
+    letter-spacing: 3px;
+  }
+
+  .hero-stats {
+    flex-wrap: wrap;
+    gap: 8px 14px;
+  }
 }
 
 .cta {

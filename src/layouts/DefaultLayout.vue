@@ -3,6 +3,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import Cs2Logo from '@/components/Cs2Logo.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -23,9 +24,11 @@ function goAdmin() {
   <el-container class="layout">
     <el-header class="header" height="60px">
       <div class="brand" @click="router.push({ name: 'home' })">
-        <span class="brand-mark">HVV</span>
-        <span class="brand-name">MAJOR</span>
-        <span class="brand-sub">CS2 赛事平台</span>
+        <Cs2Logo :size="34" />
+        <div class="brand-text">
+          <span class="brand-name">HVV MAJOR</span>
+          <span class="brand-sub">CS2 赛事平台</span>
+        </div>
       </div>
 
       <el-tag v-if="!isSupabaseConfigured" class="demo-tag" size="small" effect="plain">
@@ -75,6 +78,7 @@ function goAdmin() {
 
     <el-footer class="footer" height="48px">
       <span class="footer-line" />
+      <Cs2Logo :size="16" />
       HVV Major · 报名 / 数据 / 比赛 三合一赛事平台
     </el-footer>
   </el-container>
@@ -100,36 +104,32 @@ function goAdmin() {
 
 .brand {
   display: flex;
-  align-items: baseline;
-  gap: 8px;
+  align-items: center;
+  gap: 10px;
   cursor: pointer;
   white-space: nowrap;
 }
 
-.brand-mark {
-  font-size: 22px;
+.brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.brand-name {
+  font-size: 16px;
   font-weight: 800;
   letter-spacing: 2px;
-  color: var(--cs2-accent);
-  background: linear-gradient(180deg, #ffd27a, var(--cs2-accent-strong));
+  background: linear-gradient(120deg, #fff, var(--cs2-accent));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-.brand-name {
-  font-size: 18px;
-  font-weight: 700;
-  letter-spacing: 3px;
-  color: var(--cs2-text);
-}
-
 .brand-sub {
-  font-size: 11px;
-  letter-spacing: 2px;
+  font-size: 10px;
+  letter-spacing: 3px;
   color: var(--cs2-text-muted);
-  border-left: 1px solid var(--cs2-border-strong);
-  padding-left: 8px;
 }
 
 .demo-tag {
