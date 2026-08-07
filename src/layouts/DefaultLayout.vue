@@ -50,12 +50,21 @@ async function signOut() {
       >
         <el-menu-item index="/">首页</el-menu-item>
         <el-menu-item index="/events">赛事</el-menu-item>
-        <el-menu-item v-if="!auth.reviewBlocked" index="/player/register">个人注册</el-menu-item>
-        <el-menu-item v-if="!auth.reviewBlocked" index="/register">战队报名</el-menu-item>
-        <el-menu-item index="/matches">赛程</el-menu-item>
-        <el-menu-item v-if="!auth.reviewBlocked" index="/booking">约战录入</el-menu-item>
-        <el-menu-item index="/standings">积分榜</el-menu-item>
-        <el-menu-item index="/rankings">数据排行</el-menu-item>
+        <el-sub-menu v-if="!auth.reviewBlocked" index="signup">
+          <template #title>报名</template>
+          <el-menu-item index="/player/register">个人注册</el-menu-item>
+          <el-menu-item index="/register">战队报名</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="match">
+          <template #title>比赛</template>
+          <el-menu-item index="/matches">赛程</el-menu-item>
+          <el-menu-item v-if="!auth.reviewBlocked" index="/booking">约战录入</el-menu-item>
+        </el-sub-menu>
+        <el-sub-menu index="data">
+          <template #title>数据</template>
+          <el-menu-item index="/standings">积分榜</el-menu-item>
+          <el-menu-item index="/rankings">数据排行</el-menu-item>
+        </el-sub-menu>
       </el-menu>
 
       <div class="user-area">
@@ -162,6 +171,20 @@ async function signOut() {
   letter-spacing: 1px;
 }
 
+.nav :deep(.el-sub-menu__title) {
+  border-bottom: none;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.nav :deep(.el-sub-menu.is-active > .el-sub-menu__title) {
+  color: var(--cs2-accent);
+}
+
+.nav :deep(.el-sub-menu .el-sub-menu__title .el-icon) {
+  color: inherit;
+}
+
 .nav :deep(.el-menu-item.is-active) {
   position: relative;
 }
@@ -221,5 +244,33 @@ async function signOut() {
   height: 2px;
   background: var(--cs2-accent);
   opacity: 0.6;
+}
+</style>
+
+<!-- 二级菜单弹出面板（渲染在 body，需全局样式） -->
+<style>
+.el-menu--popup {
+  background: var(--cs2-panel) !important;
+  border: 1px solid var(--cs2-border) !important;
+  border-radius: 8px;
+  padding: 4px !important;
+  min-width: 140px;
+}
+
+.el-menu--popup .el-menu-item {
+  background: transparent;
+  color: var(--cs2-text-muted);
+  border-radius: 6px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.el-menu--popup .el-menu-item:hover {
+  background: var(--cs2-panel-2) !important;
+  color: var(--cs2-text);
+}
+
+.el-menu--popup .el-menu-item.is-active {
+  color: var(--cs2-accent);
 }
 </style>
