@@ -46,13 +46,19 @@ async function submit() {
       if (error) throw error
       ElMessage.success('登录成功')
     } else {
-      const { error } = await supabase.auth.signUp({
+      const { data, error } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
         options: { data: { username: form.username } },
       })
       if (error) throw error
-      ElMessage.success('注册成功，请查收验证邮件')
+      // 服务端关闭「Confirm email（邮箱确认）」后 signUp 会直接返回 session，即注册即登录
+      if (data.session) {
+        ElMessage.success('注册成功，已自动登录')
+      } else {
+        ElMessage.warning('注册已提交，但当前开启了邮箱验证，请查收邮件完成验证后登录。若验证邮件无法打开，请让管理员在 Supabase 后台关闭邮箱确认（Authentication → Sign In / Providers → Email → Confirm email）。')
+        return
+      }
     }
     await auth.refresh()
     router.push({ name: 'home' })
