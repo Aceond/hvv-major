@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
@@ -29,6 +29,22 @@ const rules: FormRules = {
   ],
 }
 
+/** 密码强度评估：长度、大小写、数字、特殊字符综合评分 */
+const strength = computed(() => {
+  const pw = form.password
+  if (!pw) return { level: 'weak' as const, label: '' }
+  const len = pw.length
+  let score = 0
+  if (len >= 8) score++
+  if (len >= 12) score++
+  if (/[a-z]/.test(pw) && /[A-Z]/.test(pw)) score++
+  if (/\d/.test(pw)) score++
+  if (/[^a-zA-Z0-9]/.test(pw)) score++
+  if (score >= 4) return { level: 'strong' as const, label: '强' }
+  if (score >= 2) return { level: 'medium' as const, label: '中' }
+  return { level: 'weak' as const, label: '弱' }
+})
+
 async function submit() {
   if (!formRef.value) return
   await formRef.value.validate()
@@ -43,9 +59,25 @@ async function submit() {
         email: form.email,
         password: form.password,
       })
-      if (error) throw error
+      if (error) {
+        // 统一提示，不向用户泄露账号是否存在；邮箱未验证单独提示
+        if (/email.*confirm|confirm.*email/i.test(error.message)) {
+          ElMessage.warning('该邮箱尚未完成验证，请先通过邮箱验证后登录')
+        } else {
+          ElMessage.error('用户不存在或密码错误')
+        }
+        return
+      }
       ElMessage.success('登录成功')
     } else {
+      if (form.password.length < 6) {
+        ElMessage.warning('密码至少需要 6 位')
+        return
+      }
+      if (strength.value.level === 'weak') {
+        ElMessage.warning('密码强度较弱，建议至少 8 位并包含大小写字母与数字')
+        return
+      }
       const { data, error } = await supabase.auth.signUp({
         email: form.email,
         password: form.password,
@@ -104,6 +136,17 @@ async function enterDemo(role: 'admin' | 'player') {
         <el-form-item prop="password">
           <el-input v-model="form.password" type="password" placeholder="密码" show-password />
         </el-form-item>
+        <el-form-item v-if="mode === 'register'" class="strength-field">
+          <div v-if="form.password" class="strength">
+            <div class="strength-bar">
+              <span :class="['bar', strength.level]" />
+            </div>
+            <span :class="['strength-label', strength.level]">
+              密码强度：{{ strength.label }}
+              <template v-if="strength.level === 'weak'">（建议 8 位以上并包含大小写字母与数字）</template>
+            </span>
+          </div>
+        </el-form-item>
         <el-button
           type="primary"
           size="large"
@@ -152,5 +195,60 @@ async function enterDemo(role: 'admin' | 'player') {
 
 .demo-actions .el-button {
   flex: 1;
+}
+
+.strength-field {
+  margin-bottom: 2px;
+}
+
+.strength {
+  width: 100%;
+}
+
+.strength-bar {
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+  margin-bottom: 6px;
+}
+
+.strength-bar .bar {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.strength-bar .bar.weak {
+  width: 33%;
+  background: #f56c6c;
+}
+
+.strength-bar .bar.medium {
+  width: 66%;
+  background: #e6a23c;
+}
+
+.strength-bar .bar.strong {
+  width: 100%;
+  background: #67c23a;
+}
+
+.strength-label {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
+}
+
+.strength-label.weak {
+  color: #f56c6c;
+}
+
+.strength-label.medium {
+  color: #e6a23c;
+}
+
+.strength-label.strong {
+  color: #67c23a;
 }
 </style>
