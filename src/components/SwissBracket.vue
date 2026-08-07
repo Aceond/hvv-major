@@ -50,7 +50,7 @@ const standings = computed(() => {
 <template>
   <div class="swiss">
     <div class="swiss-header">
-      <span class="swiss-title">瑞士轮对阵图</span>
+      <span class="swiss-title">对阵图</span>
       <span class="swiss-stage">{{ stageName }}</span>
     </div>
 
