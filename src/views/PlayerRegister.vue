@@ -26,6 +26,9 @@ const form = reactive({
 
 const fileList = ref<UploadUserFile[]>([])
 const screenshots = ref<string[]>([])
+// 截图放大预览
+const previewVisible = ref(false)
+const previewIndex = ref(0)
 
 const MIN_SHOTS = 3
 const MAX_SHOTS = 5
@@ -97,6 +100,13 @@ function onUploadChange(_file: UploadFile, files: UploadFile[]) {
 
 function onUploadRemove(_file: UploadFile, files: UploadFile[]) {
   handleFiles(files)
+}
+
+/** 点击缩略图放大按钮：定位到对应截图并打开全屏查看器 */
+function onPreview(file: UploadFile) {
+  const idx = fileList.value.findIndex((f) => f.uid === file.uid)
+  previewIndex.value = idx >= 0 ? idx : 0
+  previewVisible.value = true
 }
 
 async function submit() {
@@ -303,11 +313,12 @@ onMounted(async () => {
               :limit="MAX_SHOTS"
               :on-change="onUploadChange"
               :on-remove="onUploadRemove"
+              :on-preview="onPreview"
             >
               <el-icon><Plus /></el-icon>
             </el-upload>
             <div class="form-tip">
-              上传最近 3-5 个赛季的段位/战绩截图（必传 {{ MIN_SHOTS }} 张，最多 {{ MAX_SHOTS }} 张），可一次框选多张，供管理员审核
+              上传最近 3-5 个赛季的段位/战绩截图（必传 {{ MIN_SHOTS }} 张，最多 {{ MAX_SHOTS }} 张），可一次框选多张，点击缩略图放大查看，供管理员审核
             </div>
           </div>
         </el-form-item>
@@ -319,6 +330,15 @@ onMounted(async () => {
         </el-form-item>
       </el-form>
     </el-card>
+
+    <!-- 截图放大查看器 -->
+    <el-image-viewer
+      v-if="previewVisible"
+      :url-list="screenshots"
+      :initial-index="previewIndex"
+      teleported
+      @close="previewVisible = false"
+    />
   </div>
 </template>
 
