@@ -4,6 +4,7 @@ import { ElMessage, type UploadFile, type UploadUserFile } from 'element-plus'
 import { Plus } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import type { ApplicationStatus, EmploymentStatus, EventItem } from '@/api/types'
+import { CS2_RANKS } from '@/api/types'
 import { listSignupEvents } from '@/api/event'
 import { listMyPlayerApplication, submitPlayerApplication } from '@/api/registration'
 
@@ -17,6 +18,7 @@ const form = reactive({
   eventId: '',
   pwUsername: '',
   displayName: '',
+  highestRank: '',
   employmentStatus: 'employed' as EmploymentStatus,
   location: '',
   employeeNo: '',
@@ -98,6 +100,7 @@ async function submit() {
         location: form.employmentStatus === 'employed' ? form.location : null,
         employeeNo: form.employmentStatus === 'employed' ? form.employeeNo : null,
       },
+      form.highestRank,
     )
     if (!app) {
       ElMessage.error('提交失败，请稍后重试')
@@ -124,6 +127,7 @@ onMounted(async () => {
     form.eventId = app.event_id ?? form.eventId
     form.pwUsername = app.pw_username
     form.displayName = app.display_name ?? ''
+    form.highestRank = app.highest_rank ?? ''
     form.employmentStatus = app.employment_status ?? 'employed'
     form.location = app.location ?? ''
     form.employeeNo = app.employee_no ?? ''
@@ -232,6 +236,17 @@ onMounted(async () => {
             maxlength="24"
           />
           <div class="form-tip">后台将按此用户名记录选手数据（2-24 位字母、数字或下划线）</div>
+        </el-form-item>
+        <el-form-item label="最高段位">
+          <el-select
+            v-model="form.highestRank"
+            clearable
+            placeholder="选择您最近 3 个赛季的最高段位（可选）"
+            style="width: 100%"
+          >
+            <el-option v-for="r in CS2_RANKS" :key="r" :label="r" :value="r" />
+          </el-select>
+          <div class="form-tip">自选的段位仅供管理员审核时参考，最终以管理员核验战绩截图后确认的为准</div>
         </el-form-item>
         <el-form-item label="赛季截图">
           <div class="upload-wrap">

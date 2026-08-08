@@ -27,7 +27,7 @@ function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
   return bytes.buffer
 }
 
-/** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，选择在职状态（在职需填驻地和工号），上传最近 3-5 个赛季的截图，提交后由管理员审核 */
+/** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，自选近 3 赛季最高段位（可选），选择在职状态（在职需填驻地和工号），上传最近 3-5 个赛季的截图，提交后由管理员审核 */
 export async function submitPlayerApplication(
   pwUsername: string,
   displayName: string,
@@ -38,6 +38,7 @@ export async function submitPlayerApplication(
     location: string | null
     employeeNo: string | null
   },
+  rank?: string,
 ): Promise<PlayerApplication | null> {
   if (!PW_RE.test(pwUsername)) {
     throw new Error('完美 ID 需为 2-24 位字母、数字或下划线')
@@ -54,6 +55,7 @@ export async function submitPlayerApplication(
   if (employment.status === 'employed' && !employment.employeeNo?.trim()) {
     throw new Error('在职状态请填写工号')
   }
+  const rankVal = rank?.trim() || null
   if (!isSupabaseConfigured || !supabase) {
     const me = mockPlayers.find((p) => p.id === 'demo-player')
     const app: PlayerApplication = {
@@ -63,6 +65,7 @@ export async function submitPlayerApplication(
       pw_username: pwUsername,
       display_name: displayName.trim(),
       nickname: me?.nickname ?? null,
+      highest_rank: rankVal,
       screenshots,
       employment_status: employment.status,
       location: employment.status === 'employed' ? employment.location?.trim() ?? null : null,
@@ -110,6 +113,7 @@ export async function submitPlayerApplication(
       event_id: eventId,
       pw_username: pwUsername,
       display_name: displayName.trim(),
+      highest_rank: rankVal,
       screenshots: urls,
       employment_status: employment.status,
       location: employment.status === 'employed' ? employment.location?.trim() ?? null : null,
