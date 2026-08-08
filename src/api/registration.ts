@@ -153,13 +153,19 @@ export async function listPlayerApplications(eventId?: string): Promise<PlayerAp
   return (data as PlayerApplication[]) ?? []
 }
 
-/** 审核个人注册申请：通过后写入选手资料（完美 ID / 昵称回填，角色置为 player）进入选手池 */
-export async function reviewPlayerApplication(id: string, status: ApplicationStatus) {
+/** 审核个人注册申请：通过后写入选手资料（完美 ID / 昵称回填，角色置为 player）进入选手池；rank 为近 3 赛季最高段位（管理员查看战绩截图后选择） */
+export async function reviewPlayerApplication(id: string, status: ApplicationStatus, rank?: string) {
+  const rankVal = rank?.trim() || null
   if (!isSupabaseConfigured || !supabase) {
     const app = demoApplications.find((a) => a.id === id)
     if (!app) return
     app.status = status
     app.reviewed_at = new Date().toISOString()
+    if (rankVal) {
+      app.highest_rank = rankVal
+      const me = mockPlayers.find((p) => p.id === app.profile_id)
+      if (me) me.highest_rank = rankVal
+    }
     if (status === 'approved') {
       const me = mockPlayers.find((p) => p.id === app.profile_id)
       if (me) {
@@ -190,10 +196,16 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
   }
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
-  // 先更新申请审核状态（核心，保证审核一定生效）
+  // 先更新申请审核状态（核心，保证审核一定生效）；管理员选定的段位一并记录到申请上
+  const reviewPatch: Record<string, unknown> = {
+    status,
+    reviewed_at: new Date().toISOString(),
+    reviewer_id: user.id,
+  }
+  if (rankVal) reviewPatch.highest_rank = rankVal
   const { error } = await supabase
     .from('player_applications')
-    .update({ status, reviewed_at: new Date().toISOString(), reviewer_id: user.id })
+    .update(reviewPatch)
     .eq('id', id)
   if (error) throw error
   // 通过时回填选手资料（完美 ID / 昵称回填）；已有 admin/caster 角色不降级，仅 player/null 置为 player 进入选手池
@@ -217,6 +229,8 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
         nickname: app.display_name ?? app.nickname ?? app.pw_username,
       }
       if (!keepRole) patch.role = 'player'
+      // 段位同步记录到选手信息表（profiles）
+      if (rankVal) patch.highest_rank = rankVal
       const { error: profErr } = await supabase
         .from('profiles')
         .update(patch)
@@ -224,6 +238,19 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
       if (profErr) console.warn('选手资料回填失败（不影响审核结果）：', profErr.message)
       // 初始化个人数据：在其报名赛事的各阶段补全 0 值统计行，使其直接显示在「个人数据 / 个人排行」列表
       await ensurePlayerStats(app.profile_id, app.event_id)
+    }
+  } else if (rankVal) {
+    // 拒绝时也记录段位到选手信息表（段位为客观信息，下次报名无需重新判定）
+    const { data: appData } = await supabase
+      .from('player_applications')
+      .select('profile_id')
+      .eq('id', id)
+      .single()
+    if (appData?.profile_id) {
+      await supabase
+        .from('profiles')
+        .update({ highest_rank: rankVal })
+        .eq('id', appData.profile_id)
     }
   }
 }
@@ -259,7 +286,7 @@ export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
   }
   let query = supabase
     .from('profiles')
-    .select('id, nickname, pw_username, team_members(team_id)')
+    .select('id, nickname, pw_username, highest_rank, team_members(team_id)')
     .eq('role', 'player')
     .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
@@ -270,6 +297,7 @@ export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
       id: p.id,
       nickname: p.nickname,
       pw_username: p.pw_username,
+      highest_rank: p.highest_rank ?? null,
       in_team: tm.length > 0,
       team_id: tm[0]?.team_id ?? null,
     }

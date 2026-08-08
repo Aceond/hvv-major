@@ -40,6 +40,8 @@ $$;
 alter table public.profiles add column if not exists account_status text not null default 'approved'
   check (account_status in ('pending', 'approved', 'rejected'));
 alter table public.profiles add column if not exists email text;
+-- 近 3 赛季最高段位（管理员审核选手注册时查看战绩截图后手动选择，记录在选手信息表）
+alter table public.profiles add column if not exists highest_rank text;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -74,6 +76,8 @@ alter table public.player_applications add column if not exists display_name tex
 alter table public.player_applications add column if not exists employment_status text check (employment_status in ('employed', 'unemployed'));
 alter table public.player_applications add column if not exists location text;
 alter table public.player_applications add column if not exists employee_no text;
+-- 近 3 赛季最高段位（管理员审核时选择，随申请一并记录）
+alter table public.player_applications add column if not exists highest_rank text;
 
 -- ============================================================
 -- 2. 组别（传奇组 / 大师组 / 挑战组，三个组别相互独立）

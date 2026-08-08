@@ -5,6 +5,16 @@ export type TeamStatus = 'pending' | 'approved' | 'rejected'
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected'
 export type EmploymentStatus = 'employed' | 'unemployed' // 在职 / 离职
 
+/** 完美对战平台段位（近 3 赛季最高段位，管理员审核时查看战绩截图后手动选择，从高到低） */
+export const CS2_RANKS = [
+  '魔王S', '钻石S', '黄金S', 'S',
+  '金A+', 'A+', 'A',
+  '金B+', 'B+', 'B',
+  '金C+', 'C+', 'C',
+  'D+', 'D',
+] as const
+export type Cs2Rank = (typeof CS2_RANKS)[number]
+
 /** 账号（profiles.account_status：管理员人工审核新注册账号） */
 export interface AccountItem {
   id: string
@@ -40,6 +50,7 @@ export interface Profile {
   nickname: string | null // 游戏昵称（个人选手注册时填写）
   pw_username: string | null // 完美 ID：完美对战平台的用户名（后台按用户名记录）
   role: Role
+  highest_rank?: string | null // 近 3 赛季最高段位（管理员审核时查看战绩截图后选择）
   created_at: string
 }
 
@@ -48,6 +59,7 @@ export interface PlayerItem {
   id: string
   nickname: string | null
   pw_username: string | null
+  highest_rank?: string | null // 近 3 赛季最高段位
   in_team: boolean // 是否已加入某支战队
   team_id: string | null // 所属战队（未入队为 null）
 }
@@ -64,6 +76,7 @@ export interface PlayerApplication {
   employment_status: EmploymentStatus | null // 在职状态（在职需填驻地与工号）
   location: string | null // 驻地（在职时必填）
   employee_no: string | null // 工号（在职时必填）
+  highest_rank?: string | null // 近 3 赛季最高段位（管理员审核时选择）
   status: ApplicationStatus
   review_note: string | null
   created_at: string

@@ -2,6 +2,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { ApplicationStatus, EventItem, PlayerApplication } from '@/api/types'
+import { CS2_RANKS } from '@/api/types'
 import { listEvents } from '@/api/event'
 import { listPlayerApplications, reviewPlayerApplication } from '@/api/admin'
 
@@ -10,6 +11,8 @@ const events = ref<EventItem[]>([])
 const loading = ref(false)
 const filter = ref<'all' | ApplicationStatus>('all')
 const currentEvent = ref('') // 赛事筛选：'' = 全部
+/** 待审核行管理员选定的近 3 赛季最高段位（key = 申请 id） */
+const rankDraft = ref<Record<string, string>>({})
 
 const filteredRows = computed(() =>
   rows.value.filter((a) =>
@@ -33,6 +36,10 @@ async function load() {
   try {
     rows.value = await listPlayerApplications(currentEvent.value || undefined)
     events.value = await listEvents()
+    // 重置段位草稿（以已记录段位回显）
+    rankDraft.value = Object.fromEntries(
+      rows.value.filter((a) => a.status === 'pending' && a.highest_rank).map((a) => [a.id, a.highest_rank as string]),
+    )
   } finally {
     loading.value = false
   }
@@ -45,9 +52,10 @@ function eventName(eventId: string | null) {
 async function decide(app: PlayerApplication, status: ApplicationStatus) {
   const action = status === 'approved' ? '通过' : '拒绝'
   const label = `${app.display_name || '未填写姓名'}（${app.pw_username}）`
+  const rank = rankDraft.value[app.id]
   try {
     await ElMessageBox.confirm(
-      `确认${action}「${label}」的个人注册申请吗？通过后将进入选手池。`,
+      `确认${action}「${label}」的个人注册申请吗？通过后将进入选手池。${rank ? `\n近 3 赛季最高段位：${rank}` : ''}`,
       '审核确认',
       { type: 'warning', confirmButtonText: action, cancelButtonText: '取消' },
     )
@@ -55,7 +63,7 @@ async function decide(app: PlayerApplication, status: ApplicationStatus) {
     return
   }
   try {
-    await reviewPlayerApplication(app.id, status)
+    await reviewPlayerApplication(app.id, status, rank)
   } catch (e: any) {
     ElMessage.error(e.message || '审核操作失败，请检查数据库权限')
     return
@@ -137,6 +145,24 @@ onMounted(load)
           </div>
         </template>
       </el-table-column>
+      <el-table-column label="近3赛季最高段位" min-width="150">
+        <template #default="{ row }">
+          <el-select
+            v-if="row.status === 'pending'"
+            v-model="rankDraft[row.id]"
+            placeholder="查看战绩后选择"
+            clearable
+            size="small"
+            style="width: 130px"
+          >
+            <el-option v-for="r in CS2_RANKS" :key="r" :label="r" :value="r" />
+          </el-select>
+          <el-tag v-else-if="row.highest_rank" size="small" type="warning" effect="plain">
+            {{ row.highest_rank }}
+          </el-tag>
+          <span v-else class="no-rank">未记录</span>
+        </template>
+      </el-table-column>
       <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag
@@ -204,6 +230,11 @@ onMounted(load)
 }
 
 .no-shot {
+  color: var(--cs2-text-muted);
+  font-size: 12px;
+}
+
+.no-rank {
   color: var(--cs2-text-muted);
   font-size: 12px;
 }
