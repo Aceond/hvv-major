@@ -301,10 +301,12 @@ onMounted(load)
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .event-filter {
   width: 200px;
+  flex-shrink: 0;
 }
 
 .member-table {

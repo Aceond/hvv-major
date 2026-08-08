@@ -166,10 +166,12 @@ onMounted(load)
   align-items: center;
   gap: 12px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
 }
 
 .event-filter {
   width: 220px;
+  flex-shrink: 0;
 }
 
 .done-text {

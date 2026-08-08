@@ -697,15 +697,19 @@ onMounted(load)
   justify-content: space-between;
   align-items: center;
   margin-bottom: 16px;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .filters {
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .filter-select {
   width: 220px;
+  flex-shrink: 0;
 }
 
 .stage-card {
