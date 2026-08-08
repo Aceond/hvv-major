@@ -20,9 +20,17 @@ const UPLOAD_TIMEOUT_MS = 60_000
 const fetchWithTimeout: typeof fetch = (input, init) => {
   const controller = new AbortController()
   const rawUrl = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
-  const isUpload =
-    rawUrl.includes('/storage/v1/object') && (init?.method === 'POST' || init?.method === 'PUT')
-  const timeoutMs = isUpload ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS
+  const method = init?.method ?? 'GET'
+  let bodySize = 0
+  if (typeof init?.body === 'string') bodySize = init.body.length
+  else if (init?.body instanceof ArrayBuffer) bodySize = init.body.byteLength
+  else if (ArrayBuffer.isView(init?.body)) bodySize = init.body.byteLength
+  // 请求体较大的请求（Storage 对象上传，或截图 data URL 随申请一并入库的大 JSON）放宽超时，
+  // 避免大请求在慢速网络上被 10s 兜底误杀导致 Failed to fetch
+  const isLarge =
+    (rawUrl.includes('/storage/v1/object') && (method === 'POST' || method === 'PUT')) ||
+    bodySize > 500_000
+  const timeoutMs = isLarge ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer))
 }
