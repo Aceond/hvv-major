@@ -88,6 +88,13 @@ export async function submitPlayerApplication(
   if (!user) {
     throw new Error('登录状态已失效，请重新登录后再提交')
   }
+  // 挂机/闲置后令牌可能已过期：Storage 校验 JWT 失败会返回 403 且不带 CORS 头（浏览器显示 No ACAO）。
+  // 上传前先主动刷新会话；若 refresh token 也已过期则只能重新登录。
+  try {
+    await supabase.auth.refreshSession()
+  } catch {
+    // 刷新失败不阻断，仍走上传流程，若仍 403 会提示重新登录
+  }
   // 截图上传到 Storage（player-screenshots 桶），失败的单张跳过（含超时等异常，不阻断提交）
   const urls: string[] = []
   let uploadErrMsg = ''
