@@ -38,13 +38,19 @@ function readAsDataUrl(file: File): Promise<string> {
   })
 }
 
+/** 版本号：防止一次多选多张时多次异步读取交错覆盖结果 */
+let fileReadSeq = 0
+
 async function handleFiles(files: UploadFile[]) {
+  const seq = ++fileReadSeq
   fileList.value = files
   const urls: string[] = []
   for (const f of files) {
-    if (f.raw) urls.push(await readAsDataUrl(f.raw))
+    if (!f.raw) continue
+    urls.push(await readAsDataUrl(f.raw))
   }
-  screenshots.value = urls
+  // 只保留最后一次读取结果，避免较早的异步读取晚返回时覆盖新选择
+  if (seq === fileReadSeq) screenshots.value = urls
 }
 
 function onUploadChange(_file: UploadFile, files: UploadFile[]) {
@@ -254,6 +260,7 @@ onMounted(async () => {
               v-model:file-list="fileList"
               :auto-upload="false"
               list-type="picture-card"
+              multiple
               accept="image/*"
               :limit="MAX_SHOTS"
               :on-change="onUploadChange"
@@ -262,7 +269,7 @@ onMounted(async () => {
               <el-icon><Plus /></el-icon>
             </el-upload>
             <div class="form-tip">
-              上传最近 3-5 个赛季的段位/战绩截图（必传 {{ MIN_SHOTS }} 张，最多 {{ MAX_SHOTS }} 张），供管理员审核
+              上传最近 3-5 个赛季的段位/战绩截图（必传 {{ MIN_SHOTS }} 张，最多 {{ MAX_SHOTS }} 张），可一次框选多张，供管理员审核
             </div>
           </div>
         </el-form-item>
