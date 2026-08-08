@@ -205,11 +205,15 @@ onMounted(load)
       <el-table-column type="expand">
         <template #default="{ row }">
           <el-table :data="membersMap[row.id] ?? []" size="small" class="member-table">
-            <el-table-column prop="nickname" label="选手姓名" min-width="120" />
-            <el-table-column prop="pw_username" label="完美 ID（用户名）" min-width="160" />
-            <el-table-column label="角色" width="80">
+            <el-table-column prop="nickname" label="选手姓名" min-width="92">
+              <template #default="{ row: m }">{{ m.nickname ?? '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="pw_username" label="完美 ID" min-width="104" />
+            <el-table-column label="角色" width="76">
               <template #default="{ row: m }">
                 <el-tag v-if="m.is_captain" size="small" type="warning">队长</el-tag>
+                <el-tag v-else-if="m.status === 'benched'" size="small" type="info">替补</el-tag>
+                <el-tag v-else size="small" effect="plain">队员</el-tag>
               </template>
             </el-table-column>
           </el-table>
@@ -301,11 +305,11 @@ onMounted(load)
       />
 
       <el-table :data="roster" stripe size="small">
-        <el-table-column prop="nickname" label="选手姓名" min-width="96">
+        <el-table-column prop="nickname" label="选手姓名" min-width="88">
           <template #default="{ row: m }">{{ m.nickname ?? '-' }}</template>
         </el-table-column>
-        <el-table-column prop="pw_username" label="完美 ID" min-width="112" />
-        <el-table-column label="角色" width="96">
+        <el-table-column prop="pw_username" label="完美 ID" min-width="104" />
+        <el-table-column label="角色" width="88">
           <template #default="{ row: m }">
             <el-select
               :model-value="memberRole(m)"
@@ -318,7 +322,7 @@ onMounted(load)
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="64">
+        <el-table-column label="操作" width="60">
           <template #default="{ row: m }">
             <el-button
               v-if="!m.is_captain"
