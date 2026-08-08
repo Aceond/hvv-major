@@ -81,6 +81,10 @@ insert into storage.buckets (id, name, public)
 values ('player-screenshots', 'player-screenshots', true)
 on conflict (id) do update set public = true;
 
+-- storage.objects 表级权限（RLS 策略之外必须的 grant，否则上传 403）
+grant select, insert, update, delete on storage.objects to authenticated;
+grant select on storage.objects to anon;
+
 -- 允许已登录用户上传到该桶
 drop policy if exists "player-screenshots-upload" on storage.objects;
 create policy "player-screenshots-upload" on storage.objects
