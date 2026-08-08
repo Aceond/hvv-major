@@ -222,6 +222,11 @@ create table if not exists public.sync_logs (
   created_at timestamptz not null default now()
 );
 
+-- 兼容旧库：sync_logs.match_id 补级联删除（老库已建表，create if not exists 不会重建 FK）
+alter table public.sync_logs drop constraint if exists sync_logs_match_id_fkey;
+alter table public.sync_logs add constraint sync_logs_match_id_fkey
+  foreign key (match_id) references public.matches (id) on delete cascade;
+
 -- ============================================================
 -- 6. 积分榜视图（按阶段 + 组别：胜=3分，参考胜场/地图差排序）
 -- ============================================================
