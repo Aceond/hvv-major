@@ -121,7 +121,7 @@ onMounted(async () => {
       </h1>
       <p class="hero-slogan">{{ config.brand_slogan }}</p>
       <div class="cta">
-        <el-button class="cta-primary" size="large" @click="router.push({ name: 'register' })">
+        <el-button class="cta-primary" size="large" @click="router.push({ name: 'player-register' })">
           立即报名
         </el-button>
         <el-button class="cta-ghost" size="large" @click="router.push({ name: 'standings' })">
