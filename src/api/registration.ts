@@ -90,6 +90,7 @@ export async function submitPlayerApplication(
   }
   // 截图上传到 Storage（player-screenshots 桶），失败的单张跳过（含超时等异常，不阻断提交）
   const urls: string[] = []
+  let uploadErrMsg = ''
   for (let i = 0; i < screenshots.length; i++) {
     try {
       const path = `${user.id}/${Date.now()}-${i}.png`
@@ -98,13 +99,18 @@ export async function submitPlayerApplication(
         .upload(path, dataUrlToArrayBuffer(screenshots[i]), { contentType: 'image/png' })
       if (!error) {
         urls.push(supabase.storage.from('player-screenshots').getPublicUrl(path).data.publicUrl)
+      } else if (!uploadErrMsg) {
+        uploadErrMsg = error.message
       }
-    } catch {
-      // 单张截图上传异常不阻断提交
+    } catch (e: any) {
+      if (!uploadErrMsg) uploadErrMsg = e?.message ?? '未知错误'
     }
   }
   if (urls.length === 0 && screenshots.length > 0) {
-    console.warn('赛季截图全部上传失败，请检查 Storage 桶 player-screenshots 是否存在')
+    // 截图是审核必需材料，全部上传失败时直接报错，避免提交一份无法审核的申请
+    throw new Error(
+      `赛季截图上传失败（${uploadErrMsg || '未知原因'}）。请确认 Supabase 已创建 player-screenshots 桶并放行上传权限后重试。`,
+    )
   }
   const { data, error: insertErr } = await supabase
     .from('player_applications')
