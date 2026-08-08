@@ -19,14 +19,6 @@ const demoApplications: PlayerApplication[] = []
 /** 完美 ID 校验：完美对战平台用户名（2-24 位字母/数字/下划线） */
 const PW_RE = /^[a-zA-Z0-9_]{2,24}$/
 
-function dataUrlToArrayBuffer(dataUrl: string): ArrayBuffer {
-  const base64 = dataUrl.split(',')[1] ?? ''
-  const bin = atob(base64)
-  const bytes = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  return bytes.buffer
-}
-
 /** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，自选近 3 赛季最高段位（可选），选择在职状态（在职需填驻地和工号），上传最近 3-5 个赛季的截图，提交后由管理员审核 */
 export async function submitPlayerApplication(
   pwUsername: string,
@@ -88,39 +80,8 @@ export async function submitPlayerApplication(
   if (!user) {
     throw new Error('登录状态已失效，请重新登录后再提交')
   }
-  // 挂机/闲置后令牌可能已过期：Storage 校验 JWT 失败会返回 403 且不带 CORS 头（浏览器显示 No ACAO）。
-  // 上传前先主动刷新会话；若 refresh token 也已过期则只能重新登录。
-  try {
-    await supabase.auth.refreshSession()
-  } catch {
-    // 刷新失败不阻断，仍走上传流程，若仍 403 会提示重新登录
-  }
-  // 截图上传到 Storage（player-screenshots 桶），失败的单张跳过（含超时等异常，不阻断提交）
-  const urls: string[] = []
-  let uploadErrMsg = ''
-  for (let i = 0; i < screenshots.length; i++) {
-    try {
-      const path = `${user.id}/${Date.now()}-${i}.jpg`
-      const { error } = await supabase.storage
-        .from('player-screenshots')
-        .upload(path, dataUrlToArrayBuffer(screenshots[i]), { contentType: 'image/jpeg' })
-      if (!error) {
-        urls.push(supabase.storage.from('player-screenshots').getPublicUrl(path).data.publicUrl)
-      } else if (!uploadErrMsg) {
-        uploadErrMsg = error.message
-      }
-    } catch (e: any) {
-      if (!uploadErrMsg) uploadErrMsg = e?.message ?? '未知错误'
-    }
-  }
-  if (urls.length === 0 && screenshots.length > 0) {
-    // 截图是审核必需材料，全部上传失败时直接报错，避免提交一份无法审核的申请
-    throw new Error(
-      `赛季截图上传失败（${uploadErrMsg || '未知原因'}）。` +
-        'failed to fetch 多为网络/跨域或上传超时：请确认网络正常、' +
-        'Supabase 项目 API 的 CORS 允许本站域名、已创建 player-screenshots 桶并放行上传权限后重试。',
-    )
-  }
+  // 截图以压缩后的 data URL 直接存入申请记录（screenshots 为 jsonb），不依赖 Storage 桶配置，保证上传稳定。
+  // 注册页已先行压缩（最长边 1920px / JPEG），单张约几百 KB；后台审核与前台展示均直接读取。
   const { data, error: insertErr } = await supabase
     .from('player_applications')
     .insert({
@@ -129,7 +90,7 @@ export async function submitPlayerApplication(
       pw_username: pwUsername,
       display_name: displayName.trim(),
       highest_rank: rankVal,
-      screenshots: urls,
+      screenshots,
       employment_status: employment.status,
       location: employment.status === 'employed' ? employment.location?.trim() ?? null : null,
       employee_no: employment.status === 'employed' ? employment.employeeNo?.trim() ?? null : null,
