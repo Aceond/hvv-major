@@ -215,7 +215,12 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
         .from('profiles')
         .update(patch)
         .eq('id', app.profile_id)
-      if (profErr) console.warn('选手资料回填失败（不影响审核结果）：', profErr.message)
+      if (profErr) {
+        // 回填失败意味着选手不会进入选手池，必须显式报错，避免「已通过但池中查不到」
+        throw new Error(
+          `申请已通过，但选手资料回填失败（选手池将查不到该选手）：${profErr.message}。请确认已执行 grant update on public.profiles to authenticated 后重新审核。`,
+        )
+      }
       // 初始化个人数据：在其报名赛事的各阶段补全 0 值统计行，使其直接显示在「个人数据 / 个人排行」列表
       await ensurePlayerStats(app.profile_id, app.event_id)
     }

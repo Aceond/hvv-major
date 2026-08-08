@@ -612,6 +612,8 @@ grant select on public.profiles, public.groups, public.teams, public.team_member
   public.stages, public.matches, public.match_maps, public.match_casters, public.standings,
   public.team_stats, public.player_stats, public.site_config, public.events
   to anon, authenticated;
+-- 审核通过时回填选手资料（pw_username/nickname/角色）需要 profiles 的 UPDATE 权限，否则选手池为空
+grant update on public.profiles to authenticated;
 grant select on public.sync_logs to authenticated;
 grant select on public.player_applications to authenticated;
 
