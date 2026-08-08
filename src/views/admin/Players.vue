@@ -9,22 +9,29 @@ const rows = ref<PlayerApplication[]>([])
 const events = ref<EventItem[]>([])
 const loading = ref(false)
 const filter = ref<'all' | ApplicationStatus>('all')
+const currentEvent = ref('') // 赛事筛选：'' = 全部
 
 const filteredRows = computed(() =>
-  filter.value === 'all' ? rows.value : rows.value.filter((a) => a.status === filter.value),
+  rows.value.filter((a) =>
+    (filter.value === 'all' ? true : a.status === filter.value) &&
+    (!currentEvent.value || a.event_id === currentEvent.value),
+  ),
 )
 
-const counts = computed(() => ({
-  all: rows.value.length,
-  pending: rows.value.filter((a) => a.status === 'pending').length,
-  approved: rows.value.filter((a) => a.status === 'approved').length,
-  rejected: rows.value.filter((a) => a.status === 'rejected').length,
-}))
+const counts = computed(() => {
+  const inEvent = rows.value.filter((a) => !currentEvent.value || a.event_id === currentEvent.value)
+  return {
+    all: inEvent.length,
+    pending: inEvent.filter((a) => a.status === 'pending').length,
+    approved: inEvent.filter((a) => a.status === 'approved').length,
+    rejected: inEvent.filter((a) => a.status === 'rejected').length,
+  }
+})
 
 async function load() {
   loading.value = true
   try {
-    rows.value = await listPlayerApplications()
+    rows.value = await listPlayerApplications(currentEvent.value || undefined)
     events.value = await listEvents()
   } finally {
     loading.value = false
@@ -64,12 +71,29 @@ onMounted(load)
   <div>
     <h2>个人选手审核</h2>
 
-    <el-radio-group v-model="filter" class="filters">
-      <el-radio-button value="all">全部（{{ counts.all }}）</el-radio-button>
-      <el-radio-button value="pending">待审核（{{ counts.pending }}）</el-radio-button>
-      <el-radio-button value="approved">已通过（{{ counts.approved }}）</el-radio-button>
-      <el-radio-button value="rejected">已拒绝（{{ counts.rejected }}）</el-radio-button>
-    </el-radio-group>
+    <div class="filters-bar">
+      <el-radio-group v-model="filter">
+        <el-radio-button value="all">全部（{{ counts.all }}）</el-radio-button>
+        <el-radio-button value="pending">待审核（{{ counts.pending }}）</el-radio-button>
+        <el-radio-button value="approved">已通过（{{ counts.approved }}）</el-radio-button>
+        <el-radio-button value="rejected">已拒绝（{{ counts.rejected }}）</el-radio-button>
+      </el-radio-group>
+
+      <el-select
+        v-model="currentEvent"
+        placeholder="全部赛事"
+        clearable
+        class="event-filter"
+        @change="load"
+      >
+        <el-option
+          v-for="e in events"
+          :key="e.id"
+          :label="`${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`"
+          :value="e.id"
+        />
+      </el-select>
+    </div>
 
     <el-table v-loading="loading" :data="filteredRows" stripe empty-text="暂无个人注册申请">
       <el-table-column prop="display_name" label="选手姓名" min-width="110">
@@ -137,8 +161,15 @@ onMounted(load)
 </template>
 
 <style scoped>
-.filters {
+.filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 16px;
+}
+
+.event-filter {
+  width: 220px;
 }
 
 .done-text {

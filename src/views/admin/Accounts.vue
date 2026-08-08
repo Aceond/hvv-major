@@ -2,7 +2,8 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { AccountItem, ApplicationStatus } from '@/api/types'
-import { listAccounts, reviewAccount } from '@/api/admin'
+import { ROLE_LABEL } from '@/api/types'
+import { listAccounts, reviewAccount, setAccountRole } from '@/api/admin'
 
 const rows = ref<AccountItem[]>([])
 const loading = ref(false)
@@ -50,6 +51,29 @@ async function decide(row: AccountItem, status: ApplicationStatus) {
   load()
 }
 
+/** 切换账号角色（设为解说 / 设回选手；管理员账号不可改） */
+async function changeRole(row: AccountItem, role: 'caster' | 'player') {
+  const label = row.email || row.username || '未命名账号'
+  const roleName = ROLE_LABEL[role]
+  try {
+    await ElMessageBox.confirm(`确认将「${label}」的角色设为「${roleName}」吗？`, '设置角色', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  try {
+    await setAccountRole(row.id, role)
+  } catch (e: any) {
+    ElMessage.error(e.message || '设置角色失败')
+    return
+  }
+  ElMessage.success(`已将「${label}」设为${roleName}`)
+  load()
+}
+
 onMounted(load)
 </script>
 
@@ -81,8 +105,14 @@ onMounted(load)
       </el-table-column>
       <el-table-column label="角色" width="90">
         <template #default="{ row }">
-          <el-tag v-if="row.role === 'admin'" size="small" type="danger" effect="plain">管理员</el-tag>
-          <el-tag v-else-if="row.role === 'player'" size="small" effect="plain">选手</el-tag>
+          <el-tag
+            v-if="row.role"
+            size="small"
+            :type="row.role === 'admin' ? 'danger' : row.role === 'caster' ? 'warning' : 'info'"
+            effect="plain"
+          >
+            {{ ROLE_LABEL[row.role] }}
+          </el-tag>
           <span v-else>-</span>
         </template>
       </el-table-column>
@@ -98,13 +128,33 @@ onMounted(load)
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="注册时间" min-width="150" />
-      <el-table-column label="操作" width="150">
+      <el-table-column label="操作" width="210">
         <template #default="{ row }">
           <template v-if="row.account_status === 'pending'">
             <el-button size="small" type="success" @click="decide(row, 'approved')">通过</el-button>
             <el-button size="small" type="danger" @click="decide(row, 'rejected')">拒绝</el-button>
           </template>
-          <span v-else class="done-text">已处理</span>
+          <template v-else>
+            <template v-if="row.role !== 'admin'">
+              <el-button
+                v-if="row.role !== 'caster'"
+                size="small"
+                type="warning"
+                plain
+                @click="changeRole(row, 'caster')"
+              >
+                设为解说
+              </el-button>
+              <el-button
+                v-if="row.role === 'caster'"
+                size="small"
+                @click="changeRole(row, 'player')"
+              >
+                设为选手
+              </el-button>
+            </template>
+            <span v-else class="done-text">管理员</span>
+          </template>
         </template>
       </el-table-column>
     </el-table>

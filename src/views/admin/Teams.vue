@@ -50,12 +50,15 @@ function eventName(eventId: string | null) {
   return events.value.find((e) => e.id === eventId)?.name ?? '未指定赛事'
 }
 
-const counts = computed(() => ({
-  all: rows.value.length,
-  pending: rows.value.filter((t) => t.status === 'pending').length,
-  approved: rows.value.filter((t) => t.status === 'approved').length,
-  rejected: rows.value.filter((t) => t.status === 'rejected').length,
-}))
+const counts = computed(() => {
+  const inEvent = rows.value.filter((t) => !currentEvent.value || t.event_id === currentEvent.value)
+  return {
+    all: inEvent.length,
+    pending: inEvent.filter((t) => t.status === 'pending').length,
+    approved: inEvent.filter((t) => t.status === 'approved').length,
+    rejected: inEvent.filter((t) => t.status === 'rejected').length,
+  }
+})
 
 async function load() {
   loading.value = true
@@ -147,22 +150,24 @@ onMounted(load)
   <div>
     <h2>战队报名审核</h2>
 
-    <el-radio-group v-model="filter" class="filters" @change="load">
-      <el-radio-button value="all">全部（{{ counts.all }}）</el-radio-button>
-      <el-radio-button value="pending">待审核（{{ counts.pending }}）</el-radio-button>
-      <el-radio-button value="approved">已通过（{{ counts.approved }}）</el-radio-button>
-      <el-radio-button value="rejected">已拒绝（{{ counts.rejected }}）</el-radio-button>
-    </el-radio-group>
+    <div class="filters-bar">
+      <el-radio-group v-model="filter" @change="load">
+        <el-radio-button value="all">全部（{{ counts.all }}）</el-radio-button>
+        <el-radio-button value="pending">待审核（{{ counts.pending }}）</el-radio-button>
+        <el-radio-button value="approved">已通过（{{ counts.approved }}）</el-radio-button>
+        <el-radio-button value="rejected">已拒绝（{{ counts.rejected }}）</el-radio-button>
+      </el-radio-group>
 
-    <el-select
-      v-model="currentEvent"
-      placeholder="按赛事筛选"
-      clearable
-      class="event-filter"
-      @change="load"
-    >
-      <el-option v-for="e in events" :key="e.id" :label="e.name" :value="e.id" />
-    </el-select>
+      <el-select
+        v-model="currentEvent"
+        placeholder="全部赛事"
+        clearable
+        class="event-filter"
+        @change="load"
+      >
+        <el-option v-for="e in events" :key="e.id" :label="e.name" :value="e.id" />
+      </el-select>
+    </div>
 
     <el-table v-loading="loading" :data="filteredRows" stripe>
       <el-table-column type="expand">
@@ -291,12 +296,14 @@ onMounted(load)
 </template>
 
 <style scoped>
-.filters {
+.filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-bottom: 16px;
 }
 
 .event-filter {
-  margin: 0 0 16px 12px;
   width: 200px;
 }
 

@@ -9,7 +9,7 @@ export interface Profile {
   username: string | null
   nickname: string | null
   pw_username: string | null
-  role: 'admin' | 'player' | null
+  role: 'admin' | 'caster' | 'player' | null
 }
 
 export const useAuthStore = defineStore('auth', () => {
@@ -21,6 +21,7 @@ export const useAuthStore = defineStore('auth', () => {
 
   const isLoggedIn = computed(() => user.value !== null)
   const isAdmin = computed(() => profile.value?.role === 'admin')
+  const isCaster = computed(() => profile.value?.role === 'caster')
 
   // 账号是否被审核拦截（待审核 / 被拒的新账号；管理员与已通过账号不受限）
   const reviewBlocked = computed(
@@ -68,7 +69,13 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /** 演示模式登录：未配置 Supabase 时以本地身份进入，便于预览页面 */
-  async function demoLogin(role: 'admin' | 'player') {
+  async function demoLogin(role: 'admin' | 'caster' | 'player') {
+    const DEMO_PROFILE: Record<string, { username: string; nickname: string; pw: string; status: ApplicationStatus | null }> = {
+      admin: { username: '演示管理员', nickname: 'KillerAce', pw: 'killerace', status: null },
+      caster: { username: '演示解说', nickname: '赛事解说', pw: 'castor2026', status: 'approved' },
+      player: { username: '演示选手', nickname: '炎龙', pw: 'yanlong', status: 'approved' },
+    }
+    const d = DEMO_PROFILE[role]
     user.value = {
       id: `demo-${role}`,
       email: `demo-${role}@hvv-major.local`,
@@ -79,13 +86,13 @@ export const useAuthStore = defineStore('auth', () => {
     } as User
     profile.value = {
       id: `demo-${role}`,
-      username: role === 'admin' ? '演示管理员' : '演示选手',
-      nickname: role === 'admin' ? 'KillerAce' : '炎龙',
-      pw_username: role === 'admin' ? 'killerace' : 'yanlong',
+      username: d.username,
+      nickname: d.nickname,
+      pw_username: d.pw,
       role,
     }
-    // 演示选手视为已通过审核，演示管理员不受审核限制
-    accountStatus.value = role === 'admin' ? null : 'approved'
+    // 演示解说/选手视为已通过审核，演示管理员不受审核限制
+    accountStatus.value = d.status
   }
 
   async function signOut() {
@@ -102,6 +109,7 @@ export const useAuthStore = defineStore('auth', () => {
     accountStatus,
     isLoggedIn,
     isAdmin,
+    isCaster,
     reviewBlocked,
     refresh,
     loadAccountStatus,

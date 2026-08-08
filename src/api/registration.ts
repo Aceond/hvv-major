@@ -2,8 +2,16 @@
 // 流程：个人提交注册申请（完美 ID + 最近 3-5 赛季截图）→ 管理员审核通过后进入选手池 → 队长创建战队时从选手池中选择队员
 // 未配置 Supabase（演示模式）时返回 mock 数据，配置密钥并执行 schema.sql 后为真实调用。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
-import { mockMembers, mockPlayers, mockTeams } from '@/mock/data'
-import type { ApplicationStatus, EmploymentStatus, PlayerApplication, PlayerItem, Team, TeamMember } from './types'
+import { mockMembers, mockPlayerStats, mockPlayers, mockStages, mockTeams } from '@/mock/data'
+import type {
+  ApplicationStatus,
+  EmploymentStatus,
+  PlayerApplication,
+  PlayerItem,
+  Team,
+  TeamMember,
+} from './types'
+import { listStages } from './match'
 
 // 演示模式下的注册申请（内存存储，页面刷新后清空；真实环境存 player_applications 表）
 const demoApplications: PlayerApplication[] = []
@@ -119,13 +127,15 @@ export async function listMyPlayerApplication(): Promise<PlayerApplication | nul
   return (data as PlayerApplication) ?? null
 }
 
-/** 全部注册申请（后台审核用，最新在前） */
-export async function listPlayerApplications(): Promise<PlayerApplication[]> {
-  if (!isSupabaseConfigured || !supabase) return [...demoApplications].reverse()
-  const { data } = await supabase
-    .from('player_applications')
-    .select('*')
-    .order('created_at', { ascending: false })
+/** 全部注册申请（后台审核用，最新在前；可按赛事过滤） */
+export async function listPlayerApplications(eventId?: string): Promise<PlayerApplication[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    const list = eventId ? demoApplications.filter((a) => a.event_id === eventId) : demoApplications
+    return [...list].reverse()
+  }
+  let query = supabase.from('player_applications').select('*')
+  if (eventId) query = query.eq('event_id', eventId)
+  const { data } = await query.order('created_at', { ascending: false })
   return (data as PlayerApplication[]) ?? []
 }
 
@@ -142,6 +152,25 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
         me.pw_username = app.pw_username
         me.nickname = app.display_name ?? me.nickname ?? app.pw_username
       }
+      // 初始化个人数据：在其报名赛事的各阶段补全 0 值统计行（演示模式写内存 mock，使其直接进入个人数据/排行）
+      const stages = mockStages.filter((s) => !app.event_id || s.event_id === app.event_id)
+      for (const s of stages) {
+        if (mockPlayerStats.some((x) => x.player_id === app.profile_id && x.stage_id === s.id)) continue
+        mockPlayerStats.push({
+          player_id: app.profile_id,
+          player_name: app.display_name ?? me?.nickname ?? app.pw_username,
+          pw_username: app.pw_username,
+          team_id: null,
+          team_name: '未入队',
+          stage_id: s.id,
+          stage_name: s.name,
+          group_id: null,
+          group_name: null,
+          we: 0, rating_pro: 0, win_rate: 0, kd: 0, matches: 0, hs_rate: 0,
+          kpr: 0, dpr: 0, adr: 0,
+          total_kills: 0, total_deaths: 0, total_assists: 0, fpr: 0, awp_kpr: 0,
+        })
+      }
     }
     return
   }
@@ -153,7 +182,7 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
     .update({ status, reviewed_at: new Date().toISOString(), reviewer_id: user.id })
     .eq('id', id)
   if (error) throw error
-  // 通过时回填选手资料（完美 ID / 昵称回填，角色置为 player）；失败不阻断审核
+  // 通过时回填选手资料（完美 ID / 昵称回填）；已有 admin/caster 角色不降级，仅 player/null 置为 player 进入选手池
   if (status === 'approved') {
     const { data, error: selErr } = await supabase
       .from('player_applications')
@@ -163,13 +192,44 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
     if (selErr) throw selErr
     const app = data as PlayerApplication | null
     if (app) {
+      const { data: prof } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', app.profile_id)
+        .maybeSingle()
+      const keepRole = prof?.role === 'admin' || prof?.role === 'caster'
+      const patch: Record<string, unknown> = {
+        pw_username: app.pw_username,
+        nickname: app.display_name ?? app.nickname ?? app.pw_username,
+      }
+      if (!keepRole) patch.role = 'player'
       const { error: profErr } = await supabase
         .from('profiles')
-        .update({ pw_username: app.pw_username, nickname: app.display_name ?? app.nickname ?? app.pw_username, role: 'player' })
+        .update(patch)
         .eq('id', app.profile_id)
       if (profErr) console.warn('选手资料回填失败（不影响审核结果）：', profErr.message)
+      // 初始化个人数据：在其报名赛事的各阶段补全 0 值统计行，使其直接显示在「个人数据 / 个人排行」列表
+      await ensurePlayerStats(app.profile_id, app.event_id)
     }
   }
+}
+
+/** 审核通过后初始化个人数据：为该选手在其报名赛事的每个阶段补一行全 0 统计（已存在则跳过） */
+async function ensurePlayerStats(profileId: string, eventId: string | null) {
+  if (!supabase) return
+  const stages = await listStages(eventId ?? undefined)
+  const rows = stages.map((s) => ({
+    profile_id: profileId,
+    stage_id: s.id,
+    we: 0, rating_pro: 0, win_rate: 0, kd: 0, matches: 0, hs_rate: 0,
+    kpr: 0, dpr: 0, adr: 0,
+    total_kills: 0, total_deaths: 0, total_assists: 0, fpr: 0, awp_kpr: 0,
+  }))
+  if (rows.length === 0) return
+  const { error } = await supabase
+    .from('player_stats')
+    .upsert(rows, { onConflict: 'profile_id,stage_id', ignoreDuplicates: true })
+  if (error) console.warn('选手个人数据初始化失败（不影响审核结果）：', error.message)
 }
 
 /** 选手池（仅完成个人注册审核通过的选手，可按完美 ID/姓名搜索；in_team 表示已加入战队，不可再选） */
@@ -190,12 +250,16 @@ export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
     .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
   const { data } = await query
-  return ((data ?? []) as any[]).map((p) => ({
-    id: p.id,
-    nickname: p.nickname,
-    pw_username: p.pw_username,
-    in_team: (p.team_members?.length ?? 0) > 0,
-  }))
+  return ((data ?? []) as any[]).map((p) => {
+    const tm = (p.team_members ?? []) as Array<{ team_id: string }>
+    return {
+      id: p.id,
+      nickname: p.nickname,
+      pw_username: p.pw_username,
+      in_team: tm.length > 0,
+      team_id: tm[0]?.team_id ?? null,
+    }
+  })
 }
 
 /**

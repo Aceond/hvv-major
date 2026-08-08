@@ -5,18 +5,20 @@ import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
 import { sendPasswordReset, siteUrl } from '@/api/auth'
+import { useRateLimit } from '@/composables/useRateLimit'
 
 const router = useRouter()
 const auth = useAuthStore()
 
 const mode = ref<'login' | 'register'>('login')
 const formRef = ref<FormInstance>()
-const submitting = ref(false)
+// 登录/注册用同一限流：按邮箱做本地计数 + 指数退避，后端同时做真实拦截（见 SQL 脚本）
+const { submitting, submit: limitedSubmit, reset } = useRateLimit('auth:login-register', 5)
 
 // 忘记密码
 const forgotDialog = ref(false)
 const forgotEmail = ref('')
-const forgotSubmitting = ref(false)
+const { submitting: forgotSubmitting, submit: limitedForgotSubmit } = useRateLimit('auth:forgot', 4)
 
 const form = reactive({
   email: '',
@@ -52,98 +54,102 @@ const strength = computed(() => {
 })
 
 async function submit() {
-  if (submitting.value) return
   if (!formRef.value) return
   await formRef.value.validate()
   if (!isSupabaseConfigured || !supabase) {
     ElMessage.warning('未配置 Supabase，请使用下方演示身份进入')
     return
   }
-  submitting.value = true
+  const client = supabase // 闭包内 null 收窄
   try {
-    if (mode.value === 'login') {
-      const { error } = await supabase.auth.signInWithPassword({
-        email: form.email,
-        password: form.password,
-      })
-      if (error) {
-        // 统一提示，不向用户泄露账号是否存在；邮箱未验证单独提示
-        if (/email.*confirm|confirm.*email/i.test(error.message)) {
-          ElMessage.warning('该邮箱尚未完成验证，请先通过邮箱验证后登录')
-        } else {
-          ElMessage.error('用户不存在或密码错误')
+    await limitedSubmit(async () => {
+      if (mode.value === 'login') {
+        const { error } = await client.auth.signInWithPassword({
+          email: form.email,
+          password: form.password,
+        })
+        if (error) {
+          if (/email.*confirm|confirm.*email/i.test(error.message)) {
+            ElMessage.warning('该邮箱尚未完成验证，请先通过邮箱验证后登录')
+          } else {
+            ElMessage.error('用户不存在或密码错误')
+          }
+          throw error // 让限流把本次记作失败，启用指数退避
         }
-        return
-      }
-      form.password = '' // 成功后清空，避免密码残留在内存/DevTools 中
-      ElMessage.success('登录成功')
-    } else {
-      if (form.password.length < 6) {
-        ElMessage.warning('密码至少需要 6 位')
-        return
-      }
-      if (strength.value.level === 'weak') {
-        ElMessage.warning('密码强度较弱，建议至少 8 位并包含大小写字母与数字')
-        return
-      }
-      const { data, error } = await supabase.auth.signUp({
-        email: form.email,
-        password: form.password,
-        options: {
-          data: { username: form.username },
-          // 显式指定验证邮件回调地址，避免受 Supabase 控制台 Site URL 配置影响
-          emailRedirectTo: siteUrl(),
-        },
-      })
-      if (error) throw error
-      // 未开启「Confirm email」时 signUp 直接返回 session（注册即登录）；开启后需先验证邮件
-      if (data.session) {
-        form.password = '' // 成功后清空，避免密码残留在内存/DevTools 中
-        ElMessage.success('注册成功，已自动登录')
-      } else {
         form.password = ''
-        ElMessage.success('注册成功！请查收邮箱中的验证邮件，点击邮件内链接完成验证后即可登录（如未收到请检查垃圾邮件）。')
-        return
+        ElMessage.success('登录成功')
+      } else {
+        if (form.password.length < 6) {
+          ElMessage.warning('密码至少需要 6 位')
+          return
+        }
+        if (strength.value.level === 'weak') {
+          ElMessage.warning('密码强度较弱，建议至少 8 位并包含大小写字母与数字')
+          return
+        }
+        const { data, error } = await client.auth.signUp({
+          email: form.email,
+          password: form.password,
+          options: {
+            data: { username: form.username },
+            emailRedirectTo: siteUrl(),
+          },
+        })
+        if (error) throw error
+        if (data.session) {
+          form.password = ''
+          ElMessage.success('注册成功，已自动登录')
+        } else {
+          form.password = ''
+          ElMessage.success('注册成功！请查收邮箱中的验证邮件，点击邮件内链接完成验证后即可登录（如未收到请检查垃圾邮件）。')
+          return
+        }
       }
-    }
-    await auth.refresh()
-    router.push({ name: 'home' })
+      await auth.refresh()
+      reset() // 成功后清掉失败计数，下一次登录不受退避影响
+      router.push({ name: 'home' })
+    })
   } catch (e: any) {
-    ElMessage.error(e.message || '操作失败')
-  } finally {
-    submitting.value = false
+    if (e?.message && /操作过于频繁/.test(e.message)) {
+      ElMessage.error(e.message)
+    } else if (e?.message) {
+      // 其它错误已在分支内单独提示，这里只兜底
+    }
   }
 }
 
 /** 演示模式：以指定角色直接进入，便于预览页面效果 */
-async function enterDemo(role: 'admin' | 'player') {
+async function enterDemo(role: 'admin' | 'caster' | 'player') {
   await auth.demoLogin(role)
-  ElMessage.success(`已进入演示模式（${role === 'admin' ? '管理员' : '选手'}）`)
+  const label = role === 'admin' ? '管理员' : role === 'caster' ? '解说' : '选手'
+  ElMessage.success(`已进入演示模式（${label}）`)
   router.push(role === 'admin' ? { name: 'admin-dashboard' } : { name: 'home' })
 }
 
 async function sendReset() {
-  if (forgotSubmitting.value) return
   if (!forgotEmail.value.trim()) {
     ElMessage.warning('请输入注册邮箱')
     return
   }
-  forgotSubmitting.value = true
   try {
-    const res = await sendPasswordReset(forgotEmail.value.trim())
-    if (res.demo) {
-      ElMessage.warning('未配置 Supabase，无法发送重置邮件')
-      return
+    await limitedForgotSubmit(async () => {
+      const res = await sendPasswordReset(forgotEmail.value.trim())
+      if (res.demo) {
+        ElMessage.warning('未配置 Supabase，无法发送重置邮件')
+        return
+      }
+      if (res.error) {
+        ElMessage.error(res.error.message)
+        throw res.error
+      }
+      forgotDialog.value = false
+      forgotEmail.value = ''
+      ElMessage.success('重置链接已发送，请查收邮件（若该邮箱已注册）')
+    })
+  } catch (e: any) {
+    if (e?.message && /操作过于频繁/.test(e.message)) {
+      ElMessage.error(e.message)
     }
-    if (res.error) {
-      ElMessage.error(res.error.message)
-      return
-    }
-    forgotDialog.value = false
-    forgotEmail.value = ''
-    ElMessage.success('重置链接已发送，请查收邮件（若该邮箱已注册）')
-  } finally {
-    forgotSubmitting.value = false
   }
 }
 </script>
@@ -222,6 +228,7 @@ async function sendReset() {
         <div class="demo-actions">
           <el-button type="primary" plain @click="enterDemo('admin')">以管理员身份进入</el-button>
           <el-button type="success" plain @click="enterDemo('player')">以选手身份进入</el-button>
+          <el-button type="warning" plain @click="enterDemo('caster')">以解说身份进入</el-button>
         </div>
       </template>
     </el-card>

@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoCamera, Link } from '@element-plus/icons-vue'
+import { VideoCamera, Link, Microphone } from '@element-plus/icons-vue'
 import SwissBracket from '@/components/SwissBracket.vue'
-import type { EventItem, Group, Match, MatchMedia, MediaKind, Stage } from '@/api/types'
+import type { EventItem, Group, Match, MatchCaster, MatchMedia, MediaKind, Stage } from '@/api/types'
 import { MATCH_STATUS_LABEL, MEDIA_KIND_LABEL, STAGE_STATUS_LABEL } from '@/api/types'
 import { listGroups, listMatches, listStages } from '@/api/match'
 import { listEvents } from '@/api/event'
 import { addMatchMedia, listAllMatchMedia, removeMatchMedia } from '@/api/media'
+import { addMatchCaster, listAllMatchCasters, removeMatchCaster } from '@/api/caster'
 import { useAuthStore } from '@/stores/auth'
 
 const auth = useAuthStore()
@@ -24,6 +25,8 @@ const viewMode = ref<'list' | 'bracket'>('list')
 
 // 媒体链接：按比赛分组（matchId -> MatchMedia[]）
 const mediaMap = ref<Record<string, MatchMedia[]>>({})
+// 解说名单：按比赛分组（matchId -> MatchCaster[]）
+const castersMap = ref<Record<string, MatchCaster[]>>({})
 
 // 登记媒体对话框
 const dialogVisible = ref(false)
@@ -35,12 +38,22 @@ const mediaForm = reactive<{ kind: MediaKind; label: string; url: string }>({
   url: '',
 })
 
+// 解说对话框
+const casterDialogVisible = ref(false)
+const casterDialogMatch = ref<Match | null>(null)
+const casterList = ref<MatchCaster[]>([])
+const casterInput = ref('')
+
 const currentStageName = computed(
   () => stages.value.find((s) => s.id === currentStage.value)?.name ?? '',
 )
 
 function mediaOf(match: Match): MatchMedia[] {
   return mediaMap.value[match.id] ?? []
+}
+
+function castersOf(match: Match): MatchCaster[] {
+  return castersMap.value[match.id] ?? []
 }
 
 onMounted(async () => {
@@ -68,6 +81,7 @@ async function loadMatches() {
     }
     matches.value = await listMatches(currentStage.value)
     await loadMedia()
+    await loadCasters()
   } finally {
     loading.value = false
   }
@@ -77,6 +91,14 @@ async function loadMedia() {
   const all = await listAllMatchMedia()
   mediaMap.value = all.reduce<Record<string, MatchMedia[]>>((acc, m) => {
     ;(acc[m.match_id] ??= []).push(m)
+    return acc
+  }, {})
+}
+
+async function loadCasters() {
+  const all = await listAllMatchCasters()
+  castersMap.value = all.reduce<Record<string, MatchCaster[]>>((acc, c) => {
+    ;(acc[c.match_id] ??= []).push(c)
     return acc
   }, {})
 }
@@ -130,6 +152,53 @@ async function removeMedia(item: MatchMedia) {
   const list = mediaMap.value[item.match_id]
   if (list) mediaMap.value[item.match_id] = list.filter((x) => x.id !== item.id)
   ElMessage.success('已删除')
+}
+
+// ---------------- 解说管理 ----------------
+function openCasterDialog(match: Match) {
+  casterDialogMatch.value = match
+  casterList.value = [...castersOf(match)]
+  casterInput.value = ''
+  casterDialogVisible.value = true
+}
+
+async function addCaster() {
+  const match = casterDialogMatch.value
+  const name = casterInput.value.trim()
+  if (!match || !name) {
+    ElMessage.warning('请输入解说人员姓名')
+    return
+  }
+  if (castersOf(match).some((c) => c.caster_name === name)) {
+    ElMessage.warning('该解说已添加')
+    return
+  }
+  const item = await addMatchCaster(match.id, name)
+  if (!item) {
+    ElMessage.error('保存失败，请稍后重试')
+    return
+  }
+  casterList.value.push(item)
+  castersMap.value[match.id] = [...(castersMap.value[match.id] ?? []), item]
+  casterInput.value = ''
+  ElMessage.success('已添加解说')
+}
+
+async function removeCaster(item: MatchCaster) {
+  try {
+    await ElMessageBox.confirm(`确认移除解说「${item.caster_name}」吗？`, '移除确认', { type: 'warning' })
+  } catch {
+    return
+  }
+  const ok = await removeMatchCaster(item.id)
+  if (!ok) {
+    ElMessage.error('删除失败，请稍后重试')
+    return
+  }
+  casterList.value = casterList.value.filter((x) => x.id !== item.id)
+  const list = castersMap.value[item.match_id]
+  if (list) castersMap.value[item.match_id] = list.filter((x) => x.id !== item.id)
+  ElMessage.success('已移除解说')
 }
 </script>
 
@@ -233,9 +302,27 @@ async function removeMedia(item: MatchMedia) {
             <span v-else class="no-media">暂无</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="auth.isAdmin" label="操作" width="90" fixed="right">
+        <el-table-column label="解说" min-width="150">
           <template #default="{ row }">
-            <el-button size="small" @click="openMediaDialog(row)">登记</el-button>
+            <div v-if="castersOf(row).length > 0" class="caster-tags">
+              <el-tag
+                v-for="c in castersOf(row)"
+                :key="c.id"
+                size="small"
+                type="warning"
+                effect="plain"
+                class="caster-tag"
+              >
+                <el-icon class="caster-icon"><Microphone /></el-icon>{{ c.caster_name }}
+              </el-tag>
+            </div>
+            <span v-else class="no-media">暂无</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="auth.isAdmin || auth.isCaster" label="操作" width="130" fixed="right">
+          <template #default="{ row }">
+            <el-button size="small" @click="openCasterDialog(row)">解说</el-button>
+            <el-button v-if="auth.isAdmin" size="small" @click="openMediaDialog(row)">登记</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -268,6 +355,30 @@ async function removeMedia(item: MatchMedia) {
             <span class="media-label">{{ m.label || '无备注' }}</span>
             <a :href="m.url" target="_blank" rel="noopener noreferrer" class="media-url">{{ m.url }}</a>
             <el-button size="small" type="danger" text @click="removeMedia(m)">删除</el-button>
+          </li>
+        </ul>
+      </template>
+    </el-dialog>
+
+    <!-- 管理解说（管理员 / 解说） -->
+    <el-dialog v-model="casterDialogVisible" title="管理解说" width="460px">
+      <template v-if="casterDialogMatch">
+        <div class="dialog-match">
+          {{ casterDialogMatch.team_a_name }} {{ casterDialogMatch.team_a_score }} : {{ casterDialogMatch.team_b_score }} {{ casterDialogMatch.team_b_name }}
+        </div>
+
+        <div class="media-form">
+          <el-input v-model="casterInput" placeholder="解说人员姓名 / 平台昵称" maxlength="30" clearable @keyup.enter="addCaster" />
+          <el-button type="primary" @click="addCaster">添加</el-button>
+        </div>
+
+        <el-empty v-if="casterList.length === 0" description="尚未添加解说" :image-size="60" />
+        <ul v-else class="media-list">
+          <li v-for="c in casterList" :key="c.id">
+            <el-tag size="small" type="warning" effect="plain" class="caster-tag">
+              <el-icon class="caster-icon"><Microphone /></el-icon>{{ c.caster_name }}
+            </el-tag>
+            <el-button size="small" type="danger" text @click="removeCaster(c)">移除</el-button>
           </li>
         </ul>
       </template>
@@ -345,6 +456,22 @@ async function removeMedia(item: MatchMedia) {
 
 .no-media {
   color: var(--cs2-text-muted);
+  font-size: 12px;
+}
+
+.caster-tags {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.caster-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.caster-icon {
   font-size: 12px;
 }
 

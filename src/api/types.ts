@@ -1,6 +1,6 @@
 // 数据层统一类型定义（与 supabase/schema.sql 保持一致）
 
-export type Role = 'admin' | 'player'
+export type Role = 'admin' | 'caster' | 'player'
 export type TeamStatus = 'pending' | 'approved' | 'rejected'
 export type ApplicationStatus = 'pending' | 'approved' | 'rejected'
 export type EmploymentStatus = 'employed' | 'unemployed' // 在职 / 离职
@@ -10,7 +10,7 @@ export interface AccountItem {
   id: string
   username: string | null
   email: string | null
-  role: 'admin' | 'player' | null
+  role: 'admin' | 'caster' | 'player' | null
   account_status: ApplicationStatus | null
   created_at: string
 }
@@ -49,6 +49,7 @@ export interface PlayerItem {
   nickname: string | null
   pw_username: string | null
   in_team: boolean // 是否已加入某支战队
+  team_id: string | null // 所属战队（未入队为 null）
 }
 
 /** 个人选手注册申请（提交选手姓名 + 完美 ID + 最近 3-5 个赛季截图，管理员审核后进入选手池） */
@@ -157,6 +158,21 @@ export interface MatchMedia {
   created_at: string
 }
 
+/** 每场比赛的解说人员（管理员 / 解说添加，公开展示） */
+export interface MatchCaster {
+  id: string
+  match_id: string
+  caster_name: string // 解说人员（姓名 / 平台昵称）
+  created_at: string
+}
+
+/** 角色中文名（账号审核等列表展示用） */
+export const ROLE_LABEL: Record<string, string> = {
+  admin: '管理员',
+  caster: '解说',
+  player: '选手',
+}
+
 /** 队伍数据排行行 */
 export interface TeamStatRow {
   team_id: string
@@ -173,6 +189,9 @@ export interface TeamStatRow {
   hs_rate: number // 爆头率 %
   pistol_win_rate: number // 手枪局胜率 %
   first_five_win_rate: number // 先胜 5 回合胜率 %
+  avg_kills: number // 场均击杀
+  avg_deaths: number // 场均死亡
+  avg_assists: number // 场均助攻
   total_kills: number // 总击杀
   total_deaths: number // 总死亡
   total_assists: number // 总助攻
@@ -183,7 +202,7 @@ export interface PlayerStatRow {
   player_id: string
   player_name: string
   pw_username?: string | null // 完美 ID（完美对战平台用户名）
-  team_id: string
+  team_id: string | null // 所属战队（未入队为 null）
   team_name: string
   stage_id: string | null
   stage_name: string | null

@@ -260,13 +260,13 @@ const rosterPlayerIds = new Set<string>(
 
 export const mockPlayers: PlayerItem[] = [
   ...teamSeed.flatMap((t) => [
-    { id: t.captain[0], nickname: t.captain[1], pw_username: t.captain[2], in_team: true },
+    { id: t.captain[0], nickname: t.captain[1], pw_username: t.captain[2], in_team: true, team_id: t.id },
     ...t.members.map((m) => ({
-      id: m[0], nickname: m[1], pw_username: m[2], in_team: true,
+      id: m[0], nickname: m[1], pw_username: m[2], in_team: true, team_id: t.id,
     })),
   ]),
   ...freePlayers.map(([id, nickname, pw]) => ({
-    id, nickname, pw_username: pw, in_team: rosterPlayerIds.has(id) || false,
+    id, nickname, pw_username: pw, in_team: rosterPlayerIds.has(id) || false, team_id: null,
   })),
 ]
 
@@ -346,7 +346,7 @@ export const mockStandings: StandingsRow[] = [
 // ---------------- 队伍数据排行（stage-1 为海选阶段，stage-2 尚未开赛） ----------------
 const STAGE1_META = { stage_id: 'stage-1', stage_name: '海选 · 小组循环赛' } as const
 
-export const mockTeamStats: TeamStatRow[] = [
+const teamStatsSeed: Array<Omit<TeamStatRow, 'avg_kills' | 'avg_deaths' | 'avg_assists'>> = [
   { team_id: 'team-1', team_name: 'Nova Velocity', tag: 'NV', group_id: 'g1', group_name: '传奇组', win_rate: 100, kd: 1.52, matches: 2, net: 10, hs_rate: 48.2, pistol_win_rate: 75, first_five_win_rate: 67, total_kills: 26, total_deaths: 17, total_assists: 5 },
   { team_id: 'team-2', team_name: '赤焰战队', tag: 'RZ', group_id: 'g3', group_name: '挑战组', win_rate: 100, kd: 1.41, matches: 2, net: 8, hs_rate: 52.0, pistol_win_rate: 67, first_five_win_rate: 50, total_kills: 26, total_deaths: 18, total_assists: 6 },
   { team_id: 'team-3', team_name: 'Strike Force', tag: 'SF', group_id: 'g2', group_name: '大师组', win_rate: 100, kd: 1.18, matches: 2, net: 5, hs_rate: 45.6, pistol_win_rate: 60, first_five_win_rate: 50, total_kills: 26, total_deaths: 22, total_assists: 6 },
@@ -357,6 +357,17 @@ export const mockTeamStats: TeamStatRow[] = [
   { team_id: 'team-6', team_name: '幽灵小队', tag: 'GH', group_id: 'g1', group_name: '传奇组', win_rate: 0, kd: 0.8, matches: 2, net: -8, hs_rate: 44.6, pistol_win_rate: 25, first_five_win_rate: 0, total_kills: 18, total_deaths: 23, total_assists: 5 },
   { team_id: 'team-5', team_name: 'Last Bullet', tag: 'LB', group_id: 'g3', group_name: '挑战组', win_rate: 0, kd: 0.75, matches: 2, net: -10, hs_rate: 44.2, pistol_win_rate: 25, first_five_win_rate: 0, total_kills: 19, total_deaths: 25, total_assists: 4 },
 ].map((r) => ({ ...r, ...STAGE1_META }))
+
+/** 场均 = 总数据 / 比赛数（比赛数为 0 时取 0），保留 2 位小数 */
+export const mockTeamStats: TeamStatRow[] = teamStatsSeed.map((r) => {
+  const n = Math.max(r.matches, 1)
+  return {
+    ...r,
+    avg_kills: Math.round((r.total_kills / n) * 100) / 100,
+    avg_deaths: Math.round((r.total_deaths / n) * 100) / 100,
+    avg_assists: Math.round((r.total_assists / n) * 100) / 100,
+  }
+})
 
 // ---------------- 个人数据排行 ----------------
 export const mockPlayerStats: PlayerStatRow[] = [

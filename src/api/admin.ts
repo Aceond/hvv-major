@@ -44,6 +44,13 @@ export async function reviewAccount(id: string, status: ApplicationStatus) {
   if (error) throw error
 }
 
+/** 设置账号角色（管理员把用户设为解说 / 选手等；RLS 限制普通用户不可改 role） */
+export async function setAccountRole(id: string, role: 'caster' | 'player') {
+  if (!isSupabaseConfigured || !supabase) return
+  const { error } = await supabase.from('profiles').update({ role }).eq('id', id)
+  if (error) throw error
+}
+
 /** 战队列表 */
 export async function listTeams(): Promise<Team[]> {
   if (!isSupabaseConfigured || !supabase) return mockTeams

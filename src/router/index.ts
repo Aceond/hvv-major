@@ -47,10 +47,18 @@ const router = createRouter({
 // 待审核/被拒账号仅可访问的页面白名单（公开浏览 + 审核状态提示页）
 const REVIEW_OPEN_PAGES = ['home', 'events', 'matches', 'standings', 'rankings', 'review-status', 'login']
 
+/** 给 Promise 加超时竞速：超过 timeoutMs 直接放行，避免导航被挂起的请求无限阻塞 */
+function withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T | undefined> {
+  return Promise.race([
+    p,
+    new Promise<undefined>((resolve) => setTimeout(() => resolve(undefined), timeoutMs)),
+  ])
+}
+
 // 路由守卫：进入 /admin 前校验管理员角色；未过审账号仅开放白名单页面
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
-  if (!auth.isLoggedIn) await auth.refresh()
+  if (!auth.isLoggedIn) await withTimeout(auth.refresh(), 3000)
   if (to.meta.requiresAdmin && !auth.isAdmin) {
     return { name: 'home' }
   }

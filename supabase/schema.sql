@@ -7,7 +7,7 @@ create extension if not exists pgcrypto;
 
 -- ============================================================
 -- 1. profiles：用户资料（由 auth.users 触发器自动创建）
---    role: admin(管理员) / player(选手)
+--    role: admin(管理员) / caster(解说) / player(选手)
 --    nickname / pw_username：个人选手注册时填写（完美 ID = 完美对战平台的用户名）
 -- ============================================================
 create table if not exists public.profiles (
@@ -15,9 +15,13 @@ create table if not exists public.profiles (
   username text,
   nickname text,                         -- 游戏昵称（个人选手注册）
   pw_username text,                      -- 完美 ID（完美对战平台用户名，后台按此记录数据）
-  role text not null default 'player' check (role in ('admin', 'player')),
+  role text not null default 'player' check (role in ('admin', 'caster', 'player')),
   created_at timestamptz not null default now()
 );
+
+-- 兼容旧库：升级角色约束以支持解说（caster）角色
+alter table public.profiles drop constraint if exists profiles_role_check;
+alter table public.profiles add constraint profiles_role_check check (role in ('admin', 'caster', 'player'));
 
 create or replace function public.handle_new_user()
 returns trigger
@@ -166,6 +170,14 @@ create table if not exists public.match_media (
   kind text not null default 'live' check (kind in ('live', 'vod', 'other')), -- 直播 / 录像 / 其他
   label text not null default '',        -- 备注，如 "B站第一视角" / "官方直播间"
   url text not null,                     -- 链接地址
+  created_at timestamptz not null default now()
+);
+
+-- 每场比赛的解说人员（管理员 / 解说添加，观众可查看）
+create table if not exists public.match_casters (
+  id uuid primary key default gen_random_uuid(),
+  match_id uuid not null references public.matches (id) on delete cascade,
+  caster_name text not null,             -- 解说人员姓名 / 平台昵称
   created_at timestamptz not null default now()
 );
 
@@ -344,6 +356,7 @@ alter table public.stages         enable row level security;
 alter table public.matches        enable row level security;
 alter table public.match_maps     enable row level security;
 alter table public.match_media    enable row level security;
+alter table public.match_casters  enable row level security;
 alter table public.team_stats     enable row level security;
 alter table public.player_stats   enable row level security;
 alter table public.sync_logs      enable row level security;
@@ -433,6 +446,21 @@ create policy match_media_select on public.match_media
 drop policy if exists match_media_admin_all on public.match_media;
 create policy match_media_admin_all on public.match_media
   for all using (public.is_admin()) with check (public.is_admin());
+
+-- match_casters：公开可读；管理员 / 解说角色可添加、移除解说
+drop policy if exists match_casters_select on public.match_casters;
+create policy match_casters_select on public.match_casters
+  for select using (true);
+drop policy if exists match_casters_write on public.match_casters;
+create policy match_casters_write on public.match_casters
+  for all using (
+    public.is_admin()
+    or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'caster')
+  )
+  with check (
+    public.is_admin()
+    or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'caster')
+  );
 -- 约战录入：本队队长可录入本队参与的待开赛比赛（自由约战制，仅队长约对手、定时间）
 drop policy if exists matches_insert on public.matches;
 create policy matches_insert on public.matches
@@ -543,7 +571,7 @@ create policy site_config_admin_all on public.site_config
 grant usage on schema public to anon, authenticated;
 
 grant select on public.profiles, public.groups, public.teams, public.team_members,
-  public.stages, public.matches, public.match_maps, public.standings,
+  public.stages, public.matches, public.match_maps, public.match_casters, public.standings,
   public.team_stats, public.player_stats, public.site_config, public.events
   to anon, authenticated;
 grant select on public.sync_logs to authenticated;
@@ -555,6 +583,10 @@ grant insert, update on public.site_config to authenticated;
 grant insert, update on public.events to authenticated;
 grant insert, update on public.player_applications to authenticated;
 grant insert, delete on public.matches to authenticated;
+grant insert, delete on public.match_casters to authenticated;
+-- 统计数据写权限：管理员在「数据录入」保存队伍/个人数据，以及审核通过时初始化个人数据（RLS 已限制仅管理员可写，此处补齐表级权限）
+grant insert, update, delete on public.team_stats to authenticated;
+grant insert, update, delete on public.player_stats to authenticated;
 
 grant execute on function public.upsert_match_result(uuid, int, int) to authenticated;
 

@@ -5,6 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/cs2-favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>HVV Major — 报名 · 数据 · 比赛</title>
+    <!-- 安全基础：只允许本域名 + Supabase 域名资源，阻止 eval/内联脚本（Vite 产物里 style 内联允许，script 用 hash/nonce 则更严，这里先走宽松可上线的版本） -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; connect-src 'self' https://*.supabase.co https://*.supabase.com https://*.sentry.io wss://*.supabase.co; img-src 'self' data: https: blob:; media-src 'self' https: blob:; font-src 'self' data: https:; style-src 'self' 'unsafe-inline' https:; style-src-attr 'unsafe-inline'; script-src 'self'; frame-ancestors 'self'; form-action 'self'; base-uri 'self'; upgrade-insecure-requests; object-src 'none'; worker-src 'self' blob:;"
+    />
+    <!-- 点击劫持兜底：frame-ancestors 为主，老浏览器额外做 meta referrer + 顶层 self 约束 -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="Permissions-Policy" content="camera=(), microphone=(), geolocation=(), interest-cohort=()" />
   </head>
   <body>
     <div id="app"></div>
