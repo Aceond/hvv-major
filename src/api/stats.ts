@@ -102,7 +102,7 @@ export async function getTeamNetPoints(groupId?: string, stageId?: string): Prom
   return net
 }
 
-/** 保存/更新个人统计数据（按 player_id + stage_id 覆盖） */
+/** 保存/更新个人统计数据（每名选手一行，按 profile_id 覆盖；stage_id 记录当前录入的阶段） */
 export async function savePlayerStat(row: PlayerStatRow) {
   if (!isSupabaseConfigured || !supabase) {
     const i = mockPlayerStats.findIndex(
@@ -135,6 +135,6 @@ export async function savePlayerStat(row: PlayerStatRow) {
         fpr: row.fpr,
         awp_kpr: row.awp_kpr,
       },
-      { onConflict: 'profile_id,stage_id' },
+      { onConflict: 'profile_id' },
     )
 }

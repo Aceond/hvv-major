@@ -325,9 +325,18 @@ create table if not exists public.player_stats (
   total_assists int not null default 0,         -- 总助攻
   fpr numeric(6,2) not null default 0,          -- 首杀/回合
   awp_kpr numeric(6,2) not null default 0,      -- AWP 击杀/回合
-  updated_at timestamptz not null default now(),
-  unique (profile_id, stage_id)
+  updated_at timestamptz not null default now()
+  -- 个人数据每名选手一行（profile_id 唯一）；唯一约束在下方兼容段统一管理
 );
+
+-- 兼容旧库：个人数据由「按阶段多行」改为「每名选手一行」。
+-- 旧库中同人按阶段拆出的多行先清理（保留一行），再建立 profile_id 唯一约束；可重复执行。
+alter table public.player_stats drop constraint if exists player_stats_profile_id_stage_id_key;
+alter table public.player_stats drop constraint if exists player_stats_profile_id_key;
+delete from public.player_stats a
+using public.player_stats b
+where a.profile_id = b.profile_id and a.id < b.id;
+alter table public.player_stats add constraint player_stats_profile_id_key unique (profile_id);
 
 -- ============================================================
 -- 7. 辅助函数

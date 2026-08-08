@@ -152,19 +152,19 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
         me.pw_username = app.pw_username
         me.nickname = app.display_name ?? me.nickname ?? app.pw_username
       }
-      // 初始化个人数据：在其报名赛事的各阶段补全 0 值统计行（演示模式写内存 mock，使其直接进入个人数据/排行）
+      // 初始化个人数据：每名选手一行全 0 统计（演示模式写内存 mock，使其直接进入个人数据/排行）
       const stages = mockStages.filter((s) => !app.event_id || s.event_id === app.event_id)
-      for (const s of stages) {
-        if (mockPlayerStats.some((x) => x.player_id === app.profile_id && x.stage_id === s.id)) continue
+      const first = [...stages].sort((a, b) => a.sort_order - b.sort_order)[0]
+      if (first && !mockPlayerStats.some((x) => x.player_id === app.profile_id)) {
         mockPlayerStats.push({
           player_id: app.profile_id,
           player_name: app.display_name ?? me?.nickname ?? app.pw_username,
           pw_username: app.pw_username,
           team_id: null,
           team_name: '未入队',
-          stage_id: s.id,
-          stage_name: s.name,
-          group_id: null,
+          stage_id: first.id,
+          stage_name: first.name,
+          group_id: first.group_id ?? null,
           group_name: null,
           we: 0, rating_pro: 0, win_rate: 0, kd: 0, matches: 0, hs_rate: 0,
           kpr: 0, dpr: 0, adr: 0,
@@ -235,21 +235,25 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
   }
 }
 
-/** 审核通过后初始化个人数据：为该选手在其报名赛事的每个阶段补一行全 0 统计（已存在则跳过） */
+/** 审核通过后初始化个人数据：为该选手在其报名赛事的首个阶段补一行全 0 统计（每名选手仅一行，已存在则跳过） */
 async function ensurePlayerStats(profileId: string, eventId: string | null) {
   if (!supabase) return
   const stages = await listStages(eventId ?? undefined)
-  const rows = stages.map((s) => ({
-    profile_id: profileId,
-    stage_id: s.id,
-    we: 0, rating_pro: 0, win_rate: 0, kd: 0, matches: 0, hs_rate: 0,
-    kpr: 0, dpr: 0, adr: 0,
-    total_kills: 0, total_deaths: 0, total_assists: 0, fpr: 0, awp_kpr: 0,
-  }))
-  if (rows.length === 0) return
+  const first = [...stages].sort((a, b) => a.sort_order - b.sort_order)[0]
+  if (!first) return
   const { error } = await supabase
     .from('player_stats')
-    .upsert(rows, { onConflict: 'profile_id,stage_id', ignoreDuplicates: true })
+    .upsert(
+      {
+        profile_id: profileId,
+        stage_id: first.id,
+        group_id: first.group_id ?? null,
+        we: 0, rating_pro: 0, win_rate: 0, kd: 0, matches: 0, hs_rate: 0,
+        kpr: 0, dpr: 0, adr: 0,
+        total_kills: 0, total_deaths: 0, total_assists: 0, fpr: 0, awp_kpr: 0,
+      },
+      { onConflict: 'profile_id', ignoreDuplicates: true },
+    )
   if (error) console.warn('选手个人数据初始化失败（不影响审核结果）：', error.message)
 }
 
