@@ -301,11 +301,11 @@ onMounted(load)
       />
 
       <el-table :data="roster" stripe size="small">
-        <el-table-column prop="nickname" label="选手姓名" min-width="120">
+        <el-table-column prop="nickname" label="选手姓名" min-width="96">
           <template #default="{ row: m }">{{ m.nickname ?? '-' }}</template>
         </el-table-column>
-        <el-table-column prop="pw_username" label="完美 ID" min-width="140" />
-        <el-table-column label="角色" width="110">
+        <el-table-column prop="pw_username" label="完美 ID" min-width="112" />
+        <el-table-column label="角色" width="96">
           <template #default="{ row: m }">
             <el-select
               :model-value="memberRole(m)"
@@ -318,7 +318,7 @@ onMounted(load)
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80">
+        <el-table-column label="操作" width="64">
           <template #default="{ row: m }">
             <el-button
               v-if="!m.is_captain"
