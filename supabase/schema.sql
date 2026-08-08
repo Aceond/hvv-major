@@ -642,6 +642,9 @@ grant insert, update on public.events to authenticated;
 grant insert, update on public.player_applications to authenticated;
 grant insert, delete on public.matches to authenticated;
 grant insert, delete on public.match_casters to authenticated;
+-- 地图明细 / 同步日志：RLS 仅管理员可写，此处补表级权限，避免出现「policy 允许但 table permission denied」
+grant insert, update, delete on public.match_maps to authenticated;
+grant insert, update, delete on public.sync_logs to authenticated;
 -- 统计数据写权限：管理员在「数据录入」保存队伍/个人数据，以及审核通过时初始化个人数据（RLS 已限制仅管理员可写，此处补齐表级权限）
 grant insert, update, delete on public.team_stats to authenticated;
 grant insert, update, delete on public.player_stats to authenticated;

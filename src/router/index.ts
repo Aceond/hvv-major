@@ -44,8 +44,8 @@ const router = createRouter({
   ],
 })
 
-// 待审核/被拒账号仅可访问的页面白名单（公开浏览 + 审核状态提示页）
-const REVIEW_OPEN_PAGES = ['home', 'events', 'matches', 'standings', 'rankings', 'review-status', 'login']
+// 待审核/被拒账号仅可访问的页面白名单（公开浏览 + 审核状态提示页 + 两个报名入口，否则新注册用户永远报不了名）
+const REVIEW_OPEN_PAGES = ['home', 'events', 'matches', 'standings', 'rankings', 'review-status', 'login', 'player-register', 'register']
 
 /** 给 Promise 加超时竞速：超过 timeoutMs 直接放行，避免导航被挂起的请求无限阻塞 */
 function withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T | undefined> {
