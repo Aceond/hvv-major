@@ -42,11 +42,23 @@ function readAsDataUrl(file: File): Promise<string> {
 }
 
 /**
- * 客户端压缩图片：限制最长边为 maxSide、转 JPEG，显著减小上传体积，
- * 避免大截图上传超时/连接被重置导致 failed to fetch。
- * 1280px + 0.72 质量：保持段位/战绩数字可辨，同时尽量压小入库体积。
+ * 客户端压缩图片（自适应）：初始 1024px / 0.62 质量，若单张仍过大则逐级缩小，
+ * 确保提交请求体足够小——大请求体在代理/网关环境下容易被拦截或超时（Failed to fetch）。
  */
-function compressImage(file: File, maxSide = 1280, quality = 0.72): Promise<string> {
+async function compressImage(file: File): Promise<string> {
+  let maxSide = 1024
+  let quality = 0.62
+  for (let i = 0; i < 4; i++) {
+    const dataUrl = await scaleImage(file, maxSide, quality)
+    // data URL 字符数约等于字节数的 1.37 倍，按单张压缩后 < ~180KB 控制
+    if (dataUrl.length < 250_000 || maxSide <= 320) return dataUrl
+    maxSide = Math.round(maxSide * 0.7)
+    quality = Math.max(0.45, quality - 0.1)
+  }
+  return scaleImage(file, 320, 0.45)
+}
+
+function scaleImage(file: File, maxSide: number, quality: number): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
