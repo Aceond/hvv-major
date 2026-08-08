@@ -216,7 +216,7 @@ create table if not exists public.match_casters (
 create table if not exists public.sync_logs (
   id uuid primary key default gen_random_uuid(),
   source text not null,                  -- perfect_world / 5e / faceit / manual
-  match_id uuid references public.matches (id),
+  match_id uuid references public.matches (id) on delete cascade, -- 随对阵删除，避免阻断阶段级联删除
   status text not null default 'pending' check (status in ('pending', 'success', 'failed')),
   payload jsonb,                         -- 平台原始数据
   created_at timestamptz not null default now()
@@ -287,7 +287,7 @@ on conflict (id) do nothing;
 create table if not exists public.team_stats (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references public.teams (id) on delete cascade,
-  stage_id uuid references public.stages (id),
+  stage_id uuid references public.stages (id) on delete cascade, -- 阶段删除时统计随删，避免阻断 stages→matches 级联链
   group_id uuid references public.groups (id),
   win_rate numeric(5,2) not null default 0,      -- 胜率 %
   kd numeric(5,2) not null default 0,           -- K/D
@@ -308,8 +308,8 @@ create table if not exists public.team_stats (
 create table if not exists public.player_stats (
   id uuid primary key default gen_random_uuid(),
   profile_id uuid not null references public.profiles (id) on delete cascade,
-  team_id uuid references public.teams (id),
-  stage_id uuid references public.stages (id),
+  team_id uuid references public.teams (id) on delete set null, -- 队伍删除后保留个人数据，仅清空所属队伍
+  stage_id uuid references public.stages (id) on delete cascade, -- 阶段删除时个人统计随删，避免阻断级联链
   group_id uuid references public.groups (id),
   we numeric(5,2) not null default 0,           -- WE（获胜效率）
   rating_pro numeric(4,2) not null default 0,   -- Rating PRO
@@ -337,6 +337,19 @@ delete from public.player_stats a
 using public.player_stats b
 where a.profile_id = b.profile_id and a.id < b.id;
 alter table public.player_stats add constraint player_stats_profile_id_key unique (profile_id);
+
+-- 兼容旧库：统计表级联关系修复（可重复执行）。
+-- 1) 阶段删除时统计随删（否则删除阶段会被 team_stats / player_stats 的 RESTRICT 阻断）；
+-- 2) 队伍删除后保留个人数据、team_id 置空。
+alter table public.team_stats drop constraint if exists team_stats_stage_id_fkey;
+alter table public.team_stats add constraint team_stats_stage_id_fkey
+  foreign key (stage_id) references public.stages (id) on delete cascade;
+alter table public.player_stats drop constraint if exists player_stats_stage_id_fkey;
+alter table public.player_stats add constraint player_stats_stage_id_fkey
+  foreign key (stage_id) references public.stages (id) on delete cascade;
+alter table public.player_stats drop constraint if exists player_stats_team_id_fkey;
+alter table public.player_stats add constraint player_stats_team_id_fkey
+  foreign key (team_id) references public.teams (id) on delete set null;
 
 -- ============================================================
 -- 7. 辅助函数
