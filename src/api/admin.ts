@@ -12,6 +12,7 @@ import {
   listPlayers,
   removeTeamMember,
   reviewPlayerApplication,
+  updateTeamMemberRole,
 } from './registration'
 
 export {
@@ -22,6 +23,7 @@ export {
   listPlayers,
   addTeamMember,
   removeTeamMember,
+  updateTeamMemberRole,
   listPlayerApplications,
   reviewPlayerApplication,
   createTeamByAdmin,

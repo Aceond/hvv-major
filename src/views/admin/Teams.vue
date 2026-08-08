@@ -10,6 +10,7 @@ import {
   listTeams,
   removeTeamMember,
   updateTeamGroup,
+  updateTeamMemberRole,
   updateTeamStatus,
 } from '@/api/admin'
 import { listEvents } from '@/api/event'
@@ -139,6 +140,37 @@ async function removeMember(m: TeamMember) {
   if (!rosterTeam.value) return
   await removeTeamMember(rosterTeam.value.id, m.profile_id)
   ElMessage.success('已移除队员')
+  roster.value = await listMembers(rosterTeam.value.id)
+  membersMap.value[rosterTeam.value.id] = roster.value
+}
+
+/** 名册成员角色：队长 / 队员 / 替补 */
+function memberRole(m: TeamMember): 'captain' | 'member' | 'bench' {
+  if (m.is_captain) return 'captain'
+  return m.status === 'benched' ? 'bench' : 'member'
+}
+
+/** 修改名册成员角色（设队长时原队长自动降为队员） */
+async function changeMemberRole(m: TeamMember, role: 'captain' | 'member' | 'bench') {
+  if (!rosterTeam.value) return
+  if (role === 'captain') {
+    try {
+      await ElMessageBox.confirm(
+        `将「${m.nickname || m.pw_username || '-'}」设为队长？原队长将自动降为队员。`,
+        '设置队长',
+        { type: 'warning', confirmButtonText: '设为队长', cancelButtonText: '取消' },
+      )
+    } catch {
+      return
+    }
+  }
+  try {
+    await updateTeamMemberRole(rosterTeam.value.id, m.id, m.profile_id, role)
+    ElMessage.success(role === 'captain' ? '已设为队长' : role === 'bench' ? '已设为替补' : '已设为队员')
+  } catch (e: any) {
+    ElMessage.error(e.message || '更新失败，请检查数据库权限')
+    return
+  }
   roster.value = await listMembers(rosterTeam.value.id)
   membersMap.value[rosterTeam.value.id] = roster.value
 }
@@ -273,9 +305,17 @@ onMounted(load)
           <template #default="{ row: m }">{{ m.nickname ?? '-' }}</template>
         </el-table-column>
         <el-table-column prop="pw_username" label="完美 ID" min-width="140" />
-        <el-table-column label="角色" width="70">
+        <el-table-column label="角色" width="110">
           <template #default="{ row: m }">
-            <el-tag v-if="m.is_captain" size="small" type="warning">队长</el-tag>
+            <el-select
+              :model-value="memberRole(m)"
+              size="small"
+              @change="(v: 'captain' | 'member' | 'bench') => changeMemberRole(m, v)"
+            >
+              <el-option label="队长" value="captain" />
+              <el-option label="队员" value="member" />
+              <el-option label="替补" value="bench" />
+            </el-select>
           </template>
         </el-table-column>
         <el-table-column label="操作" width="80">

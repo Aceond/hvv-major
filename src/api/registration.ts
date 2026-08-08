@@ -388,6 +388,52 @@ export async function removeTeamMember(teamId: string, profileId: string): Promi
   return !error
 }
 
+/** 调整名册成员角色：队长 / 队员 / 替补。队长全队唯一，设置新队长时原队长自动降为队员 */
+export async function updateTeamMemberRole(
+  teamId: string,
+  memberId: string,
+  profileId: string,
+  role: 'captain' | 'member' | 'bench',
+): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const list = mockMembers[teamId] ?? []
+    const m = list.find((x) => x.id === memberId)
+    if (!m) return
+    if (role === 'captain') {
+      for (const o of list) if (o.is_captain) o.is_captain = false
+      m.is_captain = true
+      m.status = 'active'
+      const t = mockTeams.find((x) => x.id === teamId)
+      if (t) t.captain_id = profileId
+    } else {
+      m.is_captain = false
+      m.status = role === 'bench' ? 'benched' : 'active'
+    }
+    return
+  }
+  if (role === 'captain') {
+    // 该队现有队长降为队员，并同步 teams.captain_id
+    await supabase
+      .from('team_members')
+      .update({ is_captain: false, status: 'active' })
+      .eq('team_id', teamId)
+      .eq('is_captain', true)
+    await supabase.from('teams').update({ captain_id: profileId }).eq('id', teamId)
+  }
+  const patch =
+    role === 'captain'
+      ? { is_captain: true, status: 'active' }
+      : role === 'bench'
+        ? { is_captain: false, status: 'benched' }
+        : { is_captain: false, status: 'active' }
+  const { error } = await supabase
+    .from('team_members')
+    .update(patch)
+    .eq('team_id', teamId)
+    .eq('id', memberId)
+  if (error) throw error
+}
+
 /** 管理员手动建队（数据录入页用）：直接以 approved 状态创建战队与名册 */
 export async function createTeamByAdmin(input: {
   name: string
