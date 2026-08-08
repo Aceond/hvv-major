@@ -44,8 +44,9 @@ function readAsDataUrl(file: File): Promise<string> {
 /**
  * 客户端压缩图片：限制最长边为 maxSide、转 JPEG，显著减小上传体积，
  * 避免大截图上传超时/连接被重置导致 failed to fetch。
+ * 1280px + 0.72 质量：保持段位/战绩数字可辨，同时尽量压小入库体积。
  */
-function compressImage(file: File, maxSide = 1920, quality = 0.85): Promise<string> {
+function compressImage(file: File, maxSide = 1280, quality = 0.72): Promise<string> {
   return new Promise((resolve, reject) => {
     const img = new Image()
     const url = URL.createObjectURL(file)
