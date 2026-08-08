@@ -45,6 +45,7 @@ export async function getPlayerStats(groupId?: string, stageId?: string): Promis
   return ((data ?? []) as any[]).map((s) => ({
     ...s,
     player_name: s.player?.nickname ?? s.player?.pw_username ?? null,
+    pw_username: s.player?.pw_username ?? null,
     team_name: s.team?.name ?? null,
     group_name: s.group?.name ?? null,
     stage_name: s.stage?.name ?? null,
@@ -69,6 +70,7 @@ export async function getPlayerStatsByEvent(eventId: string): Promise<PlayerStat
   return ((data ?? []) as any[]).map((s) => ({
     ...s,
     player_name: s.player?.nickname ?? s.player?.pw_username ?? null,
+    pw_username: s.player?.pw_username ?? null,
     team_name: s.team?.name ?? null,
     group_name: s.group?.name ?? null,
     stage_name: s.stage?.name ?? null,

@@ -385,4 +385,25 @@ export const mockPlayerStats: PlayerStatRow[] = [
   { player_id: 'p21', player_name: 'Reaper', team_id: 'team-3', team_name: 'Strike Force', group_id: 'g2', group_name: '大师组', we: 56.4, rating_pro: 1.01, win_rate: 100, kd: 1.03, matches: 2, hs_rate: 43.1, kpr: 0.70, dpr: 0.67, adr: 74.9, total_kills: 30, total_deaths: 29, total_assists: 8, fpr: 0.09, awp_kpr: 0.10 },
   { player_id: 'u6', player_name: 'GhostZero', team_id: 'team-6', team_name: '幽灵小队', group_id: 'g1', group_name: '传奇组', we: 48.3, rating_pro: 0.88, win_rate: 0, kd: 0.76, matches: 2, hs_rate: 40.2, kpr: 0.61, dpr: 0.79, adr: 70.6, total_kills: 26, total_deaths: 34, total_assists: 6, fpr: 0.07, awp_kpr: 0.08 },
   { player_id: 'u5', player_name: 'SkyWalker', team_id: 'team-5', team_name: 'Last Bullet', group_id: 'g3', group_name: '挑战组', we: 44.9, rating_pro: 0.83, win_rate: 0, kd: 0.69, matches: 2, hs_rate: 39.8, kpr: 0.56, dpr: 0.82, adr: 68.3, total_kills: 24, total_deaths: 35, total_assists: 5, fpr: 0.06, awp_kpr: 0.07 },
-].map((r) => ({ ...r, ...STAGE1_META }))
+].map((r) => ({
+  ...r,
+  ...STAGE1_META,
+  // 演示用完美 ID（个人排行/五维图按完美 ID 展示；演示账号与 auth.ts demoLogin 的 pw 保持一致）
+  pw_username:
+    ({
+      'demo-admin': 'killerace',
+      'demo-player': 'yanlong',
+      p02: 'headshot',
+      p01: 'rushb',
+      p41: 'ember',
+      u9: 'hawkeye',
+      u12: 'northwolf',
+      u3: 'bulletz',
+      u10: 'tanker',
+      p16: 'falcon',
+      u4: 'nightwalker',
+      p21: 'reaper',
+      u6: 'ghostzero',
+      u5: 'skywalker',
+    } as Record<string, string>)[r.player_id] ?? null,
+}))

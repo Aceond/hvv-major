@@ -250,7 +250,9 @@ function format(col: StatCol, value: number): string {
             <span :class="['rank', rankColor($index)]">{{ $index + 1 }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="player_name" label="选手" min-width="100" fixed />
+        <el-table-column label="完美 ID" min-width="110" fixed>
+          <template #default="{ row }">{{ row.pw_username || row.player_name || '-' }}</template>
+        </el-table-column>
         <el-table-column prop="team_name" label="战队" min-width="120" fixed />
         <el-table-column label="阶段" width="104" fixed>
           <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
