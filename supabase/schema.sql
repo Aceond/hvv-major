@@ -72,6 +72,27 @@ create table if not exists public.player_applications (
 -- 兼容旧库：补充 display_name 列
 alter table public.player_applications add column if not exists display_name text;
 
+-- ============================================================
+-- 1.5 Storage：个人注册赛季截图桶
+--     桶需公开读（后台审核与前台展示），上传仅限已登录用户。
+--     若已在 Dashboard 手动建过桶，以下语句幂等，不会报错。
+-- ============================================================
+insert into storage.buckets (id, name, public)
+values ('player-screenshots', 'player-screenshots', true)
+on conflict (id) do update set public = true;
+
+-- 允许已登录用户上传到该桶
+drop policy if exists "player-screenshots-upload" on storage.objects;
+create policy "player-screenshots-upload" on storage.objects
+  for insert to authenticated
+  with check (bucket_id = 'player-screenshots');
+
+-- 允许所有人读取该桶（审核页与前台展示截图）
+drop policy if exists "player-screenshots-public-read" on storage.objects;
+create policy "player-screenshots-public-read" on storage.objects
+  for select to anon, authenticated
+  using (bucket_id = 'player-screenshots');
+
 -- 兼容旧库：补充在职状态字段（在职需填驻地和工号）
 alter table public.player_applications add column if not exists employment_status text check (employment_status in ('employed', 'unemployed'));
 alter table public.player_applications add column if not exists location text;
