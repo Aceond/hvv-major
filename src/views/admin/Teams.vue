@@ -205,11 +205,11 @@ onMounted(load)
       <el-table-column type="expand">
         <template #default="{ row }">
           <el-table :data="membersMap[row.id] ?? []" size="small" class="member-table">
-            <el-table-column prop="nickname" label="选手姓名" min-width="92">
+            <el-table-column prop="nickname" label="选手姓名" width="84">
               <template #default="{ row: m }">{{ m.nickname ?? '-' }}</template>
             </el-table-column>
-            <el-table-column prop="pw_username" label="完美 ID" min-width="104" />
-            <el-table-column label="角色" width="76">
+            <el-table-column prop="pw_username" label="完美 ID" width="96" />
+            <el-table-column label="角色" width="70">
               <template #default="{ row: m }">
                 <el-tag v-if="m.is_captain" size="small" type="warning">队长</el-tag>
                 <el-tag v-else-if="m.status === 'benched'" size="small" type="info">替补</el-tag>
@@ -305,15 +305,16 @@ onMounted(load)
       />
 
       <el-table :data="roster" stripe size="small">
-        <el-table-column prop="nickname" label="选手姓名" min-width="88">
+        <el-table-column prop="nickname" label="选手姓名" width="82">
           <template #default="{ row: m }">{{ m.nickname ?? '-' }}</template>
         </el-table-column>
-        <el-table-column prop="pw_username" label="完美 ID" min-width="104" />
-        <el-table-column label="角色" width="88">
+        <el-table-column prop="pw_username" label="完美 ID" width="96" />
+        <el-table-column label="角色" width="80">
           <template #default="{ row: m }">
             <el-select
               :model-value="memberRole(m)"
               size="small"
+              style="width: 100%"
               @change="(v: 'captain' | 'member' | 'bench') => changeMemberRole(m, v)"
             >
               <el-option label="队长" value="captain" />
@@ -322,7 +323,7 @@ onMounted(load)
             </el-select>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="60">
+        <el-table-column label="操作" width="52">
           <template #default="{ row: m }">
             <el-button
               v-if="!m.is_captain"
@@ -354,7 +355,7 @@ onMounted(load)
 }
 
 .member-table {
-  padding: 0 24px;
+  padding: 0 12px;
 }
 
 .insufficient {
