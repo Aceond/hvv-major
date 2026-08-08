@@ -42,20 +42,21 @@ function readAsDataUrl(file: File): Promise<string> {
 }
 
 /**
- * 客户端压缩图片（自适应）：初始 1024px / 0.62 质量，若单张仍过大则逐级缩小，
- * 确保提交请求体足够小——大请求体在代理/网关环境下容易被拦截或超时（Failed to fetch）。
+ * 客户端压缩图片（自适应）：初始 800px / 0.5 质量，若单张仍过大则逐级缩小。
+ * 目标：单张压缩后 < ~65KB，5 张总提交体约 400KB，远低于 Supabase 网关请求体上限（约 1MB），
+ * 避免大请求体被边缘 403 拒绝且不带 CORS 头（表现为 TypeError: Failed to fetch）。
  */
 async function compressImage(file: File): Promise<string> {
-  let maxSide = 1024
-  let quality = 0.62
-  for (let i = 0; i < 4; i++) {
+  let maxSide = 800
+  let quality = 0.5
+  for (let i = 0; i < 5; i++) {
     const dataUrl = await scaleImage(file, maxSide, quality)
-    // data URL 字符数约等于字节数的 1.37 倍，按单张压缩后 < ~180KB 控制
-    if (dataUrl.length < 250_000 || maxSide <= 320) return dataUrl
+    // data URL 字符数约等于字节数的 1.37 倍，按单张 < ~65KB 控制
+    if (dataUrl.length < 90_000 || maxSide <= 300) return dataUrl
     maxSide = Math.round(maxSide * 0.7)
-    quality = Math.max(0.45, quality - 0.1)
+    quality = Math.max(0.38, quality - 0.06)
   }
-  return scaleImage(file, 320, 0.45)
+  return scaleImage(file, 300, 0.38)
 }
 
 function scaleImage(file: File, maxSide: number, quality: number): Promise<string> {
