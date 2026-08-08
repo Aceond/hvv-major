@@ -80,20 +80,30 @@ export async function submitPlayerApplication(
     else demoApplications.push(app)
     return app
   }
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) return null
-  // 截图上传到 Storage（player-screenshots 桶），失败的单张跳过
+  const { data: { user }, error: userErr } = await supabase.auth.getUser()
+  if (userErr) console.warn('获取登录用户失败：', userErr.message)
+  if (!user) {
+    throw new Error('登录状态已失效，请重新登录后再提交')
+  }
+  // 截图上传到 Storage（player-screenshots 桶），失败的单张跳过（含超时等异常，不阻断提交）
   const urls: string[] = []
   for (let i = 0; i < screenshots.length; i++) {
-    const path = `${user.id}/${Date.now()}-${i}.png`
-    const { error } = await supabase.storage
-      .from('player-screenshots')
-      .upload(path, dataUrlToArrayBuffer(screenshots[i]), { contentType: 'image/png' })
-    if (!error) {
-      urls.push(supabase.storage.from('player-screenshots').getPublicUrl(path).data.publicUrl)
+    try {
+      const path = `${user.id}/${Date.now()}-${i}.png`
+      const { error } = await supabase.storage
+        .from('player-screenshots')
+        .upload(path, dataUrlToArrayBuffer(screenshots[i]), { contentType: 'image/png' })
+      if (!error) {
+        urls.push(supabase.storage.from('player-screenshots').getPublicUrl(path).data.publicUrl)
+      }
+    } catch {
+      // 单张截图上传异常不阻断提交
     }
   }
-  const { data } = await supabase
+  if (urls.length === 0 && screenshots.length > 0) {
+    console.warn('赛季截图全部上传失败，请检查 Storage 桶 player-screenshots 是否存在')
+  }
+  const { data, error: insertErr } = await supabase
     .from('player_applications')
     .insert({
       profile_id: user.id,
@@ -107,7 +117,11 @@ export async function submitPlayerApplication(
     })
     .select('*')
     .single()
-  return (data as PlayerApplication) ?? null
+  if (insertErr) {
+    // 透出真实原因（多为表缺列/RLS/权限），便于定位与修复
+    throw new Error(`提交失败：${insertErr.message}`)
+  }
+  return data as PlayerApplication | null
 }
 
 /** 查询当前登录用户的注册申请（最新一条） */
