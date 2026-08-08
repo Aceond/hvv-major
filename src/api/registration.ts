@@ -93,10 +93,10 @@ export async function submitPlayerApplication(
   let uploadErrMsg = ''
   for (let i = 0; i < screenshots.length; i++) {
     try {
-      const path = `${user.id}/${Date.now()}-${i}.png`
+      const path = `${user.id}/${Date.now()}-${i}.jpg`
       const { error } = await supabase.storage
         .from('player-screenshots')
-        .upload(path, dataUrlToArrayBuffer(screenshots[i]), { contentType: 'image/png' })
+        .upload(path, dataUrlToArrayBuffer(screenshots[i]), { contentType: 'image/jpeg' })
       if (!error) {
         urls.push(supabase.storage.from('player-screenshots').getPublicUrl(path).data.publicUrl)
       } else if (!uploadErrMsg) {
@@ -109,7 +109,9 @@ export async function submitPlayerApplication(
   if (urls.length === 0 && screenshots.length > 0) {
     // 截图是审核必需材料，全部上传失败时直接报错，避免提交一份无法审核的申请
     throw new Error(
-      `赛季截图上传失败（${uploadErrMsg || '未知原因'}）。请确认 Supabase 已创建 player-screenshots 桶并放行上传权限后重试。`,
+      `赛季截图上传失败（${uploadErrMsg || '未知原因'}）。` +
+        'failed to fetch 多为网络/跨域或上传超时：请确认网络正常、' +
+        'Supabase 项目 API 的 CORS 允许本站域名、已创建 player-screenshots 桶并放行上传权限后重试。',
     )
   }
   const { data, error: insertErr } = await supabase

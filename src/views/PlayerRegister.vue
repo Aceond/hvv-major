@@ -38,6 +38,40 @@ function readAsDataUrl(file: File): Promise<string> {
   })
 }
 
+/**
+ * 客户端压缩图片：限制最长边为 maxSide、转 JPEG，显著减小上传体积，
+ * 避免大截图上传超时/连接被重置导致 failed to fetch。
+ */
+function compressImage(file: File, maxSide = 1920, quality = 0.85): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    const url = URL.createObjectURL(file)
+    img.onload = () => {
+      try {
+        const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight))
+        const w = Math.max(1, Math.round(img.naturalWidth * scale))
+        const h = Math.max(1, Math.round(img.naturalHeight * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = w
+        canvas.height = h
+        const ctx = canvas.getContext('2d')
+        if (!ctx) throw new Error('canvas 不可用')
+        ctx.drawImage(img, 0, 0, w, h)
+        URL.revokeObjectURL(url)
+        resolve(canvas.toDataURL('image/jpeg', quality))
+      } catch (e) {
+        URL.revokeObjectURL(url)
+        reject(e)
+      }
+    }
+    img.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('图片解析失败'))
+    }
+    img.src = url
+  })
+}
+
 /** 版本号：防止一次多选多张时多次异步读取交错覆盖结果 */
 let fileReadSeq = 0
 
@@ -47,7 +81,11 @@ async function handleFiles(files: UploadFile[]) {
   const urls: string[] = []
   for (const f of files) {
     if (!f.raw) continue
-    urls.push(await readAsDataUrl(f.raw))
+    try {
+      urls.push(await compressImage(f.raw))
+    } catch {
+      urls.push(await readAsDataUrl(f.raw)) // 压缩失败则用原图
+    }
   }
   // 只保留最后一次读取结果，避免较早的异步读取晚返回时覆盖新选择
   if (seq === fileReadSeq) screenshots.value = urls
