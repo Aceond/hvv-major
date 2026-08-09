@@ -1,9 +1,15 @@
 // 数据排行访问层（队伍排行 + 个人排行）
 // 数据来源：管理员在后台手动录入（比赛结果录入后也可人工维护统计数据）。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
-import { mockPlayerStats, mockTeamStats } from '@/mock/data'
+import { mockMatchPlayerStats, mockMatches, mockPlayerStats, mockTeamStats } from '@/mock/data'
 import type { PlayerStatRow, TeamStatRow } from './types'
-import { listStages } from './match'
+import { listGroups, listStages } from './match'
+
+/** 四舍五入到 2 位小数（0 值直接返回 0，避免 -0） */
+function r2(v: number): number {
+  if (!isFinite(v) || v === 0) return 0
+  return Math.round(v * 100) / 100
+}
 
 /** 队伍数据排行（可按组别、阶段筛选；stageId 为空 = 总阶段汇总） */
 export async function getTeamStats(groupId?: string, stageId?: string): Promise<TeamStatRow[]> {
@@ -166,4 +172,162 @@ export async function savePlayerStat(row: PlayerStatRow) {
       },
       { onConflict: 'profile_id' },
     )
+}
+
+// ============================================================
+// 比赛队员数据聚合（个人数据排行：从比分录入入口登记的 match_player_stats 自动计算）
+// 口径：场均 = Σ/地图数（map_count 合计）；爆头率 = Σ爆头/Σ击杀；
+//       ADR = Σ伤害/Σ局数；WE / Rating 场均 = Σ/场次数；胜率 = 所属队胜场/参赛场次。
+// ============================================================
+
+interface RawStatRow {
+  player_id: string
+  team_id: string | null
+  player_name?: string | null
+  pw_username?: string | null
+  team_name?: string | null
+  match_id: string
+  match_group_id?: string | null
+  match_stage_id?: string | null
+  match?: {
+    stage_id: string | null
+    group_id: string | null
+    status: string
+    winner_id: string | null
+    team_a_id: string | null
+    team_b_id: string | null
+  } | null
+  map_count: number
+  kills: number
+  deaths: number
+  assists: number
+  headshots: number
+  first_kills: number
+  multi_kills: number
+  clutches: number
+  damage: number
+  rounds: number
+  we: number
+  rating: number
+}
+
+/** 对一名选手的若干行比赛数据进行聚合 */
+function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id'> {
+  const first = list[0]
+  const matchCount = new Set(list.map((r) => r.match_id)).size
+  const maps = list.reduce((a, r) => a + (Number(r.map_count) || 0), 0)
+  const sum = (k: keyof RawStatRow) => list.reduce((a, r) => a + (Number(r[k]) || 0), 0)
+  const kills = sum('kills')
+  const deaths = sum('deaths')
+  const assists = sum('assists')
+  const headshots = sum('headshots')
+  const firstKills = sum('first_kills')
+  const multiKills = sum('multi_kills')
+  const clutches = sum('clutches')
+  const damage = sum('damage')
+  const rounds = sum('rounds')
+  const we = sum('we')
+  const rating = sum('rating')
+  // 胜率：参与的每场比赛按所属队是否获胜计
+  const wins = new Set(
+    list
+      .filter((r) => r.match?.winner_id && r.match.winner_id === r.team_id)
+      .map((r) => r.match_id),
+  ).size
+  const safeDiv = (a: number, b: number) => (b > 0 ? a / b : 0)
+  return {
+    player_name: first.player_name ?? first.pw_username ?? '-',
+    pw_username: first.pw_username ?? null,
+    team_id: first.team_id,
+    team_name: first.team_name ?? '未入队',
+    stage_id: first.match_stage_id ?? first.match?.stage_id ?? null,
+    stage_name: null,
+    group_id: first.match_group_id ?? first.match?.group_id ?? null,
+    group_name: null,
+    we: r2(safeDiv(we, matchCount)),
+    rating_pro: r2(safeDiv(rating, matchCount)),
+    win_rate: r2(safeDiv(wins, matchCount) * 100),
+    kd: r2(safeDiv(kills, deaths)),
+    matches: matchCount,
+    maps,
+    hs_rate: r2(safeDiv(headshots, kills) * 100),
+    kpr: 0,
+    dpr: 0,
+    adr: r2(safeDiv(damage, rounds)),
+    total_kills: kills,
+    total_deaths: deaths,
+    total_assists: assists,
+    fpr: 0,
+    awp_kpr: 0,
+    avg_kills: r2(safeDiv(kills, maps)),
+    avg_deaths: r2(safeDiv(deaths, maps)),
+    avg_assists: r2(safeDiv(assists, maps)),
+    avg_first_kills: r2(safeDiv(firstKills, maps)),
+    avg_multi_kills: r2(safeDiv(multiKills, maps)),
+    avg_clutches: r2(safeDiv(clutches, maps)),
+  }
+}
+
+/** 个人数据排行（自动聚合比赛队员数据；可按组别、阶段筛选；stageId 为空 = 总阶段汇总） */
+export async function getPlayerStatsAggregated(
+  groupId?: string,
+  stageId?: string,
+): Promise<PlayerStatRow[]> {
+  let raw: RawStatRow[]
+  if (!isSupabaseConfigured || !supabase) {
+    raw = mockMatchPlayerStats
+      .map((r) => {
+        const m = mockMatches.find((x) => x.id === r.match_id)
+        return {
+          ...r,
+          match: m
+            ? {
+                stage_id: m.stage_id,
+                group_id: m.group_id,
+                status: m.status,
+                winner_id: m.winner_id,
+                team_a_id: m.team_a_id,
+                team_b_id: m.team_b_id,
+              }
+            : null,
+        }
+      })
+      .filter((r) => (!groupId || r.match_group_id === groupId) && (!stageId || r.match_stage_id === stageId))
+  } else {
+    const { data } = await supabase
+      .from('match_player_stats')
+      .select(
+        '*, match:matches(stage_id, group_id, status, winner_id, team_a_id, team_b_id), team:teams(name), player:profiles(nickname, pw_username)',
+      )
+    raw = ((data ?? []) as any[]).map((r) => ({
+      player_id: r.player_id,
+      team_id: r.team_id,
+      player_name: r.player?.nickname ?? r.player?.pw_username ?? null,
+      pw_username: r.player?.pw_username ?? null,
+      team_name: r.team?.name ?? null,
+      match_id: r.match_id,
+      match: r.match ?? null,
+      map_count: r.map_count,
+      kills: r.kills, deaths: r.deaths, assists: r.assists, headshots: r.headshots,
+      first_kills: r.first_kills, multi_kills: r.multi_kills, clutches: r.clutches,
+      damage: r.damage, rounds: r.rounds, we: r.we, rating: r.rating,
+    }))
+    raw = raw.filter((r) => (!groupId || r.match?.group_id === groupId) && (!stageId || r.match?.stage_id === stageId))
+  }
+  // 按选手分组
+  const byPlayer = new Map<string, RawStatRow[]>()
+  for (const r of raw) {
+    ;(byPlayer.get(r.player_id) ?? byPlayer.set(r.player_id, []).get(r.player_id)!).push(r)
+  }
+  const rows: PlayerStatRow[] = []
+  for (const [playerId, list] of byPlayer) {
+    rows.push({ player_id: playerId, ...aggregatePlayerRows(list) })
+  }
+  // 补阶段/组别名称
+  const [stages, groups] = await Promise.all([listStages(), listGroups()])
+  for (const row of rows) {
+    row.stage_name = stages.find((s) => s.id === row.stage_id)?.name ?? null
+    row.group_name = groups.find((g) => g.id === row.group_id)?.name ?? null
+  }
+  return rows.sort((a, b) => b.rating_pro - a.rating_pro || b.adr - a.adr)
 }

@@ -9,6 +9,7 @@ import type {
   Group,
   Match,
   MatchMap,
+  MatchPlayerStat,
   PlayerItem,
   PlayerStatRow,
   Stage,
@@ -210,6 +211,19 @@ const teamSeed: TeamSeed[] = [
       ['p60', '孤狼', 'gulang'],
     ],
   },
+
+  // ---- 演示队长绑定战队（登录页「以队长身份进入」，约战/比分/队员数据录入演示用） ----
+  {
+    id: 'team-13', name: '烈焰竞技', tag: 'FL', groupId: 'g3', status: 'approved',
+    captain: ['demo-captain', '演示队长', 'demo_captain'],
+    members: [
+      ['p73', '炎刃', 'yanren'],
+      ['p74', '炽焰', 'chiyan'],
+      ['p75', '火舞', 'huowu'],
+      ['p76', '熔岩', 'rongyan'],
+      ['p77', '星火', 'xinghuo'],
+    ],
+  },
 ]
 
 // 空闲选手（选手池搜索测试用，未入队）
@@ -335,6 +349,9 @@ export const mockMatches: Match[] = [
   { id: 'match-28', stage_id: 'stage-2', group_id: null, round_number: 3, team_a_id: 'team-1', team_b_id: 'team-3', best_of: 3, map: null, team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: '2026-08-16 13:00' },
   // 未约战演示：管理员建的占位比赛，还没约时间
   { id: 'match-29', stage_id: 'stage-1', group_id: 'g1', round_number: 3, team_a_id: 'team-6', team_b_id: 'team-12', best_of: 1, map: null, team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: null },
+  // 演示队长战队（team-13 烈焰竞技）：已完成一场（可录入比分/队员数据） + 一场待约战
+  { id: 'match-30', stage_id: 'stage-1', group_id: 'g3', round_number: 1, team_a_id: 'team-13', team_b_id: 'team-5', best_of: 1, map: 'Anubis', team_a_score: 13, team_b_score: 7, winner_id: 'team-13', status: 'completed', scheduled_at: '2026-08-06 19:00' },
+  { id: 'match-31', stage_id: 'stage-1', group_id: 'g3', round_number: 2, team_a_id: 'team-13', team_b_id: 'team-8', best_of: 1, map: null, team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: null },
 ]
 
 // 逐图比分（BO3 明细，对应 match_maps 表）
@@ -432,3 +449,53 @@ export const mockPlayerStats: PlayerStatRow[] = [
       u5: 'skywalker',
     } as Record<string, string>)[r.player_id] ?? null,
 }))
+
+// ---------------- 比赛队员数据（比分录入入口登记；个人数据排行自动聚合） ----------------
+// d = [击杀, 死亡, 助攻, 爆头, 首杀, 多杀, 残局, 伤害, 局数]
+const mps = (
+  matchId: string,
+  playerId: string,
+  teamId: string,
+  mapCount: number,
+  d: [number, number, number, number, number, number, number, number, number],
+  we: number,
+  rating: number,
+  groupId: string | null,
+): MatchPlayerStat => {
+  const p = mockPlayers.find((x) => x.id === playerId)
+  const m = mockMatches.find((x) => x.id === matchId)
+  return {
+    id: `${matchId}-${playerId}`,
+    match_id: matchId,
+    player_id: playerId,
+    team_id: teamId,
+    map_count: mapCount,
+    kills: d[0], deaths: d[1], assists: d[2], headshots: d[3],
+    first_kills: d[4], multi_kills: d[5], clutches: d[6], damage: d[7], rounds: d[8],
+    we, rating, created_at: '2026-08-06 20:00',
+    player_name: p?.nickname ?? null,
+    pw_username: p?.pw_username ?? null,
+    team_name: teamNames[teamId] ?? null,
+    match_group_id: groupId,
+    match_stage_id: m?.stage_id ?? 'stage-1',
+  }
+}
+
+export const mockMatchPlayerStats: MatchPlayerStat[] = [
+  // match-1 传奇组 BO1（team-1 vs team-6）
+  mps('match-1', 'demo-admin', 'team-1', 1, [18, 12, 3, 10, 2, 3, 1, 2800, 20], 85, 1.6, 'g1'),
+  mps('match-1', 'p01', 'team-1', 1, [15, 14, 2, 7, 1, 2, 0, 2300, 20], 76, 1.35, 'g1'),
+  mps('match-1', 'p02', 'team-1', 1, [16, 13, 4, 11, 2, 2, 1, 2600, 20], 79, 1.42, 'g1'),
+  mps('match-1', 'u6', 'team-6', 1, [11, 17, 3, 5, 1, 1, 0, 2000, 20], 62, 1.02, 'g1'),
+  // match-26 总决赛 BO3（team-1 vs team-12）——与 match-1 合计 4 张地图，演示「场均 = 总量 / 地图数」
+  mps('match-26', 'demo-admin', 'team-1', 3, [55, 40, 9, 30, 12, 15, 2, 9000, 73], 82, 1.5, null),
+  mps('match-26', 'p01', 'team-1', 3, [48, 44, 11, 24, 10, 12, 1, 8200, 73], 74, 1.31, null),
+  mps('match-26', 'p02', 'team-1', 3, [52, 41, 8, 33, 11, 14, 3, 8800, 73], 81, 1.48, null),
+  mps('match-26', 'u9', 'team-12', 3, [50, 46, 10, 22, 9, 13, 2, 8400, 73], 71, 1.24, null),
+  mps('match-26', 'p16', 'team-12', 3, [44, 47, 12, 19, 8, 11, 0, 7600, 73], 66, 1.12, null),
+  // match-30 演示队长战队 BO1（team-13 烈焰竞技 vs team-5）
+  mps('match-30', 'demo-captain', 'team-13', 1, [22, 9, 4, 13, 3, 4, 2, 3100, 20], 88, 1.71, 'g3'),
+  mps('match-30', 'p73', 'team-13', 1, [17, 12, 5, 9, 2, 3, 1, 2600, 20], 78, 1.4, 'g3'),
+  mps('match-30', 'p74', 'team-13', 1, [15, 13, 3, 8, 1, 2, 0, 2300, 20], 72, 1.28, 'g3'),
+  mps('match-30', 'u5', 'team-5', 1, [12, 17, 4, 6, 1, 1, 0, 2100, 20], 61, 1.0, 'g3'),
+]

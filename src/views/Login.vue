@@ -141,9 +141,10 @@ async function submit() {
 }
 
 /** 演示模式：以指定角色直接进入，便于预览页面效果 */
-async function enterDemo(role: 'admin' | 'caster' | 'player') {
+async function enterDemo(role: 'admin' | 'caster' | 'player' | 'captain') {
   await auth.demoLogin(role)
-  const label = role === 'admin' ? '管理员' : role === 'caster' ? '解说' : '选手'
+  const label =
+    role === 'admin' ? '管理员' : role === 'captain' ? '队长' : role === 'caster' ? '解说' : '选手'
   ElMessage.success(`已进入演示模式（${label}）`)
   router.push(role === 'admin' ? { name: 'admin-dashboard' } : { name: 'home' })
 }
@@ -265,6 +266,7 @@ async function sendReset() {
           <el-button type="primary" plain @click="enterDemo('admin')">以管理员身份进入</el-button>
           <el-button type="success" plain @click="enterDemo('player')">以选手身份进入</el-button>
           <el-button type="warning" plain @click="enterDemo('caster')">以解说身份进入</el-button>
+          <el-button type="danger" plain @click="enterDemo('captain')">以队长身份进入</el-button>
         </div>
       </template>
     </el-card>
@@ -296,10 +298,11 @@ async function sendReset() {
   margin-top: 12px;
   display: flex;
   gap: 12px;
+  flex-wrap: wrap;
 }
 
 .demo-actions .el-button {
-  flex: 1;
+  flex: 1 1 40%;
 }
 
 .strength-field {

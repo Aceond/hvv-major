@@ -249,6 +249,59 @@ export interface PlayerStatRow {
   total_assists: number // 总助攻
   fpr: number // 首杀/回合
   awp_kpr: number // AWP 击杀/回合
+  // 比赛队员数据聚合字段（个人数据排行页按场次登记数据自动计算）
+  maps?: number // 总地图数（map_count 合计）
+  avg_kills?: number // 场均击杀
+  avg_deaths?: number // 场均死亡
+  avg_assists?: number // 场均助攻
+  avg_first_kills?: number // 场均首杀
+  avg_multi_kills?: number // 场均多杀
+  avg_clutches?: number // 场均残局
+}
+
+/** 比赛队员数据（比分录入入口按场次登记，个人数据排行据此自动聚合） */
+export interface MatchPlayerStat {
+  id: string
+  match_id: string
+  player_id: string
+  team_id: string
+  map_count: number // 本场地图数（BO1=1，BO3=3）
+  kills: number // 击杀（本场所有地图合计）
+  deaths: number // 死亡
+  assists: number // 助攻
+  headshots: number // 爆头数
+  first_kills: number // 首杀
+  multi_kills: number // 多杀
+  clutches: number // 残局
+  damage: number // 总伤害
+  rounds: number // 总局数
+  we: number // 本场 WE
+  rating: number // 本场 Rating
+  created_at: string
+  // 联表展示字段
+  player_name?: string | null
+  pw_username?: string | null
+  team_name?: string | null
+  match_group_id?: string | null // 该场比赛所属组别
+  match_stage_id?: string | null
+}
+
+/** 比赛队员数据（录入表单行：不含 id/created_at，保存时后端按 match_id+player_id 覆盖） */
+export interface MatchPlayerStatInput {
+  player_id: string
+  team_id: string
+  map_count: number
+  kills: number
+  deaths: number
+  assists: number
+  headshots: number
+  first_kills: number
+  multi_kills: number
+  clutches: number
+  damage: number
+  rounds: number
+  we: number
+  rating: number
 }
 
 export const STAGE_FORMAT_LABEL: Record<StageFormat, string> = {

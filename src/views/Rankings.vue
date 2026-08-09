@@ -4,7 +4,7 @@ import Sortable from 'sortablejs'
 import type { Group, PlayerStatRow, Stage, TeamStatRow } from '@/api/types'
 import { STAGE_STATUS_LABEL } from '@/api/types'
 import { listGroups, listStages } from '@/api/match'
-import { getPlayerStats, getTeamNetPoints, getTeamStats } from '@/api/stats'
+import { getPlayerStatsAggregated, getTeamNetPoints, getTeamStats } from '@/api/stats'
 
 // 可排序列配置（拖拽表头可调整顺序）
 interface StatCol {
@@ -29,20 +29,23 @@ const teamCols = ref<StatCol[]>([
 ])
 
 const playerCols = ref<StatCol[]>([
-  { key: 'we', label: 'WE', width: 68, fmt: 'dec1', color: 'pct' },
-  { key: 'rating_pro', label: 'Rating PRO', width: 126, fmt: 'dec2', color: 'trend' },
-  { key: 'win_rate', label: '胜率', width: 78, fmt: 'pct0', color: 'pct' },
-  { key: 'kd', label: 'K/D', width: 82, fmt: 'dec2', color: 'trend' },
-  { key: 'matches', label: '比赛数', width: 88, fmt: 'int' },
-  { key: 'hs_rate', label: '爆头率', width: 92, fmt: 'pct1' },
-  { key: 'kpr', label: '击杀/回合', width: 112, fmt: 'dec2' },
-  { key: 'dpr', label: '死亡/回合', width: 112, fmt: 'dec2' },
-  { key: 'adr', label: 'ADR', width: 78, fmt: 'dec1' },
-  { key: 'total_kills', label: '总击杀', width: 88, fmt: 'int' },
-  { key: 'total_deaths', label: '总死亡', width: 88, fmt: 'int' },
-  { key: 'total_assists', label: '总助攻', width: 88, fmt: 'int' },
-  { key: 'fpr', label: '首杀/回合', width: 112, fmt: 'dec2' },
-  { key: 'awp_kpr', label: 'AWP击杀/回合', width: 140, fmt: 'dec2' },
+  { key: 'we', label: '场均 WE', width: 84, fmt: 'dec1', color: 'pct' },
+  { key: 'rating_pro', label: '场均 Rating', width: 110, fmt: 'dec2', color: 'trend' },
+  { key: 'win_rate', label: '胜率', width: 74, fmt: 'pct0', color: 'pct' },
+  { key: 'kd', label: 'K/D', width: 80, fmt: 'dec2', color: 'trend' },
+  { key: 'matches', label: '比赛数', width: 86, fmt: 'int' },
+  { key: 'maps', label: '地图数', width: 86, fmt: 'int' },
+  { key: 'hs_rate', label: '爆头率', width: 90, fmt: 'pct1' },
+  { key: 'avg_kills', label: '场均击杀', width: 96, fmt: 'dec2' },
+  { key: 'avg_deaths', label: '场均死亡', width: 96, fmt: 'dec2' },
+  { key: 'avg_assists', label: '场均助攻', width: 96, fmt: 'dec2' },
+  { key: 'avg_first_kills', label: '场均首杀', width: 96, fmt: 'dec2' },
+  { key: 'avg_multi_kills', label: '场均多杀', width: 96, fmt: 'dec2' },
+  { key: 'avg_clutches', label: '场均残局', width: 96, fmt: 'dec2' },
+  { key: 'adr', label: 'ADR', width: 80, fmt: 'dec1' },
+  { key: 'total_kills', label: '总击杀', width: 86, fmt: 'int' },
+  { key: 'total_deaths', label: '总死亡', width: 86, fmt: 'int' },
+  { key: 'total_assists', label: '总助攻', width: 86, fmt: 'int' },
 ])
 
 const tab = ref<'team' | 'player'>('team')
@@ -95,7 +98,8 @@ async function load() {
     // 净胜分（小分）实时从已完成比赛计算
     const netMap = await getTeamNetPoints(groupId, stageId)
     teamRows.value = teamStats.map((r) => ({ ...r, net: netMap[r.team_id] ?? 0 }))
-    playerRows.value = await getPlayerStats(groupId, stageId)
+    // 个人排行：从比赛队员数据自动聚合（场均 = 总量/地图数，爆头率/ADR/WE/Rating 按指定口径）
+    playerRows.value = await getPlayerStatsAggregated(groupId, stageId)
   } finally {
     loading.value = false
   }

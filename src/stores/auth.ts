@@ -73,29 +73,32 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   /** 演示模式登录：未配置 Supabase 时以本地身份进入，便于预览页面 */
-  async function demoLogin(role: 'admin' | 'caster' | 'player') {
+  async function demoLogin(role: 'admin' | 'caster' | 'player' | 'captain') {
     const DEMO_PROFILE: Record<string, { username: string; nickname: string; pw: string; status: ApplicationStatus | null }> = {
       admin: { username: '演示管理员', nickname: 'KillerAce', pw: 'killerace', status: null },
       caster: { username: '演示解说', nickname: '赛事解说', pw: 'castor2026', status: 'approved' },
       player: { username: '演示选手', nickname: '炎龙', pw: 'yanlong', status: 'approved' },
+      // 演示队长：固定绑定「烈焰竞技」战队（mock team-13，队长账号 demo-captain），可体验约战/比分/队员数据录入
+      captain: { username: '演示队长', nickname: '演示队长', pw: 'demo_captain', status: 'approved' },
     }
     const d = DEMO_PROFILE[role]
+    const isCaptain = role === 'captain'
     user.value = {
-      id: `demo-${role}`,
-      email: `demo-${role}@hvv-major.local`,
+      id: isCaptain ? 'demo-captain' : `demo-${role}`,
+      email: isCaptain ? 'demo-captain@hvv-major.local' : `demo-${role}@hvv-major.local`,
       user_metadata: {},
       app_metadata: {},
       aud: 'authenticated',
       created_at: new Date().toISOString(),
     } as User
     profile.value = {
-      id: `demo-${role}`,
+      id: isCaptain ? 'demo-captain' : `demo-${role}`,
       username: d.username,
       nickname: d.nickname,
       pw_username: d.pw,
-      role,
+      role: isCaptain ? 'player' : role, // 队长本质是选手角色 + 拥有战队
     }
-    // 演示解说/选手视为已通过审核，演示管理员不受审核限制
+    // 演示解说/选手/队长视为已通过审核，演示管理员不受审核限制
     accountStatus.value = d.status
   }
 

@@ -377,6 +377,32 @@ alter table public.player_stats add constraint player_stats_team_id_fkey
   foreign key (team_id) references public.teams (id) on delete set null;
 
 -- ============================================================
+-- 6.6 比赛队员数据（比分录入入口按场次登记：击杀/死亡/助攻/爆头/首杀/多杀/残局/伤害/局数/WE/Rating）
+--     个人数据排行页按「所有比赛」自动聚合：场均=总量/地图数（map_count 合计），
+--     爆头率=Σ爆头/Σ击杀，ADR=Σ伤害/Σ局数，WE/Rating 场均=Σ/场次数。
+-- ============================================================
+create table if not exists public.match_player_stats (
+  id uuid primary key default gen_random_uuid(),
+  match_id uuid not null references public.matches (id) on delete cascade,
+  player_id uuid not null references public.profiles (id) on delete cascade,
+  team_id uuid not null references public.teams (id) on delete cascade,
+  map_count int not null default 1,              -- 本场地图数（BO1=1，BO3=3，录入时自动带出）
+  kills int not null default 0,                  -- 击杀（本场所有地图合计）
+  deaths int not null default 0,                 -- 死亡
+  assists int not null default 0,                -- 助攻
+  headshots int not null default 0,              -- 爆头数
+  first_kills int not null default 0,            -- 首杀
+  multi_kills int not null default 0,            -- 多杀
+  clutches int not null default 0,               -- 残局
+  damage int not null default 0,                 -- 总伤害
+  rounds int not null default 0,                 -- 总局数
+  we numeric(5,2) not null default 0,            -- 本场 WE
+  rating numeric(4,2) not null default 0,        -- 本场 Rating
+  created_at timestamptz not null default now(),
+  unique (match_id, player_id)                   -- 同一场比赛每名队员一行，重复保存覆盖
+);
+
+-- ============================================================
 -- 7. 辅助函数
 -- ============================================================
 create or replace function public.is_admin()
@@ -459,6 +485,7 @@ alter table public.team_stats     enable row level security;
 alter table public.player_stats   enable row level security;
 alter table public.sync_logs      enable row level security;
 alter table public.site_config     enable row level security;
+alter table public.match_player_stats enable row level security;
 
 -- profiles：公开可读（首页/赛程/排行榜展示选手昵称与完美 ID），仅本人/管理员可更新
 drop policy if exists profiles_select on public.profiles;
@@ -627,6 +654,28 @@ create policy match_maps_captain_all on public.match_maps
     )
   );
 
+-- 比赛队员数据：公开可读（个人数据排行自动聚合），管理员/参赛队队长增删改
+drop policy if exists match_player_stats_select on public.match_player_stats;
+create policy match_player_stats_select on public.match_player_stats
+  for select using (true);
+drop policy if exists match_player_stats_write on public.match_player_stats;
+create policy match_player_stats_write on public.match_player_stats
+  for all using (
+    public.is_admin()
+    or exists (
+      select 1 from public.matches m
+      join public.teams t on t.id in (m.team_a_id, m.team_b_id)
+      where m.id = match_id and t.captain_id = auth.uid()
+    )
+  ) with check (
+    public.is_admin()
+    or exists (
+      select 1 from public.matches m
+      join public.teams t on t.id in (m.team_a_id, m.team_b_id)
+      where m.id = match_id and t.captain_id = auth.uid()
+    )
+  );
+
 -- groups / team_stats / player_stats：公开可读，仅管理员写
 drop policy if exists groups_select on public.groups;
 create policy groups_select on public.groups
@@ -704,7 +753,8 @@ grant usage on schema public to anon, authenticated;
 
 grant select on public.profiles, public.groups, public.teams, public.team_members,
   public.stages, public.matches, public.match_maps, public.match_casters, public.match_media,
-  public.standings, public.team_stats, public.player_stats, public.site_config, public.events
+  public.match_player_stats, public.standings, public.team_stats, public.player_stats,
+  public.site_config, public.events
   to anon, authenticated;
 -- 审核通过时回填选手资料（pw_username/nickname/角色）需要 profiles 的 UPDATE 权限，否则选手池为空
 grant update on public.profiles to authenticated;
@@ -728,6 +778,8 @@ grant insert, update, delete on public.sync_logs to authenticated;
 -- 统计数据写权限：管理员在「数据录入」保存队伍/个人数据，以及审核通过时初始化个人数据（RLS 已限制仅管理员可写，此处补齐表级权限）
 grant insert, update, delete on public.team_stats to authenticated;
 grant insert, update, delete on public.player_stats to authenticated;
+-- 比赛队员数据：管理员/参赛队队长按场次登记（RLS 已限制，此处补齐表级权限）
+grant insert, update, delete on public.match_player_stats to authenticated;
 
 grant execute on function public.upsert_match_result(uuid, int, int) to authenticated;
 grant execute on function public.resolve_login_email(text) to anon, authenticated;

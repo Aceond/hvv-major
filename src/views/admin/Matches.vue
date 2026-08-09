@@ -16,6 +16,7 @@ import {
 import { listMatchMaps, submitMatchScore } from '@/api/match'
 import type { MatchMapInput } from '@/api/match'
 import { listEvents } from '@/api/event'
+import MatchPlayerStatsDialog from '@/components/MatchPlayerStatsDialog.vue'
 
 const events = ref<EventItem[]>([])
 const currentEventId = ref<string>('')
@@ -30,6 +31,10 @@ const loading = ref(false)
 // 比分录入
 const scoreDialog = ref(false)
 const scoreForm = reactive({ matchId: '', aScore: 0, bScore: 0, map: '', scheduledAt: '' })
+
+// 本场队员数据录入
+const playerStatsDialog = ref(false)
+const playerStatsMatch = ref<Match | null>(null)
 const scoreBestOf = ref(1) // 当前录入比赛的赛制（1 = BO1，3 = BO3）
 interface MapRow {
   mapName: string
@@ -167,6 +172,12 @@ async function saveScore() {
   } catch (e: any) {
     ElMessage.error(e.message || '保存失败，请检查权限')
   }
+}
+
+/** 打开本场队员数据录入 */
+function openPlayerStats(row: Match) {
+  playerStatsMatch.value = row
+  playerStatsDialog.value = true
 }
 
 function openStageDialog(stage?: Stage) {
@@ -543,16 +554,27 @@ onMounted(load)
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="110">
+          <el-table-column label="操作" width="210">
             <template #default="{ row }">
-              <el-button
-                v-if="row.team_a_id && row.team_b_id"
-                size="small"
-                type="primary"
-                @click="openScore(row)"
-              >
-                {{ row.status === 'completed' ? '修改比分' : '录入比分' }}
-              </el-button>
+              <div class="op-btns">
+                <el-button
+                  v-if="row.team_a_id && row.team_b_id"
+                  size="small"
+                  type="primary"
+                  @click="openScore(row)"
+                >
+                  {{ row.status === 'completed' ? '修改比分' : '录入比分' }}
+                </el-button>
+                <el-button
+                  v-if="row.team_a_id && row.team_b_id"
+                  size="small"
+                  type="success"
+                  plain
+                  @click="openPlayerStats(row)"
+                >
+                  队员数据
+                </el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -599,6 +621,13 @@ onMounted(load)
         <el-button type="primary" @click="saveScore">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 本场队员数据录入（管理员 / 参赛队队长，与前台赛程页同一入口） -->
+    <MatchPlayerStatsDialog
+      v-model="playerStatsDialog"
+      :match="playerStatsMatch"
+      @saved="onFilterChange"
+    />
 
     <!-- 新建 / 编辑阶段 -->
     <el-dialog v-model="stageDialog" :title="stageEditId ? '编辑阶段' : '新建阶段'" width="440px">
@@ -805,6 +834,13 @@ onMounted(load)
   display: flex;
   align-items: center;
   gap: 10px;
+}
+
+.op-btns {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
 .score {

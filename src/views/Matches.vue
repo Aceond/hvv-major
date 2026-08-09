@@ -3,6 +3,7 @@ import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { VideoCamera, Link, Microphone, ArrowDown } from '@element-plus/icons-vue'
 import SwissBracket from '@/components/SwissBracket.vue'
+import MatchPlayerStatsDialog from '@/components/MatchPlayerStatsDialog.vue'
 import type { EventItem, Group, Match, MatchCaster, MatchMap, MatchMedia, MediaKind, Stage } from '@/api/types'
 import { MATCH_STATUS_LABEL, MEDIA_KIND_LABEL, STAGE_STATUS_LABEL } from '@/api/types'
 import { listGroups, listMatches, listStages, listAllStageMatches, listMatchMaps, submitMatchScore, subscribeMatchChanges } from '@/api/match'
@@ -53,6 +54,10 @@ const casterInput = ref('')
 // 比分录入对话框（管理员或参赛队队长）
 const scoreDialog = ref(false)
 const scoreMatch = ref<Match | null>(null)
+
+// 本场队员数据录入对话框（管理员或参赛队队长；比分入口）
+const playerStatsDialog = ref(false)
+const playerStatsMatch = ref<Match | null>(null)
 const scoreForm = reactive({ aScore: 0, bScore: 0, map: '', scheduledAt: '' })
 interface MapRow {
   mapName: string
@@ -321,6 +326,12 @@ function matchStatusType(status: Match['status']) {
   return status === 'completed' ? 'success' : status === 'cancelled' ? 'danger' : 'warning'
 }
 
+/** 打开本场队员数据录入 */
+function openPlayerStatsDialog(row: Match) {
+  playerStatsMatch.value = row
+  playerStatsDialog.value = true
+}
+
 function openMediaDialog(match: Match) {
   dialogMatch.value = match
   mediaList.value = [...mediaOf(match)]
@@ -568,7 +579,7 @@ async function removeCaster(item: MatchCaster) {
                 <span v-else class="no-media">暂无</span>
               </template>
             </el-table-column>
-            <el-table-column v-if="canOperate" label="操作" width="250" fixed="right">
+            <el-table-column v-if="canOperate" label="操作" width="330" fixed="right">
               <template #default="{ row }">
                 <div class="op-btns">
                   <el-button v-if="auth.isAdmin || auth.isCaster" size="small" @click="openCasterDialog(row)">解说</el-button>
@@ -581,6 +592,15 @@ async function removeCaster(item: MatchCaster) {
                     @click="openScoreDialog(row)"
                   >
                     {{ row.status === 'completed' ? '修改比分' : '录入比分' }}
+                  </el-button>
+                  <el-button
+                    v-if="canEditMatch(row)"
+                    size="small"
+                    type="success"
+                    plain
+                    @click="openPlayerStatsDialog(row)"
+                  >
+                    队员数据
                   </el-button>
                 </div>
               </template>
@@ -683,7 +703,7 @@ async function removeCaster(item: MatchCaster) {
             <span v-else class="no-media">暂无</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="canOperate" label="操作" width="250" fixed="right">
+        <el-table-column v-if="canOperate" label="操作" width="330" fixed="right">
           <template #default="{ row }">
             <div class="op-btns">
               <el-button v-if="auth.isAdmin || auth.isCaster" size="small" @click="openCasterDialog(row)">解说</el-button>
@@ -696,6 +716,15 @@ async function removeCaster(item: MatchCaster) {
                 @click="openScoreDialog(row)"
               >
                 {{ row.status === 'completed' ? '修改比分' : '录入比分' }}
+              </el-button>
+              <el-button
+                v-if="canEditMatch(row)"
+                size="small"
+                type="success"
+                plain
+                @click="openPlayerStatsDialog(row)"
+              >
+                队员数据
               </el-button>
             </div>
           </template>
@@ -806,6 +835,13 @@ async function removeCaster(item: MatchCaster) {
         <el-button type="primary" @click="saveScore">保存</el-button>
       </template>
     </el-dialog>
+
+    <!-- 本场队员数据录入（管理员或参赛队队长） -->
+    <MatchPlayerStatsDialog
+      v-model="playerStatsDialog"
+      :match="playerStatsMatch"
+      @saved="loadMatches"
+    />
   </div>
 </template>
 
