@@ -4,6 +4,7 @@ import { ElMessage } from 'element-plus'
 import { UploadFilled, Plus } from '@element-plus/icons-vue'
 import type { EventItem, Group, PlayerItem, PlayerStatRow, Stage, Team, TeamStatRow } from '@/api/types'
 import { createTeamByAdmin, listGroups, listStages, listTeams } from '@/api/admin'
+import { stageDisplayName } from '@/api/match'
 import { listEvents } from '@/api/event'
 import { listPlayers } from '@/api/registration'
 import { getPlayerStats, getTeamStats, savePlayerStat, saveTeamStat } from '@/api/stats'
@@ -453,7 +454,7 @@ async function confirmImport() {
       </el-select>
 
       <el-select v-model="currentStage" placeholder="选择阶段" class="filter-item" @change="onFilterChange">
-        <el-option v-for="s in stages" :key="s.id" :label="s.name" :value="s.id" />
+        <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
       </el-select>
 
       <el-select

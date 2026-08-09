@@ -13,7 +13,7 @@ import {
   listTeams,
   updateStage,
 } from '@/api/admin'
-import { listMatchMaps, submitMatchScore } from '@/api/match'
+import { listMatchMaps, stageDisplayName, submitMatchScore } from '@/api/match'
 import type { MatchMapInput } from '@/api/match'
 import { listEvents } from '@/api/event'
 import MatchPlayerStatsDialog from '@/components/MatchPlayerStatsDialog.vue'
@@ -510,7 +510,7 @@ onMounted(load)
         <el-tab-pane
           v-for="s in stages"
           :key="s.id"
-          :label="`${s.name} · ${STAGE_FORMAT_LABEL[s.format]}（${STAGE_STATUS_LABEL[s.status]}）`"
+          :label="`${stageDisplayName(s)} · ${STAGE_FORMAT_LABEL[s.format]}（${STAGE_STATUS_LABEL[s.status]}）`"
           :name="s.id"
         />
       </el-tabs>
@@ -682,7 +682,7 @@ onMounted(load)
       <el-form label-width="80px">
         <el-form-item label="所属阶段">
           <el-select v-model="matchForm.stageId" style="width: 100%">
-            <el-option v-for="s in stages" :key="s.id" :label="s.name" :value="s.id" />
+            <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="组别">
@@ -725,12 +725,12 @@ onMounted(load)
       <el-form label-width="90px">
         <el-form-item label="源阶段（排位赛）">
           <el-select v-model="autoForm.srcStageId" style="width: 100%">
-            <el-option v-for="s in stages" :key="s.id" :label="s.name" :value="s.id" />
+            <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="目标阶段">
           <el-select v-model="autoForm.dstStageId" style="width: 100%">
-            <el-option v-for="s in stages" :key="s.id" :label="s.name" :value="s.id" />
+            <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="生成模式">

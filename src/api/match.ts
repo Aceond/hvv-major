@@ -26,12 +26,23 @@ export async function listStages(eventId?: string, groupId?: string): Promise<St
       .filter((s) => !eventId || s.event_id === eventId)
       .filter((s) => !groupId || s.group_id === groupId || s.group_id === null)
       .sort((a, b) => a.sort_order - b.sort_order)
+      .map((s) => ({
+        ...s,
+        // 演示模式补组别名：阶段带组别（传奇组/大师组/挑战组），与真实环境返回一致
+        group_name: s.group_id ? mockGroups.find((g) => g.id === s.group_id)?.name ?? null : null,
+      }))
   }
   let query = supabase.from('stages').select('*, group:groups(name)').order('sort_order')
   if (eventId) query = query.eq('event_id', eventId)
   if (groupId) query = query.or(`group_id.eq.${groupId},group_id.is.null`)
   const { data } = await query
   return ((data ?? []) as any[]).map((s) => ({ ...s, group_name: s.group?.name ?? null }))
+}
+
+/** 阶段展示名：阶段名 + 组别名（跨组/决赛阶段无组别则不拼接），赛程相关位置统一使用 */
+export function stageDisplayName(s: Pick<Stage, 'name' | 'group_name'>): string {
+  const g = s.group_name ? ` · ${s.group_name}` : ''
+  return `${s.name}${g}`
 }
 
 /** 演示模式下补全联表展示字段 */

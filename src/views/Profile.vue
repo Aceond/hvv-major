@@ -479,13 +479,17 @@ async function savePassword() {
         <template #header><span class="card-title">比赛记录</span></template>
         <el-table :data="myMatches" stripe empty-text="暂无比赛记录">
           <el-table-column prop="scheduled_at" label="时间" min-width="130" />
-          <el-table-column prop="stage_name" label="阶段" min-width="140" />
+          <el-table-column label="阶段" min-width="150">
+            <template #default="{ row }">
+              {{ row.stage_name ?? '-' }}{{ row.stage_name && row.group_name ? ' · ' + row.group_name : '' }}
+            </template>
+          </el-table-column>
           <el-table-column label="对阵" min-width="260">
             <template #default="{ row }">
               <div class="matchup">
-                <span :class="{ win: row.winner_id === row.team_a_id }">{{ row.team_a_name }}</span>
+                <span :class="{ win: row.status === 'completed' && row.team_a_score > row.team_b_score }">{{ row.team_a_name }}</span>
                 <b class="score">{{ row.team_a_score }} : {{ row.team_b_score }}</b>
-                <span :class="{ win: row.winner_id === row.team_b_id }">{{ row.team_b_name }}</span>
+                <span :class="{ win: row.status === 'completed' && row.team_b_score > row.team_a_score }">{{ row.team_b_name }}</span>
               </div>
             </template>
           </el-table-column>

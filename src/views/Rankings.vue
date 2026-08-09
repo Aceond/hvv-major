@@ -3,7 +3,7 @@ import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Sortable from 'sortablejs'
 import type { Group, PlayerStatRow, Stage, TeamStatRow } from '@/api/types'
 import { STAGE_STATUS_LABEL } from '@/api/types'
-import { listGroups, listStages } from '@/api/match'
+import { listGroups, listStages, stageDisplayName } from '@/api/match'
 import { getPlayerStatsAggregated, getTeamNetPoints, getTeamStats } from '@/api/stats'
 
 // 可排序列配置（拖拽表头可调整顺序）
@@ -181,7 +181,7 @@ function format(col: StatCol, value: number): string {
         <el-option
           v-for="s in stages"
           :key="s.id"
-          :label="`${s.name}（${STAGE_STATUS_LABEL[s.status]}）`"
+          :label="`${stageDisplayName(s)}（${STAGE_STATUS_LABEL[s.status]}）`"
           :value="s.id"
         />
       </el-select>
@@ -218,7 +218,9 @@ function format(col: StatCol, value: number): string {
           </template>
         </el-table-column>
         <el-table-column label="阶段" width="104" fixed>
-          <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
+          <template #default="{ row }">
+            {{ row.stage_name ?? '-' }}{{ row.stage_name && row.group_name ? ' · ' + row.group_name : '' }}
+          </template>
         </el-table-column>
         <el-table-column prop="group_name" label="组别" width="76" fixed />
         <el-table-column
@@ -259,7 +261,9 @@ function format(col: StatCol, value: number): string {
         </el-table-column>
         <el-table-column prop="team_name" label="战队" min-width="120" fixed />
         <el-table-column label="阶段" width="104" fixed>
-          <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
+          <template #default="{ row }">
+            {{ row.stage_name ?? '-' }}{{ row.stage_name && row.group_name ? ' · ' + row.group_name : '' }}
+          </template>
         </el-table-column>
         <el-table-column prop="group_name" label="组别" width="76" fixed />
         <el-table-column

@@ -2,7 +2,7 @@
 import { onMounted, onUnmounted, ref } from 'vue'
 import type { Group, Stage, StandingsRow } from '@/api/types'
 import { STAGE_STATUS_LABEL } from '@/api/types'
-import { getStandings, listGroups, listStages, subscribeStandings } from '@/api/match'
+import { getStandings, listGroups, listStages, stageDisplayName, subscribeStandings } from '@/api/match'
 
 const stages = ref<Stage[]>([])
 const groups = ref<Group[]>([])
@@ -40,7 +40,7 @@ async function load() {
       <el-tab-pane
         v-for="s in stages"
         :key="s.id"
-        :label="`${s.name}（${STAGE_STATUS_LABEL[s.status]}）`"
+        :label="`${stageDisplayName(s)}（${STAGE_STATUS_LABEL[s.status]}）`"
         :name="s.id"
       />
     </el-tabs>

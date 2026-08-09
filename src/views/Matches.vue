@@ -506,8 +506,10 @@ async function removeCaster(item: MatchCaster) {
                 </div>
               </template>
             </el-table-column>
-            <el-table-column label="阶段" min-width="140">
-              <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
+            <el-table-column label="阶段" min-width="150">
+              <template #default="{ row }">
+                {{ row.stage_name ?? '-' }}{{ row.stage_name && row.group_name ? ' · ' + row.group_name : '' }}
+              </template>
             </el-table-column>
             <el-table-column label="赛制 / 地图" width="180">
               <template #default="{ row }">

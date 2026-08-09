@@ -174,16 +174,16 @@ onMounted(async () => {
           </div>
           <div class="match-info">
             <el-tag size="small" effect="plain">{{ m.group_name ?? '跨组' }}</el-tag>
-            <span class="match-stage">{{ m.stage_name }}</span>
+            <span class="match-stage">{{ m.stage_name }}{{ m.stage_name && m.group_name ? ' · ' + m.group_name : '' }}</span>
           </div>
           <div class="matchup">
-            <span class="team" :class="{ win: m.winner_id === m.team_a_id }">
+            <span class="team" :class="{ win: m.status === 'completed' && m.team_a_score > m.team_b_score }">
               {{ m.team_a_name }}
             </span>
             <span class="score">
               {{ m.status === 'scheduled' ? 'VS' : `${m.team_a_score} : ${m.team_b_score}` }}
             </span>
-            <span class="team" :class="{ win: m.winner_id === m.team_b_id }">
+            <span class="team" :class="{ win: m.status === 'completed' && m.team_b_score > m.team_a_score }">
               {{ m.team_b_name }}
             </span>
           </div>
