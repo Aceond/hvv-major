@@ -56,6 +56,16 @@ function castersOf(match: Match): MatchCaster[] {
   return castersMap.value[match.id] ?? []
 }
 
+/** 时间格式化：兼容 ISO（带 T/秒/时区）与 'YYYY-MM-DD HH:mm'，统一输出「YYYY-MM-DD HH:mm」本地时间 */
+function formatDateTime(v: string | null | undefined): string {
+  if (!v) return '-'
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/.test(v)) return v
+  const d = new Date(v)
+  if (isNaN(d.getTime())) return v
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
+}
+
 onMounted(async () => {
   events.value = await listEvents()
   const active =
@@ -319,7 +329,7 @@ async function removeCaster(item: MatchCaster) {
               </template>
             </el-table-column>
             <el-table-column label="时间" min-width="130">
-              <template #default="{ row }">{{ row.scheduled_at ?? '-' }}</template>
+              <template #default="{ row }">{{ formatDateTime(row.scheduled_at) }}</template>
             </el-table-column>
             <el-table-column label="状态" width="90">
               <template #default="{ row }">
@@ -407,7 +417,7 @@ async function removeCaster(item: MatchCaster) {
           </template>
         </el-table-column>
         <el-table-column label="时间" min-width="130">
-          <template #default="{ row }">{{ row.scheduled_at ?? '-' }}</template>
+          <template #default="{ row }">{{ formatDateTime(row.scheduled_at) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
