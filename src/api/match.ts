@@ -183,6 +183,36 @@ export async function listMyMatches(teamIds: string[]): Promise<Match[]> {
   }))
 }
 
+/** 指定赛事（可叠加组别）下全部阶段的对阵（「全部比赛」页签用）：按阶段列表聚合查询 */
+export async function listAllStageMatches(
+  eventId?: string,
+  groupId?: string,
+): Promise<Match[]> {
+  const stages = await listStages(eventId, groupId)
+  const stageIds = stages.map((s) => s.id)
+  if (stageIds.length === 0) return []
+  if (!isSupabaseConfigured || !supabase) {
+    return decorate(mockMatches.filter((m) => stageIds.includes(m.stage_id))).sort(
+      (a, b) => a.round_number - b.round_number,
+    )
+  }
+  let query = supabase
+    .from('matches')
+    .select(
+      '*, stage:stages(name), group:groups(name), team_a:teams!matches_team_a_id_fkey(name), team_b:teams!matches_team_b_id_fkey(name)',
+    )
+    .in('stage_id', stageIds)
+    .order('round_number')
+  const { data } = await query
+  return ((data ?? []) as any[]).map((m) => ({
+    ...m,
+    stage_name: m.stage?.name,
+    group_name: m.group?.name,
+    team_a_name: m.team_a?.name,
+    team_b_name: m.team_b?.name,
+  }))
+}
+
 /** 积分榜（可按阶段、组别过滤；三组相互独立） */
 export async function getStandings(stageId?: string, groupId?: string): Promise<StandingsRow[]> {
   if (!isSupabaseConfigured || !supabase) {

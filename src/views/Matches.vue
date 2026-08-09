@@ -5,7 +5,7 @@ import { VideoCamera, Link, Microphone } from '@element-plus/icons-vue'
 import SwissBracket from '@/components/SwissBracket.vue'
 import type { EventItem, Group, Match, MatchCaster, MatchMedia, MediaKind, Stage } from '@/api/types'
 import { MATCH_STATUS_LABEL, MEDIA_KIND_LABEL, STAGE_STATUS_LABEL } from '@/api/types'
-import { listGroups, listMatches, listStages } from '@/api/match'
+import { listGroups, listMatches, listStages, listAllStageMatches } from '@/api/match'
 import { listEvents } from '@/api/event'
 import { addMatchMedia, listAllMatchMedia, removeMatchMedia } from '@/api/media'
 import { addMatchCaster, listAllMatchCasters, removeMatchCaster } from '@/api/caster'
@@ -18,7 +18,7 @@ const currentEventId = ref<string>('')
 const currentGroupId = ref<string>('')
 const stages = ref<Stage[]>([])
 const groups = ref<Group[]>([])
-const currentStage = ref<string>('')
+const currentStage = ref<string>('all') // 'all' = 全部比赛页签
 const matches = ref<Match[]>([])
 const loading = ref(false)
 const viewMode = ref<'list' | 'bracket'>('list')
@@ -68,7 +68,7 @@ onMounted(async () => {
 })
 
 async function onEventChange() {
-  currentStage.value = ''
+  currentStage.value = 'all'
   await loadMatches()
 }
 
@@ -76,16 +76,51 @@ async function loadMatches() {
   loading.value = true
   try {
     stages.value = await listStages(currentEventId.value || undefined, currentGroupId.value || undefined)
-    if (!stages.value.some((s) => s.id === currentStage.value)) {
-      currentStage.value = stages.value[0]?.id ?? ''
+    if (currentStage.value !== 'all' && !stages.value.some((s) => s.id === currentStage.value)) {
+      currentStage.value = 'all'
     }
-    matches.value = await listMatches(currentStage.value)
+    matches.value =
+      currentStage.value === 'all'
+        ? await listAllStageMatches(
+            currentEventId.value || undefined,
+            currentGroupId.value || undefined,
+          )
+        : await listMatches(currentStage.value)
     await loadMedia()
     await loadCasters()
   } finally {
     loading.value = false
   }
 }
+
+/** 阶段页签文案：阶段名自动带上组别，避免同名阶段分不清 */
+function stageTabLabel(s: Stage) {
+  const g = s.group_id ? groups.value.find((x) => x.id === s.group_id)?.name ?? '' : ''
+  const name = s.name
+  return g && !name.includes(g) ? `${name} · ${g}` : name
+}
+
+/** 全部比赛视图：按组别分组（组别顺序按 sort_order，未分组的放最后） */
+const groupedMatches = computed(() => {
+  const order = new Map(groups.value.map((g, i) => [g.id, i]))
+  const map = new Map<string, { key: string; name: string; matches: Match[] }>()
+  for (const m of matches.value) {
+    const gid = m.group_id ?? ''
+    const key = gid || '__none__'
+    if (!map.has(key)) {
+      const name = gid
+        ? (groups.value.find((g) => g.id === gid)?.name ?? '未分组')
+        : '跨组 / 未分组'
+      map.set(key, { key, name, matches: [] })
+    }
+    map.get(key)!.matches.push(m)
+  }
+  return [...map.values()].sort((a, b) => {
+    const ia = a.key === '__none__' ? 99 : order.get(a.key) ?? 98
+    const ib = b.key === '__none__' ? 99 : order.get(b.key) ?? 98
+    return ia - ib
+  })
+})
 
 async function loadMedia() {
   const all = await listAllMatchMedia()
@@ -222,10 +257,11 @@ async function removeCaster(item: MatchCaster) {
     </div>
 
     <el-tabs v-model="currentStage" @tab-change="loadMatches">
+      <el-tab-pane label="全部比赛" name="all" />
       <el-tab-pane
         v-for="s in stages"
         :key="s.id"
-        :label="`${s.name}（${STAGE_STATUS_LABEL[s.status]}）`"
+        :label="`${stageTabLabel(s)}（${STAGE_STATUS_LABEL[s.status]}）`"
         :name="s.id"
       />
     </el-tabs>
@@ -247,7 +283,100 @@ async function removeCaster(item: MatchCaster) {
 
     <!-- 对阵列表 -->
     <el-card v-else v-loading="loading">
-      <el-table :data="matches" stripe empty-text="该阶段暂无对阵">
+      <!-- 全部比赛：按组别分组展示，组别一目了然 -->
+      <template v-if="currentStage === 'all' && groupedMatches.length">
+        <div v-for="g in groupedMatches" :key="g.key" class="group-block">
+          <h4 class="group-title">
+            <span class="group-name">{{ g.name }}</span>
+            <span class="group-count">{{ g.matches.length }} 场</span>
+          </h4>
+          <el-table :data="g.matches" stripe empty-text="该组暂无对阵">
+            <el-table-column label="对阵" min-width="300">
+              <template #default="{ row }">
+                <div class="matchup">
+                  <!-- 绿色突出按比分判定（比分高者为胜），避免历史数据 winner_id 与比分不一致时标错 -->
+                  <span class="team" :class="{ win: row.status === 'completed' && row.team_a_score > row.team_b_score }">
+                    {{ row.team_a_name }}
+                  </span>
+                  <span class="score">{{ row.team_a_score }} : {{ row.team_b_score }}</span>
+                  <span class="team" :class="{ win: row.status === 'completed' && row.team_b_score > row.team_a_score }">
+                    {{ row.team_b_name }}
+                  </span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="阶段" min-width="140">
+              <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
+            </el-table-column>
+            <el-table-column label="赛制 / 地图" width="140">
+              <template #default="{ row }">
+                BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
+              </template>
+            </el-table-column>
+            <el-table-column label="时间" min-width="110">
+              <template #default="{ row }">{{ row.scheduled_at ? row.scheduled_at.slice(0, 10) : '-' }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="90">
+              <template #default="{ row }">
+                <el-tag :type="matchStatusType(row.status)">
+                  {{ MATCH_STATUS_LABEL[row.status as Match['status']] }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="直播 / 录像" min-width="180">
+              <template #default="{ row }">
+                <div v-if="mediaOf(row).length > 0" class="media-links">
+                  <a
+                    v-for="m in mediaOf(row)"
+                    :key="m.id"
+                    :href="m.url"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="media-link"
+                    :title="m.label"
+                  >
+                    <el-tag size="small" :type="m.kind === 'live' ? 'danger' : m.kind === 'vod' ? 'primary' : 'info'" effect="plain">
+                      {{ MEDIA_KIND_LABEL[m.kind] }}
+                    </el-tag>
+                    <el-icon v-if="m.kind === 'live'"><VideoCamera /></el-icon>
+                    <el-icon v-else><Link /></el-icon>
+                    <span class="media-label">{{ m.label || '查看' }}</span>
+                  </a>
+                </div>
+                <span v-else class="no-media">暂无</span>
+              </template>
+            </el-table-column>
+            <el-table-column label="解说" min-width="150">
+              <template #default="{ row }">
+                <div v-if="castersOf(row).length > 0" class="caster-tags">
+                  <el-tag
+                    v-for="c in castersOf(row)"
+                    :key="c.id"
+                    size="small"
+                    type="warning"
+                    effect="plain"
+                    class="caster-tag"
+                  >
+                    <el-icon class="caster-icon"><Microphone /></el-icon>{{ c.caster_name }}
+                  </el-tag>
+                </div>
+                <span v-else class="no-media">暂无</span>
+              </template>
+            </el-table-column>
+            <el-table-column v-if="auth.isAdmin || auth.isCaster" label="操作" width="170" fixed="right">
+              <template #default="{ row }">
+                <div class="op-btns">
+                  <el-button size="small" @click="openCasterDialog(row)">解说</el-button>
+                  <el-button v-if="auth.isAdmin" size="small" @click="openMediaDialog(row)">登记</el-button>
+                </div>
+              </template>
+            </el-table-column>
+          </el-table>
+        </div>
+      </template>
+
+      <!-- 单阶段视图 -->
+      <el-table v-else :data="matches" stripe empty-text="暂无对阵">
         <el-table-column prop="group_name" label="组别" width="90">
           <template #default="{ row }">
             <el-tag size="small" effect="plain">{{ row.group_name ?? '跨组' }}</el-tag>
@@ -421,6 +550,33 @@ async function removeCaster(item: MatchCaster) {
 
 .bracket {
   margin-bottom: 8px;
+}
+
+.group-block {
+  margin-bottom: 20px;
+}
+
+.group-block:last-child {
+  margin-bottom: 0;
+}
+
+.group-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.group-name {
+  font-weight: 800;
+  color: var(--cs2-accent);
+}
+
+.group-count {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--cs2-text-muted);
 }
 
 .matchup {
