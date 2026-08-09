@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import type { Group, Match, Stage, Team } from '@/api/types'
+import type { EventItem, Group, Match, Stage, Team } from '@/api/types'
 import { MATCH_STATUS_LABEL } from '@/api/types'
 import { listGroups, listStages } from '@/api/match'
+import { listEvents } from '@/api/event'
 import {
   createBookedMatches,
   deleteBookedMatch,
@@ -17,6 +18,8 @@ import {
 const auth = useAuthStore()
 const router = useRouter()
 
+const events = ref<EventItem[]>([])
+const currentEventId = ref('')
 const myTeam = ref<Team | null>(null)
 const opponents = ref<Team[]>([])
 const stages = ref<Stage[]>([])
@@ -40,15 +43,44 @@ function teamName(id: string | null): string {
   return opponents.value.find((t) => t.id === id)?.name ?? '待定'
 }
 
-async function init() {
-  stages.value = await listStages()
-  groups.value = await listGroups()
+function eventLabel(e: EventItem) {
+  return `${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`
+}
+
+/** 当前赛事可录入的阶段：进行中阶段优先，否则第一个 */
+const currentStageName = computed(() => {
+  const list = stages.value
+  return list.find((s) => s.status === 'running')?.name ?? list[0]?.name ?? '待配置'
+})
+
+async function load() {
   if (!auth.isLoggedIn) return
-  myTeam.value = await listMyTeam(auth.user?.id)
-  if (myTeam.value) {
-    opponents.value = await listApprovedTeams(myTeam.value.id)
-    await loadBooked()
+  loading.value = true
+  try {
+    stages.value = await listStages(currentEventId.value || undefined)
+    groups.value = await listGroups()
+    // 约战按赛事上下文取「我的战队」：该赛事下我是队长的已审核战队
+    myTeam.value = await listMyTeam(auth.user?.id, currentEventId.value || null)
+    if (myTeam.value) {
+      opponents.value = await listApprovedTeams(currentEventId.value || null, myTeam.value.id)
+      await loadBooked()
+    } else {
+      opponents.value = []
+      booked.value = []
+    }
+  } finally {
+    loading.value = false
   }
+}
+
+async function init() {
+  events.value = await listEvents()
+  const active =
+    events.value.find((e) => e.status === 'running') ??
+    events.value.find((e) => e.status === 'signup') ??
+    events.value[0]
+  currentEventId.value = active?.id ?? ''
+  await load()
 }
 
 async function loadBooked() {
@@ -132,6 +164,12 @@ onMounted(init)
       本次比赛为自由约战制：由各战队队长自行约对手、定时间（仅队长可录入）。录入后会在「赛程」页公开展示，双方战队均可看到。
     </p>
 
+    <div class="event-bar" v-if="events.length">
+      <el-select v-model="currentEventId" placeholder="选择赛事" @change="load">
+        <el-option v-for="e in events" :key="e.id" :label="eventLabel(e)" :value="e.id" />
+      </el-select>
+    </div>
+
     <!-- 未登录 -->
     <el-empty v-if="!auth.isLoggedIn" description="请先登录后录入约战">
       <el-button type="primary" @click="router.push({ name: 'login' })">去登录</el-button>
@@ -157,12 +195,11 @@ onMounted(init)
             组别：{{ groupName(myTeam.group_id) }}
           </el-tag>
         </div>
+        <div v-if="myTeam.captain_name || myTeam.captain_pw" class="captain-info">
+          队长：{{ myTeam.captain_name || '-' }}（完美 ID：{{ myTeam.captain_pw || '-' }}）
+        </div>
         <div class="stage-info">
-          录入阶段：<b>{{
-            stages.find((s) => s.status === 'running')?.name ??
-            stages[0]?.name ??
-            '待配置'
-          }}</b>
+          录入阶段：<b>{{ currentStageName }}</b>
         </div>
       </el-card>
 
@@ -270,6 +307,19 @@ onMounted(init)
   margin: 0 0 20px;
   color: var(--cs2-text-muted);
   font-size: 13px;
+}
+
+.event-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.captain-info {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--cs2-text-regular, #c6ccd8);
 }
 
 .my-team {

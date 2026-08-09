@@ -90,6 +90,8 @@ export interface Team {
   captain_id: string
   event_id: string | null // 报名赛事（战队按赛事报名）
   group_id: string | null // 所属组别（传奇组/大师组/挑战组）
+  captain_name?: string | null // 队长注册姓名（该赛事审核时回填 profiles.nickname）
+  captain_pw?: string | null // 队长完美 ID（该赛事审核时回填 profiles.pw_username）
   status: TeamStatus
   created_at: string
 }

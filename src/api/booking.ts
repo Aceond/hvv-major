@@ -6,33 +6,57 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { mockMatches, mockTeams } from '@/mock/data'
 import type { Match, Team } from './types'
 
-/** 当前登录用户作为队长的战队（仅已审核战队；约战仅队长可录入，管理员不受限） */
-export async function listMyTeam(userId?: string | null): Promise<Team | null> {
+/** 当前登录用户在「指定赛事」下的队长战队（约战按赛事报名，须为已审核战队）。
+ *  战队信息附带该赛事队长注册的姓名 / 完美 ID（profiles 审核回填值），而非登录账号 UUID。 */
+export async function listMyTeam(
+  userId?: string | null,
+  eventId?: string | null,
+): Promise<Team | null> {
   if (!isSupabaseConfigured || !supabase) {
     if (!userId) return null
-    return (
-      mockTeams.find((t) => t.status === 'approved' && t.captain_id === userId) ?? null
+    const team = mockTeams.find(
+      (t) =>
+        t.status === 'approved' &&
+        t.captain_id === userId &&
+        (!eventId || t.event_id === eventId),
     )
+    return team ?? null
   }
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
-  const { data } = await supabase
+  let query = supabase
     .from('teams')
-    .select('*')
+    .select('*, captain:profiles(nickname, pw_username)')
     .eq('captain_id', user.id)
     .eq('status', 'approved')
     .order('created_at', { ascending: false })
-    .limit(1) // 同一用户被设为多支战队队长时取最新一支，避免 maybeSingle 多行报错导致无法录入
-    .maybeSingle()
-  return (data as Team | null) ?? null
+  if (eventId) query = query.eq('event_id', eventId)
+  const { data } = await query.limit(1).maybeSingle()
+  const team = data as (Team & { captain?: { nickname: string | null; pw_username: string | null } }) | null
+  if (!team) return null
+  return {
+    ...team,
+    captain_name: team.captain?.nickname ?? null,
+    captain_pw: team.captain?.pw_username ?? null,
+  }
 }
 
-/** 已审核战队列表（约战对手候选，可排除自己所在战队） */
-export async function listApprovedTeams(excludeTeamId?: string | null): Promise<Team[]> {
+/** 指定赛事下已审核战队列表（约战对手候选，可排除自己所在战队） */
+export async function listApprovedTeams(
+  eventId?: string | null,
+  excludeTeamId?: string | null,
+): Promise<Team[]> {
   if (!isSupabaseConfigured || !supabase) {
-    return mockTeams.filter((t) => t.status === 'approved' && t.id !== excludeTeamId)
+    return mockTeams.filter(
+      (t) =>
+        t.status === 'approved' &&
+        t.id !== excludeTeamId &&
+        (!eventId || t.event_id === eventId),
+    )
   }
-  const { data } = await supabase.from('teams').select('*').eq('status', 'approved')
+  let query = supabase.from('teams').select('*').eq('status', 'approved')
+  if (eventId) query = query.eq('event_id', eventId)
+  const { data } = await query
   return ((data as Team[]) ?? []).filter((t) => t.id !== excludeTeamId)
 }
 
