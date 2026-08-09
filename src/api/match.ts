@@ -5,11 +5,12 @@ import {
   getGroupName,
   getTeamName,
   mockGroups,
+  mockMatchMaps,
   mockMatches,
   mockStages,
   mockStandings,
 } from '@/mock/data'
-import type { Group, Match, Stage, StandingsRow } from './types'
+import type { Group, Match, MatchMap, Stage, StandingsRow } from './types'
 
 /** 组别列表（传奇组 / 大师组 / 挑战组） */
 export async function listGroups(): Promise<Group[]> {
@@ -228,6 +229,16 @@ export async function getStandings(stageId?: string, groupId?: string): Promise<
   return ((data ?? []) as StandingsRow[]).sort(
     (a, b) => b.points - a.points || b.map_diff - a.map_diff,
   )
+}
+
+/** 逐图比分（BO3 明细）：按比赛 ID 批量查询 match_maps */
+export async function listMatchMaps(matchIds: string[]): Promise<MatchMap[]> {
+  if (matchIds.length === 0) return []
+  if (!isSupabaseConfigured || !supabase) {
+    return mockMatchMaps.filter((m) => matchIds.includes(m.match_id))
+  }
+  const { data } = await supabase.from('match_maps').select('*').in('match_id', matchIds)
+  return (data as MatchMap[]) ?? []
 }
 
 /** 订阅积分榜实时更新（比赛结果变更时自动刷新） */

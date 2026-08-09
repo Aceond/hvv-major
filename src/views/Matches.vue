@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { VideoCamera, Link, Microphone } from '@element-plus/icons-vue'
+import { VideoCamera, Link, Microphone, ArrowDown } from '@element-plus/icons-vue'
 import SwissBracket from '@/components/SwissBracket.vue'
-import type { EventItem, Group, Match, MatchCaster, MatchMedia, MediaKind, Stage } from '@/api/types'
+import type { EventItem, Group, Match, MatchCaster, MatchMap, MatchMedia, MediaKind, Stage } from '@/api/types'
 import { MATCH_STATUS_LABEL, MEDIA_KIND_LABEL, STAGE_STATUS_LABEL } from '@/api/types'
-import { listGroups, listMatches, listStages, listAllStageMatches } from '@/api/match'
+import { listGroups, listMatches, listStages, listAllStageMatches, listMatchMaps } from '@/api/match'
 import { listEvents } from '@/api/event'
 import { addMatchMedia, listAllMatchMedia, removeMatchMedia } from '@/api/media'
 import { addMatchCaster, listAllMatchCasters, removeMatchCaster } from '@/api/caster'
@@ -27,6 +27,8 @@ const viewMode = ref<'list' | 'bracket'>('list')
 const mediaMap = ref<Record<string, MatchMedia[]>>({})
 // 解说名单：按比赛分组（matchId -> MatchCaster[]）
 const castersMap = ref<Record<string, MatchCaster[]>>({})
+// 逐图比分：按比赛分组（matchId -> MatchMap[]，仅 BO3 有）
+const mapsMap = ref<Record<string, MatchMap[]>>({})
 
 // 登记媒体对话框
 const dialogVisible = ref(false)
@@ -96,6 +98,7 @@ async function loadMatches() {
             currentGroupId.value || undefined,
           )
         : await listMatches(currentStage.value)
+    await loadMaps()
     await loadMedia()
     await loadCasters()
   } finally {
@@ -146,6 +149,20 @@ async function loadCasters() {
     ;(acc[c.match_id] ??= []).push(c)
     return acc
   }, {})
+}
+
+/** 拉取所有 BO3 比赛的逐图比分（match_maps） */
+async function loadMaps() {
+  const ids = [...new Set(matches.value.filter((m) => m.best_of > 1).map((m) => m.id))]
+  const all = await listMatchMaps(ids)
+  mapsMap.value = all.reduce<Record<string, MatchMap[]>>((acc, mp) => {
+    ;(acc[mp.match_id] ??= []).push(mp)
+    return acc
+  }, {})
+}
+
+function mapsOf(match: Match): MatchMap[] {
+  return mapsMap.value[match.id] ?? []
 }
 
 function matchStatusType(status: Match['status']) {
@@ -323,9 +340,24 @@ async function removeCaster(item: MatchCaster) {
             <el-table-column label="阶段" min-width="140">
               <template #default="{ row }">{{ row.stage_name ?? '-' }}</template>
             </el-table-column>
-            <el-table-column label="赛制 / 地图" width="140">
+            <el-table-column label="赛制 / 地图" width="180">
               <template #default="{ row }">
-                BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
+                <span class="bo-info">
+                  BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
+                  <el-dropdown v-if="mapsOf(row).length" trigger="click">
+                    <span class="maps-trigger">
+                      逐图比分
+                      <el-icon><ArrowDown /></el-icon>
+                    </span>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item v-for="mp in mapsOf(row)" :key="mp.id">
+                          {{ mp.map_name }}&nbsp;&nbsp;{{ mp.team_a_score }} : {{ mp.team_b_score }}
+                        </el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </span>
               </template>
             </el-table-column>
             <el-table-column label="时间" min-width="130">
@@ -411,9 +443,24 @@ async function removeCaster(item: MatchCaster) {
             </div>
           </template>
         </el-table-column>
-        <el-table-column label="赛制 / 地图" width="140">
+        <el-table-column label="赛制 / 地图" width="180">
           <template #default="{ row }">
-            BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
+            <span class="bo-info">
+              BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
+              <el-dropdown v-if="mapsOf(row).length" trigger="click">
+                <span class="maps-trigger">
+                  逐图比分
+                  <el-icon><ArrowDown /></el-icon>
+                </span>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-for="mp in mapsOf(row)" :key="mp.id">
+                    {{ mp.map_name }}&nbsp;&nbsp;{{ mp.team_a_score }} : {{ mp.team_b_score }}
+                  </el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </span>
           </template>
         </el-table-column>
         <el-table-column label="时间" min-width="130">
@@ -543,6 +590,28 @@ async function removeCaster(item: MatchCaster) {
 
 .title {
   margin: 0 0 16px;
+}
+
+.bo-info {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.maps-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--cs2-accent, #ffb020);
+  cursor: pointer;
+  font-size: 12px;
+  white-space: nowrap;
+  user-select: none;
+}
+
+.maps-trigger:hover {
+  text-decoration: underline;
 }
 
 .event-bar {

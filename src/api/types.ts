@@ -148,6 +148,16 @@ export interface Match {
   team_b_name?: string
 }
 
+/** 逐图比分（BO3 每张图的地图名与双方比分） */
+export interface MatchMap {
+  id: string
+  match_id: string
+  map_name: string
+  team_a_score: number
+  team_b_score: number
+  winner_id: string | null
+}
+
 export interface StandingsRow {
   stage_id: string
   group_id: string | null
