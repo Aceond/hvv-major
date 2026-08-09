@@ -253,14 +253,15 @@ async function removeCaster(item: MatchCaster) {
             <el-tag size="small" effect="plain">{{ row.group_name ?? '跨组' }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="对阵" min-width="240">
+        <el-table-column label="对阵" min-width="300">
           <template #default="{ row }">
             <div class="matchup">
-              <span class="team" :class="{ win: row.winner_id === row.team_a_id }">
+              <!-- 绿色突出按比分判定（比分高者为胜），避免历史数据 winner_id 与比分不一致时标错 -->
+              <span class="team" :class="{ win: row.status === 'completed' && row.team_a_score > row.team_b_score }">
                 {{ row.team_a_name }}
               </span>
               <span class="score">{{ row.team_a_score }} : {{ row.team_b_score }}</span>
-              <span class="team" :class="{ win: row.winner_id === row.team_b_id }">
+              <span class="team" :class="{ win: row.status === 'completed' && row.team_b_score > row.team_a_score }">
                 {{ row.team_b_name }}
               </span>
             </div>
@@ -319,10 +320,12 @@ async function removeCaster(item: MatchCaster) {
             <span v-else class="no-media">暂无</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="auth.isAdmin || auth.isCaster" label="操作" width="130" fixed="right">
+        <el-table-column v-if="auth.isAdmin || auth.isCaster" label="操作" width="170" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="openCasterDialog(row)">解说</el-button>
-            <el-button v-if="auth.isAdmin" size="small" @click="openMediaDialog(row)">登记</el-button>
+            <div class="op-btns">
+              <el-button size="small" @click="openCasterDialog(row)">解说</el-button>
+              <el-button v-if="auth.isAdmin" size="small" @click="openMediaDialog(row)">登记</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -432,6 +435,12 @@ async function removeCaster(item: MatchCaster) {
 .score {
   font-weight: 700;
   color: var(--cs2-accent);
+  white-space: nowrap;
+}
+
+.op-btns {
+  display: flex;
+  align-items: center;
   white-space: nowrap;
 }
 
