@@ -28,7 +28,9 @@ const standings = computed(() => {
     { id: string; name: string; wins: number; losses: number }
   >()
   for (const m of props.matches) {
-    if (m.status !== 'completed' || !m.winner_id) continue
+    // 胜负按比分判定（比分高者为胜），与赛程列表一致，避免 winner_id 历史数据不一致时标错
+    if (m.status !== 'completed' || m.team_a_score === m.team_b_score) continue
+    const aWin = m.team_a_score > m.team_b_score
     for (const [tid, name] of [
       [m.team_a_id, m.team_a_name],
       [m.team_b_id, m.team_b_name],
@@ -36,7 +38,7 @@ const standings = computed(() => {
       if (!tid) continue
       const row =
         map.get(tid) ?? { id: tid, name: name ?? '-', wins: 0, losses: 0 }
-      if (m.winner_id === tid) row.wins++
+      if ((aWin && tid === m.team_a_id) || (!aWin && tid === m.team_b_id)) row.wins++
       else row.losses++
       map.set(tid, row)
     }
@@ -76,14 +78,14 @@ const standings = computed(() => {
               <div class="matchup">
                 <span
                   class="team"
-                  :class="{ win: m.winner_id === m.team_a_id }"
+                  :class="{ win: m.status === 'completed' && m.team_a_score > m.team_b_score }"
                 >
                   {{ m.team_a_name }}
                 </span>
                 <span class="score">{{ m.team_a_score }}:{{ m.team_b_score }}</span>
                 <span
                   class="team"
-                  :class="{ win: m.winner_id === m.team_b_id }"
+                  :class="{ win: m.status === 'completed' && m.team_b_score > m.team_a_score }"
                 >
                   {{ m.team_b_name }}
                 </span>
