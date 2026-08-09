@@ -1,7 +1,14 @@
 // 数据排行访问层（队伍排行 + 个人排行）
 // 数据来源：管理员在后台手动录入（比赛结果录入后也可人工维护统计数据）。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
-import { mockMatchPlayerStats, mockMatches, mockPlayerStats, mockTeamStats } from '@/mock/data'
+import {
+  groupNames,
+  mockMatchPlayerStats,
+  mockMatches,
+  mockPlayerStats,
+  mockTeamStats,
+  mockTeams,
+} from '@/mock/data'
 import type { PlayerStatRow, TeamStatRow } from './types'
 import { listGroups, listStages } from './match'
 
@@ -135,6 +142,73 @@ export async function getTeamNetPoints(groupId?: string, stageId?: string): Prom
     net[m.team_b_id] = (net[m.team_b_id] ?? 0) + (m.team_b_score - m.team_a_score)
   }
   return net
+}
+
+/**
+ * 参赛队伍（该筛选范围内已完成比赛的对阵双方）：
+ * 队伍排行为底使用，保证「只要打过比赛就出现在排行」，即使还没在后台手动录入 team_stats。
+ * 净胜分/胜场等实时指标由调用方叠加 getTeamNetPoints 计算。
+ */
+export async function getParticipatingTeams(
+  groupId?: string,
+  stageId?: string,
+): Promise<TeamStatRow[]> {
+  const empty = (t: { id: string; name: string; tag: string | null; group_id: string | null; group_name: string | null }): TeamStatRow => ({
+    team_id: t.id,
+    team_name: t.name,
+    tag: t.tag,
+    stage_id: stageId ?? null,
+    stage_name: null,
+    group_id: t.group_id,
+    group_name: t.group_name,
+    win_rate: 0, kd: 0, matches: 0, net: 0,
+    hs_rate: 0, pistol_win_rate: 0, first_five_win_rate: 0,
+    avg_kills: 0, avg_deaths: 0, avg_assists: 0,
+    total_kills: 0, total_deaths: 0, total_assists: 0,
+  })
+  if (!isSupabaseConfigured || !supabase) {
+    const ids = new Set<string>()
+    for (const m of mockMatches) {
+      if (m.status !== 'completed') continue
+      if (groupId && m.group_id !== groupId) continue
+      if (stageId && m.stage_id !== stageId) continue
+      if (m.team_a_id) ids.add(m.team_a_id)
+      if (m.team_b_id) ids.add(m.team_b_id)
+    }
+    return [...ids].map((tid) => {
+      const t = mockTeams.find((x) => x.id === tid)
+      return empty({
+        id: tid,
+        name: t?.name ?? '未知',
+        tag: t?.tag ?? null,
+        group_id: t?.group_id ?? null,
+        group_name: t ? (t.group_id ? groupNames[t.group_id] ?? null : null) : null,
+      })
+    })
+  }
+  let query = supabase.from('matches').select('team_a_id, team_b_id').eq('status', 'completed')
+  if (groupId) query = query.eq('group_id', groupId)
+  if (stageId) query = query.eq('stage_id', stageId)
+  const { data } = await query
+  const ids = new Set<string>()
+  for (const m of (data ?? []) as any[]) {
+    if (m.team_a_id) ids.add(m.team_a_id)
+    if (m.team_b_id) ids.add(m.team_b_id)
+  }
+  if (ids.size === 0) return []
+  const { data: teams } = await supabase
+    .from('teams')
+    .select('id, name, tag, group_id, group:groups(name)')
+    .in('id', [...ids])
+  return ((teams ?? []) as any[]).map((t) =>
+    empty({
+      id: t.id,
+      name: t.name,
+      tag: t.tag,
+      group_id: t.group_id,
+      group_name: t.group?.name ?? null,
+    }),
+  )
 }
 
 /** 保存/更新个人统计数据（每名选手一行，按 profile_id 覆盖；stage_id 记录当前录入的阶段） */
