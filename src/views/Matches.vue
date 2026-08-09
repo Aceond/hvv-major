@@ -318,8 +318,8 @@ async function removeCaster(item: MatchCaster) {
                 BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
               </template>
             </el-table-column>
-            <el-table-column label="时间" min-width="110">
-              <template #default="{ row }">{{ row.scheduled_at ? row.scheduled_at.slice(0, 10) : '-' }}</template>
+            <el-table-column label="时间" min-width="130">
+              <template #default="{ row }">{{ row.scheduled_at ?? '-' }}</template>
             </el-table-column>
             <el-table-column label="状态" width="90">
               <template #default="{ row }">
@@ -406,8 +406,8 @@ async function removeCaster(item: MatchCaster) {
             BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
           </template>
         </el-table-column>
-        <el-table-column label="时间" min-width="110">
-          <template #default="{ row }">{{ row.scheduled_at ? row.scheduled_at.slice(0, 10) : '-' }}</template>
+        <el-table-column label="时间" min-width="130">
+          <template #default="{ row }">{{ row.scheduled_at ?? '-' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
