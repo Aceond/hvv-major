@@ -73,7 +73,7 @@ async function signOut() {
         </el-button>
         <template v-if="auth.isLoggedIn">
           <el-dropdown>
-            <span class="username">{{ auth.profile?.username || auth.user?.email }}</span>
+            <span class="username">{{ auth.profile?.username }}</span>
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item v-if="!auth.reviewBlocked" @click="router.push({ name: 'profile' })">个人中心</el-dropdown-item>

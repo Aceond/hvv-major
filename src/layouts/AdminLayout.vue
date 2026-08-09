@@ -60,7 +60,7 @@ async function signOut() {
             返回前台
           </el-button>
           <span class="divider" />
-          <span class="admin-name">{{ auth.profile?.username || auth.user?.email }}</span>
+          <span class="admin-name">{{ auth.profile?.username }}</span>
           <el-button class="ghost-btn" text size="small" @click="signOut">
             退出登录
           </el-button>
