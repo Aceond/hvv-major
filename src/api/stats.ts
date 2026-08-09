@@ -38,7 +38,7 @@ export async function getPlayerStats(groupId?: string, stageId?: string): Promis
   }
   let query = supabase
     .from('player_stats')
-    .select('*, player:profiles(nickname, pw_username), team:teams(name), group:groups(name), stage:stages(name)')
+    .select('*, player:profiles(nickname, pw_username), team:teams(name), group:groups(name), stage:stages(name, group_id)')
   if (groupId) query = query.eq('group_id', groupId)
   if (stageId) query = query.eq('stage_id', stageId)
   const { data } = await query
@@ -49,6 +49,7 @@ export async function getPlayerStats(groupId?: string, stageId?: string): Promis
     team_name: s.team?.name ?? null,
     group_name: s.group?.name ?? null,
     stage_name: s.stage?.name ?? null,
+    stage_group_id: s.stage?.group_id ?? null,
   })).sort((a, b) => b.rating_pro - a.rating_pro)
 }
 
@@ -64,7 +65,7 @@ export async function getPlayerStatsByEvent(eventId: string): Promise<PlayerStat
   if (stageIds.length === 0) return []
   let query = supabase
     .from('player_stats')
-    .select('*, player:profiles(nickname, pw_username), team:teams(name), group:groups(name), stage:stages(name)')
+    .select('*, player:profiles(nickname, pw_username), team:teams(name), group:groups(name), stage:stages(name, group_id)')
     .in('stage_id', stageIds)
   const { data } = await query
   return ((data ?? []) as any[]).map((s) => ({
@@ -74,6 +75,7 @@ export async function getPlayerStatsByEvent(eventId: string): Promise<PlayerStat
     team_name: s.team?.name ?? null,
     group_name: s.group?.name ?? null,
     stage_name: s.stage?.name ?? null,
+    stage_group_id: s.stage?.group_id ?? null,
   }))
 }
 

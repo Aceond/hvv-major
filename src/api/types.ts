@@ -219,6 +219,7 @@ export interface PlayerStatRow {
   team_name: string
   stage_id: string | null
   stage_name: string | null
+  stage_group_id?: string | null // 数据/比赛所属组别（该行 stage 的组别，即「在哪打的」；非选手战队组别）
   group_id: string | null
   group_name: string | null
   we: number // WE（获胜效率）

@@ -54,10 +54,12 @@ function dimValue(row: PlayerStatRow, key: (typeof RADAR_DIMS)[number]['key']): 
   }
 }
 
-/** 当前范围（全部/某组别）内的所有选手统计行 */
+/** 当前范围（全部/某组别）内的所有选手统计行。
+ *  组别按「数据/比赛所属组别」判定（stage 的组别，即在哪打的），而非选手战队被分配的组别；
+ *  演示数据未带 stage 组别时回退用战队组别。 */
 const radarRows = computed(() => {
   if (radarRange.value === 'all') return eventStats.value
-  return eventStats.value.filter((r) => r.group_id === radarRange.value)
+  return eventStats.value.filter((r) => (r.stage_group_id ?? r.group_id) === radarRange.value)
 })
 
 /** 当前登录选手在该赛事的统计行（每名选手一行） */
@@ -70,6 +72,13 @@ const radarRangeName = computed(() =>
     ? '全部选手'
     : (groups.value.find((g) => g.id === radarRange.value)?.name ?? '未分组'),
 )
+
+/** 我的数据所属组别（按数据/比赛组别判定，与平均值口径一致） */
+const myGroupName = computed(() => {
+  if (!myRadarRow.value) return ''
+  const gid = myRadarRow.value.stage_group_id ?? myRadarRow.value.group_id
+  return groups.value.find((g) => g.id === gid)?.name ?? ''
+})
 
 /** 五维数据：我的值 / 范围内平均 / 归一化比例（同一维用同一 max，保证两线同尺度） */
 const radarData = computed(() => {
@@ -433,7 +442,7 @@ async function savePassword() {
               </svg>
               <div class="radar-side">
                 <div class="radar-legend">
-                  <span class="legend-item"><i class="swatch mine"></i>我的</span>
+                  <span class="legend-item"><i class="swatch mine"></i>我的{{ myGroupName ? `（${myGroupName}）` : '' }}</span>
                   <span class="legend-item"><i class="swatch avg"></i>平均（{{ radarRangeName }}）</span>
                 </div>
                 <el-table :data="radarData" size="small" border class="radar-table">
