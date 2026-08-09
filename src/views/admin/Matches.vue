@@ -11,9 +11,10 @@ import {
   listMatches,
   listStages,
   listTeams,
-  updateMatchResult,
   updateStage,
 } from '@/api/admin'
+import { listMatchMaps, submitMatchScore } from '@/api/match'
+import type { MatchMapInput } from '@/api/match'
 import { listEvents } from '@/api/event'
 
 const events = ref<EventItem[]>([])
@@ -29,6 +30,17 @@ const loading = ref(false)
 // 比分录入
 const scoreDialog = ref(false)
 const scoreForm = reactive({ matchId: '', aScore: 0, bScore: 0, map: '', scheduledAt: '' })
+const scoreBestOf = ref(1) // 当前录入比赛的赛制（1 = BO1，3 = BO3）
+interface MapRow {
+  mapName: string
+  a: number
+  b: number
+}
+const mapRows = reactive<MapRow[]>([
+  { mapName: '', a: 0, b: 0 },
+  { mapName: '', a: 0, b: 0 },
+  { mapName: '', a: 0, b: 0 },
+])
 
 // 服役图池（Active Duty）7 张
 const MAP_OPTIONS = [
@@ -104,26 +116,57 @@ async function onFilterChange() {
   matches.value = await listMatches(currentStage.value)
 }
 
-function openScore(row: Match) {
+async function openScore(row: Match) {
   scoreForm.matchId = row.id
   scoreForm.aScore = row.team_a_score
   scoreForm.bScore = row.team_b_score
   scoreForm.map = row.map ?? ''
   scoreForm.scheduledAt = row.scheduled_at?.slice(0, 10) ?? ''
+  scoreBestOf.value = row.best_of
+  const maps = await listMatchMaps([row.id])
+  for (let i = 0; i < 3; i++) {
+    mapRows[i].mapName = maps[i]?.map_name ?? ''
+    mapRows[i].a = maps[i]?.team_a_score ?? 0
+    mapRows[i].b = maps[i]?.team_b_score ?? 0
+  }
   scoreDialog.value = true
 }
 
 async function saveScore() {
-  await updateMatchResult(
-    scoreForm.matchId,
-    scoreForm.aScore,
-    scoreForm.bScore,
-    scoreForm.map || null,
-    scoreForm.scheduledAt || null,
-  )
-  scoreDialog.value = false
-  ElMessage.success('比分已录入')
-  onFilterChange()
+  if (scoreForm.aScore === scoreForm.bScore) {
+    ElMessage.warning('比分不能相同，请区分胜负')
+    return
+  }
+  const maps: MatchMapInput[] =
+    scoreBestOf.value > 1
+      ? mapRows
+          .filter((r) => r.mapName)
+          .map((r) => ({ map_name: r.mapName, team_a_score: r.a, team_b_score: r.b }))
+      : []
+  if (scoreBestOf.value > 1 && maps.length === 0) {
+    ElMessage.warning('请填写至少一张地图的逐图比分')
+    return
+  }
+  if (scoreBestOf.value > 1) {
+    const aWins = maps.filter((r) => r.team_a_score > r.team_b_score).length
+    const bWins = maps.filter((r) => r.team_b_score > r.team_a_score).length
+    if (aWins !== scoreForm.aScore || bWins !== scoreForm.bScore) {
+      ElMessage.warning(`总比分与逐图不一致：逐图统计为 ${aWins} : ${bWins}，请检查后重新填写`)
+      return
+    }
+  }
+  try {
+    await submitMatchScore(scoreForm.matchId, scoreForm.aScore, scoreForm.bScore, {
+      map: scoreBestOf.value > 1 ? null : scoreForm.map || null,
+      scheduledAt: scoreForm.scheduledAt || null,
+      maps,
+    })
+    scoreDialog.value = false
+    ElMessage.success('比分已保存')
+    onFilterChange()
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败，请检查权限')
+  }
 }
 
 function openStageDialog(stage?: Stage) {
@@ -517,18 +560,30 @@ onMounted(load)
     </div>
 
     <!-- 比分录入 -->
-    <el-dialog v-model="scoreDialog" title="录入比分" width="440px">
+    <el-dialog v-model="scoreDialog" title="录入比分" width="560px">
       <el-alert type="info" :closable="false" title="按地图比分填写，系统自动判定胜者并计入积分榜。" class="tip" />
       <el-form label-width="90px" class="form">
-        <el-form-item label="比分">
+        <el-form-item label="总比分">
           <el-input-number v-model="scoreForm.aScore" :min="0" /> <span class="vs">:</span>
           <el-input-number v-model="scoreForm.bScore" :min="0" />
         </el-form-item>
-        <el-form-item label="地图">
-          <el-select v-model="scoreForm.map" filterable clearable placeholder="选择服役图池地图" style="width: 100%">
-            <el-option v-for="m in MAP_OPTIONS" :key="m" :label="m" :value="m" />
-          </el-select>
-        </el-form-item>
+        <template v-if="scoreBestOf > 1">
+          <el-form-item v-for="(r, i) in mapRows" :key="i" :label="`地图${i + 1}`">
+            <el-select v-model="r.mapName" filterable clearable placeholder="选择地图" class="map-name">
+              <el-option v-for="m in MAP_OPTIONS" :key="m" :label="m" :value="m" />
+            </el-select>
+            <el-input-number v-model="r.a" :min="0" class="map-score" /> <span class="vs">:</span>
+            <el-input-number v-model="r.b" :min="0" class="map-score" />
+          </el-form-item>
+          <el-alert type="warning" :closable="false" title="总比分需与逐图胜场一致（如 2:1 = 两图胜一图负）。" class="tip" />
+        </template>
+        <template v-else>
+          <el-form-item label="地图">
+            <el-select v-model="scoreForm.map" filterable clearable placeholder="选择服役图池地图" style="width: 100%">
+              <el-option v-for="m in MAP_OPTIONS" :key="m" :label="m" :value="m" />
+            </el-select>
+          </el-form-item>
+        </template>
         <el-form-item label="比赛日期">
           <el-date-picker
             v-model="scoreForm.scheduledAt"
@@ -763,6 +818,15 @@ onMounted(load)
 .form .vs {
   margin: 0 8px;
   color: var(--cs2-text-muted);
+}
+
+.form .map-name {
+  width: 160px;
+  margin-right: 12px;
+}
+
+.form .map-score {
+  width: 100px;
 }
 
 .mode-hint {

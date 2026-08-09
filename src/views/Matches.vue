@@ -5,8 +5,10 @@ import { VideoCamera, Link, Microphone, ArrowDown } from '@element-plus/icons-vu
 import SwissBracket from '@/components/SwissBracket.vue'
 import type { EventItem, Group, Match, MatchCaster, MatchMap, MatchMedia, MediaKind, Stage } from '@/api/types'
 import { MATCH_STATUS_LABEL, MEDIA_KIND_LABEL, STAGE_STATUS_LABEL } from '@/api/types'
-import { listGroups, listMatches, listStages, listAllStageMatches, listMatchMaps, subscribeMatchChanges } from '@/api/match'
+import { listGroups, listMatches, listStages, listAllStageMatches, listMatchMaps, submitMatchScore, subscribeMatchChanges } from '@/api/match'
+import type { MatchMapInput } from '@/api/match'
 import { listEvents } from '@/api/event'
+import { listTeams } from '@/api/admin'
 import { addMatchMedia, listAllMatchMedia, removeMatchMedia } from '@/api/media'
 import { addMatchCaster, listAllMatchCasters, removeMatchCaster } from '@/api/caster'
 import { useAuthStore } from '@/stores/auth'
@@ -47,6 +49,27 @@ const casterDialogVisible = ref(false)
 const casterDialogMatch = ref<Match | null>(null)
 const casterList = ref<MatchCaster[]>([])
 const casterInput = ref('')
+
+// 比分录入对话框（管理员或参赛队队长）
+const scoreDialog = ref(false)
+const scoreMatch = ref<Match | null>(null)
+const scoreForm = reactive({ aScore: 0, bScore: 0, map: '', scheduledAt: '' })
+interface MapRow {
+  mapName: string
+  a: number
+  b: number
+}
+const mapRows = reactive<MapRow[]>([
+  { mapName: '', a: 0, b: 0 },
+  { mapName: '', a: 0, b: 0 },
+  { mapName: '', a: 0, b: 0 },
+])
+// 服役图池（Active Duty）7 张
+const MAP_OPTIONS = [
+  '荒漠迷城', '炙热沙城Ⅱ', '炼狱小镇', '核子危机', '远古遗迹', '阿努比斯', '游乐园',
+]
+// 战队 -> 队长映射（判定当前用户是否为参赛队队长）
+const teamsCaptainMap = ref<Record<string, string>>({})
 
 const currentStageName = computed(
   () => stages.value.find((s) => s.id === currentStage.value)?.name ?? '',
@@ -97,6 +120,7 @@ onMounted(async () => {
   currentEventId.value = active?.id ?? ''
   groups.value = await listGroups()
   await loadMatches()
+  await loadTeams()
   // 订阅比赛数据变更（演示模式无 realtime，自动跳过）
   unsubMatchChanges = subscribeMatchChanges(onMatchDataChanged)
 })
@@ -206,6 +230,91 @@ function mapsOf(match: Match): MatchMap[] {
 /** 是否有逐图比分数据（至少一张图录入了实际比分），有才显示 BO3 下拉 */
 function hasMapScores(match: Match): boolean {
   return mapsOf(match).some((mp) => mp.team_a_score > 0 || mp.team_b_score > 0)
+}
+
+/** 加载战队 -> 队长映射（判定当前用户是否为参赛队队长） */
+async function loadTeams() {
+  const teams = await listTeams()
+  teamsCaptainMap.value = Object.fromEntries(teams.map((t) => [t.id, t.captain_id]))
+}
+
+/** 当前用户是否为该比赛的参赛队队长 */
+function isMatchCaptain(row: Match): boolean {
+  const myId = auth.user?.id
+  if (!myId) return false
+  return (
+    (row.team_a_id != null && teamsCaptainMap.value[row.team_a_id] === myId) ||
+    (row.team_b_id != null && teamsCaptainMap.value[row.team_b_id] === myId)
+  )
+}
+
+/** 是否可录入该比赛比分：管理员或参赛队队长 */
+function canEditMatch(row: Match): boolean {
+  return auth.isAdmin || isMatchCaptain(row)
+}
+
+/** 当前用户是否可能操作任何比赛（决定是否显示操作列） */
+const canOperate = computed(() => {
+  if (auth.isAdmin || auth.isCaster) return true
+  const myId = auth.user?.id
+  if (!myId) return false
+  return Object.values(teamsCaptainMap.value).includes(myId)
+})
+
+/** 打开比分录入对话框（回填已有比分/逐图） */
+function openScoreDialog(row: Match) {
+  scoreMatch.value = row
+  scoreForm.aScore = row.team_a_score
+  scoreForm.bScore = row.team_b_score
+  scoreForm.map = row.map ?? ''
+  scoreForm.scheduledAt = row.scheduled_at ? row.scheduled_at.slice(0, 10) : ''
+  const maps = mapsOf(row)
+  for (let i = 0; i < 3; i++) {
+    mapRows[i].mapName = maps[i]?.map_name ?? ''
+    mapRows[i].a = maps[i]?.team_a_score ?? 0
+    mapRows[i].b = maps[i]?.team_b_score ?? 0
+  }
+  scoreDialog.value = true
+}
+
+/** 保存比分：总比分 +（BO3）逐图比分，校验总比分与逐图胜场一致 */
+async function saveScore() {
+  const m = scoreMatch.value
+  if (!m) return
+  if (scoreForm.aScore === scoreForm.bScore) {
+    ElMessage.warning('比分不能相同，请区分胜负')
+    return
+  }
+  const maps: MatchMapInput[] =
+    m.best_of > 1
+      ? mapRows
+          .filter((r) => r.mapName)
+          .map((r) => ({ map_name: r.mapName, team_a_score: r.a, team_b_score: r.b }))
+      : []
+  if (m.best_of > 1 && maps.length === 0) {
+    ElMessage.warning('请填写至少一张地图的逐图比分')
+    return
+  }
+  if (m.best_of > 1) {
+    const aWins = maps.filter((r) => r.team_a_score > r.team_b_score).length
+    const bWins = maps.filter((r) => r.team_b_score > r.team_a_score).length
+    if (aWins !== scoreForm.aScore || bWins !== scoreForm.bScore) {
+      ElMessage.warning(`总比分与逐图不一致：逐图统计为 ${aWins} : ${bWins}，请检查后重新填写`)
+      return
+    }
+  }
+  try {
+    await submitMatchScore(m.id, scoreForm.aScore, scoreForm.bScore, {
+      map: m.best_of > 1 ? null : scoreForm.map || null,
+      scheduledAt: scoreForm.scheduledAt || null,
+      maps,
+    })
+    ElMessage.success('比分已保存')
+    scoreDialog.value = false
+    await loadMatches()
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败，请检查权限')
+  }
 }
 
 function matchStatusType(status: Match['status']) {
@@ -459,11 +568,20 @@ async function removeCaster(item: MatchCaster) {
                 <span v-else class="no-media">暂无</span>
               </template>
             </el-table-column>
-            <el-table-column v-if="auth.isAdmin || auth.isCaster" label="操作" width="170" fixed="right">
+            <el-table-column v-if="canOperate" label="操作" width="250" fixed="right">
               <template #default="{ row }">
                 <div class="op-btns">
-                  <el-button size="small" @click="openCasterDialog(row)">解说</el-button>
+                  <el-button v-if="auth.isAdmin || auth.isCaster" size="small" @click="openCasterDialog(row)">解说</el-button>
                   <el-button v-if="auth.isAdmin" size="small" @click="openMediaDialog(row)">登记</el-button>
+                  <el-button
+                    v-if="canEditMatch(row)"
+                    size="small"
+                    type="primary"
+                    plain
+                    @click="openScoreDialog(row)"
+                  >
+                    {{ row.status === 'completed' ? '修改比分' : '录入比分' }}
+                  </el-button>
                 </div>
               </template>
             </el-table-column>
@@ -565,11 +683,20 @@ async function removeCaster(item: MatchCaster) {
             <span v-else class="no-media">暂无</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="auth.isAdmin || auth.isCaster" label="操作" width="170" fixed="right">
+        <el-table-column v-if="canOperate" label="操作" width="250" fixed="right">
           <template #default="{ row }">
             <div class="op-btns">
-              <el-button size="small" @click="openCasterDialog(row)">解说</el-button>
+              <el-button v-if="auth.isAdmin || auth.isCaster" size="small" @click="openCasterDialog(row)">解说</el-button>
               <el-button v-if="auth.isAdmin" size="small" @click="openMediaDialog(row)">登记</el-button>
+              <el-button
+                v-if="canEditMatch(row)"
+                size="small"
+                type="primary"
+                plain
+                @click="openScoreDialog(row)"
+              >
+                {{ row.status === 'completed' ? '修改比分' : '录入比分' }}
+              </el-button>
             </div>
           </template>
         </el-table-column>
@@ -631,6 +758,54 @@ async function removeCaster(item: MatchCaster) {
         </ul>
       </template>
     </el-dialog>
+
+    <!-- 比分录入（管理员或参赛队队长；BO3 支持逐图比分） -->
+    <el-dialog
+      v-model="scoreDialog"
+      :title="`录入比分${scoreMatch ? '：' + (scoreMatch.team_a_name ?? '') + ' vs ' + (scoreMatch.team_b_name ?? '') : ''}`"
+      width="560px"
+    >
+      <el-alert type="info" :closable="false" title="按地图比分填写，系统自动判定胜者并计入积分榜。" class="score-tip" />
+      <el-form label-width="90px" class="score-form">
+        <el-form-item label="总比分">
+          <el-input-number v-model="scoreForm.aScore" :min="0" /> <span class="vs">:</span>
+          <el-input-number v-model="scoreForm.bScore" :min="0" />
+        </el-form-item>
+
+        <template v-if="scoreMatch && scoreMatch.best_of > 1">
+          <el-form-item v-for="(r, i) in mapRows" :key="i" :label="`地图${i + 1}`">
+            <el-select v-model="r.mapName" filterable clearable placeholder="选择地图" class="map-name">
+              <el-option v-for="mp in MAP_OPTIONS" :key="mp" :label="mp" :value="mp" />
+            </el-select>
+            <el-input-number v-model="r.a" :min="0" class="map-score" /> <span class="vs">:</span>
+            <el-input-number v-model="r.b" :min="0" class="map-score" />
+          </el-form-item>
+          <el-alert type="warning" :closable="false" title="总比分需与逐图胜场一致（如 2:1 = 两图胜一图负）。" class="score-tip" />
+        </template>
+
+        <template v-else>
+          <el-form-item label="地图">
+            <el-select v-model="scoreForm.map" filterable clearable placeholder="选择地图" style="width: 100%">
+              <el-option v-for="m in MAP_OPTIONS" :key="m" :label="m" :value="m" />
+            </el-select>
+          </el-form-item>
+        </template>
+
+        <el-form-item label="比赛日期">
+          <el-date-picker
+            v-model="scoreForm.scheduledAt"
+            type="date"
+            value-format="YYYY-MM-DD"
+            placeholder="选择比赛日期"
+            style="width: 100%"
+          />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="scoreDialog = false">取消</el-button>
+        <el-button type="primary" @click="saveScore">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -664,6 +839,19 @@ async function removeCaster(item: MatchCaster) {
 
 .maps-trigger:hover {
   text-decoration: underline;
+}
+
+.score-tip {
+  margin-bottom: 12px;
+}
+
+.score-form .map-name {
+  width: 160px;
+  margin-right: 12px;
+}
+
+.score-form .map-score {
+  width: 100px;
 }
 
 .event-bar {

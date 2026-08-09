@@ -241,6 +241,74 @@ export async function listMatchMaps(matchIds: string[]): Promise<MatchMap[]> {
   return (data as MatchMap[]) ?? []
 }
 
+/** 录入的逐图比分输入（BO3 每张图） */
+export interface MatchMapInput {
+  map_name: string
+  team_a_score: number
+  team_b_score: number
+}
+
+/**
+ * 提交比赛结果（管理员或参赛队队长）：总比分自动判定胜者并置为已结束；
+ * BO3 可附带逐图比分（match_maps，先删后插）。
+ * 真实环境走 upsert_match_result RPC（security definer，函数内校验身份）。
+ */
+export async function submitMatchScore(
+  matchId: string,
+  aScore: number,
+  bScore: number,
+  opts?: { map?: string | null; scheduledAt?: string | null; maps?: MatchMapInput[] },
+): Promise<boolean> {
+  if (!isSupabaseConfigured || !supabase) {
+    const m = mockMatches.find((x) => x.id === matchId)
+    if (!m) return false
+    m.team_a_score = aScore
+    m.team_b_score = bScore
+    m.winner_id = aScore > bScore ? m.team_a_id : bScore > aScore ? m.team_b_id : null
+    m.status = 'completed'
+    if (opts?.map !== undefined) m.map = opts.map || null
+    if (opts?.scheduledAt !== undefined) m.scheduled_at = opts.scheduledAt || null
+    if (opts?.maps && opts.maps.length) {
+      for (let i = mockMatchMaps.length - 1; i >= 0; i--) {
+        if (mockMatchMaps[i].match_id === matchId) mockMatchMaps.splice(i, 1)
+      }
+      opts.maps.forEach((mp, i) => {
+        mockMatchMaps.push({
+          id: `mm-${matchId}-${Date.now()}-${i}`,
+          match_id: matchId,
+          map_name: mp.map_name,
+          team_a_score: mp.team_a_score,
+          team_b_score: mp.team_b_score,
+          winner_id: mp.team_a_score > mp.team_b_score ? m.team_a_id : mp.team_b_score > mp.team_a_score ? m.team_b_id : null,
+        })
+      })
+    }
+    return true
+  }
+  const { error } = await supabase.rpc('upsert_match_result', {
+    p_match_id: matchId,
+    p_team_a_score: aScore,
+    p_team_b_score: bScore,
+  })
+  if (error) throw new Error(error.message)
+  const patch: Record<string, unknown> = {}
+  if (opts?.map !== undefined) patch.map = opts.map || null
+  if (opts?.scheduledAt !== undefined) patch.scheduled_at = opts.scheduledAt || null
+  if (Object.keys(patch).length > 0) {
+    const { error: e2 } = await supabase.from('matches').update(patch).eq('id', matchId)
+    if (e2) throw new Error(e2.message)
+  }
+  if (opts?.maps && opts.maps.length) {
+    const { error: e3 } = await supabase.from('match_maps').delete().eq('match_id', matchId)
+    if (e3) throw new Error(e3.message)
+    const { error: e4 } = await supabase
+      .from('match_maps')
+      .insert(opts.maps.map((mp) => ({ match_id: matchId, ...mp })))
+    if (e4) throw new Error(e4.message)
+  }
+  return true
+}
+
 /** 订阅赛程数据变更（比赛新增/修改/删除时通知前端刷新查看） */
 export function subscribeMatchChanges(onChange: () => void): () => void {
   if (!isSupabaseConfigured || !supabase) return () => {}

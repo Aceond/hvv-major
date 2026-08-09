@@ -388,7 +388,7 @@ as $$
   );
 $$;
 
--- 录入/更新比赛结果：自动判定胜者并置为 completed（仅管理员）
+-- 录入/更新比赛结果：自动判定胜者并置为 completed（管理员或参赛队伍队长）
 create or replace function public.upsert_match_result(
   p_match_id uuid,
   p_team_a_score int,
@@ -403,6 +403,15 @@ begin
   select * into v_match from public.matches where id = p_match_id;
   if v_match.id is null then
     raise exception 'match not found';
+  end if;
+
+  -- 权限：仅管理员或参赛队伍队长可录入比分
+  if not public.is_admin() and not exists (
+    select 1 from public.teams t
+    where (t.id = v_match.team_a_id or t.id = v_match.team_b_id)
+      and t.captain_id = auth.uid()
+  ) then
+    raise exception 'permission denied: only admin or team captain';
   end if;
 
   v_winner := case
@@ -574,6 +583,36 @@ create policy match_maps_select on public.match_maps
 drop policy if exists match_maps_admin_all on public.match_maps;
 create policy match_maps_admin_all on public.match_maps
   for all using (public.is_admin()) with check (public.is_admin());
+-- 比分录入：参赛队伍队长可更新自己参与的比赛比分/地图/时间（管理员全量见 matches_admin_all）
+drop policy if exists matches_captain_update on public.matches;
+create policy matches_captain_update on public.matches
+  for update using (
+    exists (
+      select 1 from public.teams t
+      where (t.id = team_a_id or t.id = team_b_id) and t.captain_id = auth.uid()
+    )
+  ) with check (
+    exists (
+      select 1 from public.teams t
+      where (t.id = team_a_id or t.id = team_b_id) and t.captain_id = auth.uid()
+    )
+  );
+-- 逐图比分：参赛队伍队长可管理自己参与比赛的 match_maps（管理员全量见 match_maps_admin_all）
+drop policy if exists match_maps_captain_all on public.match_maps;
+create policy match_maps_captain_all on public.match_maps
+  for all using (
+    exists (
+      select 1 from public.matches m
+      join public.teams t on t.id in (m.team_a_id, m.team_b_id)
+      where m.id = match_id and t.captain_id = auth.uid()
+    )
+  ) with check (
+    exists (
+      select 1 from public.matches m
+      join public.teams t on t.id in (m.team_a_id, m.team_b_id)
+      where m.id = match_id and t.captain_id = auth.uid()
+    )
+  );
 
 -- groups / team_stats / player_stats：公开可读，仅管理员写
 drop policy if exists groups_select on public.groups;
@@ -664,7 +703,7 @@ grant insert, update, delete on public.team_members to authenticated;
 grant insert, update on public.site_config to authenticated;
 grant insert, update on public.events to authenticated;
 grant insert, update on public.player_applications to authenticated;
-grant insert, delete on public.matches to authenticated;
+grant insert, update, delete on public.matches to authenticated;
 grant insert, delete on public.match_casters to authenticated;
 -- 地图明细 / 同步日志：RLS 仅管理员可写，此处补表级权限，避免出现「policy 允许但 table permission denied」
 grant insert, update, delete on public.match_maps to authenticated;
