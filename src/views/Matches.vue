@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { VideoCamera, Link, Microphone, ArrowDown } from '@element-plus/icons-vue'
 import SwissBracket from '@/components/SwissBracket.vue'
 import type { EventItem, Group, Match, MatchCaster, MatchMap, MatchMedia, MediaKind, Stage } from '@/api/types'
 import { MATCH_STATUS_LABEL, MEDIA_KIND_LABEL, STAGE_STATUS_LABEL } from '@/api/types'
-import { listGroups, listMatches, listStages, listAllStageMatches, listMatchMaps } from '@/api/match'
+import { listGroups, listMatches, listStages, listAllStageMatches, listMatchMaps, subscribeMatchChanges } from '@/api/match'
 import { listEvents } from '@/api/event'
 import { addMatchMedia, listAllMatchMedia, removeMatchMedia } from '@/api/media'
 import { addMatchCaster, listAllMatchCasters, removeMatchCaster } from '@/api/caster'
@@ -70,6 +70,24 @@ function formatDateTime(v: string | null | undefined): string {
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
 
+// 数据变更通知：matches 表有新数据时右上角弹提示，提醒刷新网页查看
+let unsubMatchChanges: (() => void) | null = null
+let notifyTimer: ReturnType<typeof setTimeout> | null = null
+
+function onMatchDataChanged() {
+  if (notifyTimer) return // 节流：5 秒内只提示一次，避免批量变更连续弹窗
+  ElNotification({
+    title: '数据已更新',
+    message: '赛程有新的数据刷新，请刷新网页查看',
+    type: 'info',
+    position: 'top-right',
+    duration: 4000,
+  })
+  notifyTimer = setTimeout(() => {
+    notifyTimer = null
+  }, 5000)
+}
+
 onMounted(async () => {
   events.value = await listEvents()
   const active =
@@ -79,6 +97,13 @@ onMounted(async () => {
   currentEventId.value = active?.id ?? ''
   groups.value = await listGroups()
   await loadMatches()
+  // 订阅比赛数据变更（演示模式无 realtime，自动跳过）
+  unsubMatchChanges = subscribeMatchChanges(onMatchDataChanged)
+})
+
+onUnmounted(() => {
+  unsubMatchChanges?.()
+  if (notifyTimer) clearTimeout(notifyTimer)
 })
 
 async function onEventChange() {

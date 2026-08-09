@@ -241,6 +241,19 @@ export async function listMatchMaps(matchIds: string[]): Promise<MatchMap[]> {
   return (data as MatchMap[]) ?? []
 }
 
+/** 订阅赛程数据变更（比赛新增/修改/删除时通知前端刷新查看） */
+export function subscribeMatchChanges(onChange: () => void): () => void {
+  if (!isSupabaseConfigured || !supabase) return () => {}
+  const client = supabase
+  const channel = client
+    .channel('matches-changes')
+    .on('postgres_changes', { event: '*', schema: 'public', table: 'matches' }, onChange)
+    .subscribe()
+  return () => {
+    client.removeChannel(channel)
+  }
+}
+
 /** 订阅积分榜实时更新（比赛结果变更时自动刷新） */
 export function subscribeStandings(onUpdate: () => void): () => void {
   if (!isSupabaseConfigured || !supabase) return () => {}
