@@ -165,6 +165,11 @@ function mapsOf(match: Match): MatchMap[] {
   return mapsMap.value[match.id] ?? []
 }
 
+/** 是否有逐图比分数据（至少一张图录入了实际比分），有才显示 BO3 下拉 */
+function hasMapScores(match: Match): boolean {
+  return mapsOf(match).some((mp) => mp.team_a_score > 0 || mp.team_b_score > 0)
+}
+
 function matchStatusType(status: Match['status']) {
   return status === 'completed' ? 'success' : status === 'cancelled' ? 'danger' : 'warning'
 }
@@ -344,7 +349,7 @@ async function removeCaster(item: MatchCaster) {
               <template #default="{ row }">
                 <span class="bo-info">
                   BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
-                  <el-dropdown v-if="mapsOf(row).length" trigger="click">
+                  <el-dropdown v-if="hasMapScores(row)" trigger="click">
                     <span class="maps-trigger">
                       逐图比分
                       <el-icon><ArrowDown /></el-icon>
@@ -447,7 +452,7 @@ async function removeCaster(item: MatchCaster) {
           <template #default="{ row }">
             <span class="bo-info">
               BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
-              <el-dropdown v-if="mapsOf(row).length" trigger="click">
+              <el-dropdown v-if="hasMapScores(row)" trigger="click">
                 <span class="maps-trigger">
                   逐图比分
                   <el-icon><ArrowDown /></el-icon>
