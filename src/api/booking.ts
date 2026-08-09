@@ -6,8 +6,14 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { mockMatches, mockTeams } from '@/mock/data'
 import type { Match, Team } from './types'
 
+// 约战绑定战队：管理员（admin）账号在「约战录入」中固定操作这一支战队，
+// 即使其同时是其他队伍的 captain_id（如队伍队员尚未加入时），约战界面也只认这一支，数据库数据不做清理。
+// 普通队长（非 admin）不受影响，仍按自己的 captain_id 取战队。如需换队，改这里即可。
+const ADMIN_BOUND_TEAM_ID = '6d0a66db-7297-4d3b-9412-dfaf3d02b4a4'
+
 /** 当前登录用户在「指定赛事」下的队长战队（约战按赛事报名，须为已审核战队）。
- *  战队信息附带该赛事队长注册的姓名 / 完美 ID（profiles 审核回填值），而非登录账号 UUID。 */
+ *  战队信息附带该赛事队长注册的姓名 / 完美 ID（profiles 审核回填值），而非登录账号 UUID。
+ *  管理员固定绑定 ADMIN_BOUND_TEAM_ID；其他账号按 captain_id + 赛事取最新一支。 */
 export async function listMyTeam(
   userId?: string | null,
   eventId?: string | null,
@@ -24,12 +30,24 @@ export async function listMyTeam(
   }
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return null
+  // 管理员固定绑定目标队；普通队长按自己的 captain_id 取（多个时取最新一支）
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('role')
+    .eq('id', user.id)
+    .maybeSingle()
+  const isAdmin = (profile as { role?: string } | null)?.role === 'admin'
   let query = supabase
     .from('teams')
     .select('*, captain:profiles(nickname, pw_username)')
-    .eq('captain_id', user.id)
     .eq('status', 'approved')
-    .order('created_at', { ascending: false })
+  if (isAdmin) {
+    query = query.eq('id', ADMIN_BOUND_TEAM_ID)
+  } else {
+    query = query
+      .eq('captain_id', user.id)
+      .order('created_at', { ascending: false })
+  }
   if (eventId) query = query.eq('event_id', eventId)
   const { data } = await query.limit(1).maybeSingle()
   const team = data as (Team & { captain?: { nickname: string | null; pw_username: string | null } }) | null
