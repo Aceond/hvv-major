@@ -21,6 +21,8 @@ export async function listMyTeam(userId?: string | null): Promise<Team | null> {
     .select('*')
     .eq('captain_id', user.id)
     .eq('status', 'approved')
+    .order('created_at', { ascending: false })
+    .limit(1) // 同一用户被设为多支战队队长时取最新一支，避免 maybeSingle 多行报错导致无法录入
     .maybeSingle()
   return (data as Team | null) ?? null
 }
