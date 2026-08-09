@@ -22,6 +22,8 @@ const currentStage = ref<string>('all') // 'all' = 全部比赛页签
 const matches = ref<Match[]>([])
 const loading = ref(false)
 const viewMode = ref<'list' | 'bracket'>('list')
+// 状态筛选：all 全部 / completed 已完成 / scheduled 已约战未完成 / unbooked 未约战
+const statusFilter = ref<'all' | 'completed' | 'scheduled' | 'unbooked'>('all')
 
 // 媒体链接：按比赛分组（matchId -> MatchMedia[]）
 const mediaMap = ref<Record<string, MatchMedia[]>>({})
@@ -114,10 +116,21 @@ function stageTabLabel(s: Stage) {
 }
 
 /** 全部比赛视图：按组别分组（组别顺序按 sort_order，未分组的放最后） */
+const filteredMatches = computed(() => {
+  const f = statusFilter.value
+  if (f === 'all') return matches.value
+  if (f === 'completed') return matches.value.filter((m) => m.status === 'completed')
+  if (f === 'scheduled') return matches.value.filter((m) => m.status === 'scheduled' && !!m.scheduled_at)
+  // 未约战：未完成且未定比赛时间（取消的或未约时间的）
+  return matches.value.filter(
+    (m) => !(m.status === 'completed') && !(m.status === 'scheduled' && !!m.scheduled_at),
+  )
+})
+
 const groupedMatches = computed(() => {
   const order = new Map(groups.value.map((g, i) => [g.id, i]))
   const map = new Map<string, { key: string; name: string; matches: Match[] }>()
-  for (const m of matches.value) {
+  for (const m of filteredMatches.value) {
     const gid = m.group_id ?? ''
     const key = gid || '__none__'
     if (!map.has(key)) {
@@ -303,12 +316,18 @@ async function removeCaster(item: MatchCaster) {
         <el-radio-button value="list">列表</el-radio-button>
         <el-radio-button value="bracket">对阵图</el-radio-button>
       </el-radio-group>
+      <el-radio-group v-model="statusFilter" class="status-filter">
+        <el-radio-button value="all">全部</el-radio-button>
+        <el-radio-button value="completed">已完成</el-radio-button>
+        <el-radio-button value="scheduled">已约战</el-radio-button>
+        <el-radio-button value="unbooked">未约战</el-radio-button>
+      </el-radio-group>
     </div>
 
     <!-- 对阵图（瑞士轮样式） -->
     <SwissBracket
       v-if="viewMode === 'bracket'"
-      :matches="matches"
+      :matches="filteredMatches"
       :stage-name="currentStageName"
       class="bracket"
     />
@@ -427,8 +446,11 @@ async function removeCaster(item: MatchCaster) {
         </div>
       </template>
 
+      <!-- 全部比赛筛选后无结果 -->
+      <el-empty v-else-if="currentStage === 'all'" description="暂无符合条件的比赛" />
+
       <!-- 单阶段视图 -->
-      <el-table v-else :data="matches" stripe empty-text="暂无对阵">
+      <el-table v-else :data="filteredMatches" stripe empty-text="暂无对阵">
         <el-table-column prop="group_name" label="组别" width="90">
           <template #default="{ row }">
             <el-tag size="small" effect="plain">{{ row.group_name ?? '跨组' }}</el-tag>
@@ -634,6 +656,10 @@ async function removeCaster(item: MatchCaster) {
 }
 
 .view-switch {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
   margin-bottom: 16px;
 }
 

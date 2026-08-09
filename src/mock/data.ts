@@ -329,6 +329,12 @@ export const mockMatches: Match[] = [
   { id: 'match-23', stage_id: 'stage-3', group_id: null, round_number: 3, team_a_id: 'team-3', team_b_id: 'team-9', best_of: 1, map: null, team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: '2026-08-12 19:00' },
   { id: 'match-24', stage_id: 'stage-3', group_id: null, round_number: 3, team_a_id: 'team-12', team_b_id: 'team-8', best_of: 1, map: 'Inferno', team_a_score: 9, team_b_score: 13, winner_id: 'team-8', status: 'completed', scheduled_at: '2026-08-12 20:30' },
   { id: 'match-25', stage_id: 'stage-3', group_id: null, round_number: 3, team_a_id: 'team-6', team_b_id: 'team-4', best_of: 1, map: 'Nuke', team_a_score: 13, team_b_score: 8, winner_id: 'team-6', status: 'completed', scheduled_at: '2026-08-12 20:30' },
+  // ---- BO3 演示（总决赛阶段，含逐图比分） ----
+  { id: 'match-26', stage_id: 'stage-2', group_id: null, round_number: 2, team_a_id: 'team-1', team_b_id: 'team-12', best_of: 3, map: null, team_a_score: 2, team_b_score: 1, winner_id: 'team-1', status: 'completed', scheduled_at: '2026-08-15 13:00' },
+  { id: 'match-27', stage_id: 'stage-2', group_id: null, round_number: 2, team_a_id: 'team-3', team_b_id: 'team-9', best_of: 3, map: null, team_a_score: 2, team_b_score: 0, winner_id: 'team-3', status: 'completed', scheduled_at: '2026-08-15 15:30' },
+  { id: 'match-28', stage_id: 'stage-2', group_id: null, round_number: 3, team_a_id: 'team-1', team_b_id: 'team-3', best_of: 3, map: null, team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: '2026-08-16 13:00' },
+  // 未约战演示：管理员建的占位比赛，还没约时间
+  { id: 'match-29', stage_id: 'stage-1', group_id: 'g1', round_number: 3, team_a_id: 'team-6', team_b_id: 'team-12', best_of: 1, map: null, team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: null },
 ]
 
 // 逐图比分（BO3 明细，对应 match_maps 表）
@@ -336,6 +342,17 @@ export const mockMatchMaps: MatchMap[] = [
   { id: 'mm-13-1', match_id: 'match-13', map_name: 'Mirage', team_a_score: 0, team_b_score: 0, winner_id: null },
   { id: 'mm-13-2', match_id: 'match-13', map_name: 'Inferno', team_a_score: 0, team_b_score: 0, winner_id: null },
   { id: 'mm-13-3', match_id: 'match-13', map_name: 'Nuke', team_a_score: 0, team_b_score: 0, winner_id: null },
+  // match-26 半决赛（2:1）
+  { id: 'mm-26-1', match_id: 'match-26', map_name: 'Mirage', team_a_score: 16, team_b_score: 14, winner_id: 'team-1' },
+  { id: 'mm-26-2', match_id: 'match-26', map_name: 'Inferno', team_a_score: 12, team_b_score: 16, winner_id: 'team-12' },
+  { id: 'mm-26-3', match_id: 'match-26', map_name: 'Nuke', team_a_score: 16, team_b_score: 11, winner_id: 'team-1' },
+  // match-27 半决赛（2:0）
+  { id: 'mm-27-1', match_id: 'match-27', map_name: 'Ancient', team_a_score: 16, team_b_score: 9, winner_id: 'team-3' },
+  { id: 'mm-27-2', match_id: 'match-27', map_name: 'Dust2', team_a_score: 16, team_b_score: 13, winner_id: 'team-3' },
+  // match-28 决赛（未开赛）
+  { id: 'mm-28-1', match_id: 'match-28', map_name: 'Mirage', team_a_score: 0, team_b_score: 0, winner_id: null },
+  { id: 'mm-28-2', match_id: 'match-28', map_name: 'Inferno', team_a_score: 0, team_b_score: 0, winner_id: null },
+  { id: 'mm-28-3', match_id: 'match-28', map_name: 'Anubis', team_a_score: 0, team_b_score: 0, winner_id: null },
 ]
 
 // ---------------- 积分榜（按阶段 + 组别） ----------------
