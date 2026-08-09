@@ -100,6 +100,7 @@ export interface TeamMember {
   id: string
   team_id: string
   profile_id: string
+  event_id?: string | null // 冗余战队所属赛事（正式队员按赛事一人一队约束用）
   nickname: string | null
   pw_username: string | null // 完美用户名
   is_captain: boolean

@@ -131,16 +131,36 @@ create table if not exists public.teams (
   created_at timestamptz not null default now()
 );
 
--- 名册：灵活人数（≥5 参赛），一个选手只能属于一支战队（unique profile_id）
+-- 名册：灵活人数（≥5 参赛），一个选手在同一赛事内只能作为「正式队员」加入一支战队（唯一索引见下方兼容段）；替补(benched)可跨队临时参赛
 create table if not exists public.team_members (
   id uuid primary key default gen_random_uuid(),
   team_id uuid not null references public.teams (id) on delete cascade,
   profile_id uuid not null references public.profiles (id) on delete cascade,
+  event_id uuid, -- 冗余战队所属赛事（正式队员「按赛事一人一队」约束依赖此列；外键在 events 建表后补充，见下方 events 段）
   is_captain boolean not null default false,
   status text not null default 'active' check (status in ('active', 'benched')),
-  unique (team_id, profile_id),
-  unique (profile_id)                    -- 一人一队
+  unique (team_id, profile_id)
 );
+
+-- 兼容旧库：名册约束从「全局一人一队」改为「同赛事正式队员一人一队」（替补可跨队，重复执行安全）
+-- 注意：event_id 列不带外键声明，外键在下方 events 表建好后补充，保证脚本按顺序执行不报错
+alter table public.team_members add column if not exists event_id uuid;
+update public.team_members tm
+set event_id = t.event_id
+from public.teams t
+where tm.team_id = t.id and tm.event_id is null;
+alter table public.team_members drop constraint if exists team_members_profile_id_key;
+-- 清理同赛事内同一人重复的正式队员记录（保留最新一条），避免部分唯一索引建立失败
+delete from public.team_members a
+using public.team_members b
+where a.profile_id = b.profile_id
+  and a.event_id is not distinct from b.event_id
+  and a.status = 'active' and b.status = 'active'
+  and a.id < b.id;
+drop index if exists team_members_profile_event_active_key;
+create unique index team_members_profile_event_active_key
+  on public.team_members (profile_id, event_id)
+  where status = 'active';
 
 -- ============================================================
 -- 3. 阶段（多阶段混合赛制：海选 / 预选赛 / 正赛，格式可不同）
@@ -598,6 +618,10 @@ create table if not exists public.events (
 
 -- 个人注册申请关联报名赛事（兼容旧库：补充 event_id 列）
 alter table public.player_applications add column if not exists event_id uuid references public.events (id);
+-- 名册 event_id 外键：events 表建好后补充（否则建表时引用不存在的 events 会报错；可重复执行）
+alter table public.team_members drop constraint if exists team_members_event_id_fkey;
+alter table public.team_members add constraint team_members_event_id_fkey
+  foreign key (event_id) references public.events (id);
 -- 战队报名关联赛事（兼容旧库：补充 event_id 列）
 alter table public.teams add column if not exists event_id uuid references public.events (id);
 -- 赛程阶段关联赛事（兼容旧库：每届赛事可自定义各自的赛制与阶段列表）

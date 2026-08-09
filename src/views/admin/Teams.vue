@@ -29,6 +29,7 @@ const rosterTeam = ref<Team | null>(null)
 const roster = ref<TeamMember[]>([])
 const pool = ref<PlayerItem[]>([])
 const selectedPlayer = ref('')
+const addRole = ref<'active' | 'benched'>('active') // 添加成员角色：正式队员 / 替补
 const adding = ref(false)
 
 const MIN_MEMBERS = 5
@@ -113,6 +114,7 @@ function playerLabel(p: PlayerItem) {
 async function openRoster(team: Team) {
   rosterTeam.value = team
   selectedPlayer.value = ''
+  addRole.value = 'active'
   roster.value = await listMembers(team.id)
   pool.value = await listPlayers()
   rosterVisible.value = true
@@ -122,15 +124,14 @@ async function addPlayer() {
   if (!rosterTeam.value || !selectedPlayer.value) return
   adding.value = true
   try {
-    const ok = await addTeamMember(rosterTeam.value.id, selectedPlayer.value)
-    if (!ok) {
-      ElMessage.warning('添加失败（该选手可能已在其他战队）')
-      return
-    }
-    ElMessage.success('已添加队员')
+    await addTeamMember(rosterTeam.value.id, selectedPlayer.value, addRole.value)
+    ElMessage.success(addRole.value === 'benched' ? '已添加替补' : '已添加队员')
     roster.value = await listMembers(rosterTeam.value.id)
     membersMap.value[rosterTeam.value.id] = roster.value
     selectedPlayer.value = ''
+  } catch (e: any) {
+    // 违反「同赛事正式队员一人一队」时数据库抛错，提示改选替补
+    ElMessage.warning(e.message || '添加失败')
   } finally {
     adding.value = false
   }
@@ -274,16 +275,19 @@ onMounted(load)
         <el-select
           v-model="selectedPlayer"
           filterable
-          placeholder="从选手池选择队员（已入队选手不可选）"
+          placeholder="从选手池选择选手"
           style="flex: 1"
         >
           <el-option
             v-for="p in pool"
             :key="p.id"
-            :label="playerLabel(p)"
+            :label="`${playerLabel(p)}${p.in_team ? '（已是正式队员）' : ''}`"
             :value="p.id"
-            :disabled="p.in_team"
           />
+        </el-select>
+        <el-select v-model="addRole" style="width: 100px">
+          <el-option label="队员" value="active" />
+          <el-option label="替补" value="benched" />
         </el-select>
         <el-button
           type="primary"

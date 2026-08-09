@@ -275,20 +275,22 @@ export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
   }
   let query = supabase
     .from('profiles')
-    .select('id, nickname, pw_username, highest_rank, team_members(team_id)')
+    .select('id, nickname, pw_username, highest_rank, team_members(team_id, status)')
     .eq('role', 'player')
     .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
   const { data } = await query
   return ((data ?? []) as any[]).map((p) => {
-    const tm = (p.team_members ?? []) as Array<{ team_id: string }>
+    // 仅「正式队员」（active）视为已入队；替补可跨队，不影响正式入队判定
+    const tm = (p.team_members ?? []) as Array<{ team_id: string; status: string }>
+    const active = tm.filter((x) => x.status === 'active')
     return {
       id: p.id,
       nickname: p.nickname,
       pw_username: p.pw_username,
       highest_rank: p.highest_rank ?? null,
-      in_team: tm.length > 0,
-      team_id: tm[0]?.team_id ?? null,
+      in_team: active.length > 0,
+      team_id: active[0]?.team_id ?? null,
     }
   })
 }
@@ -338,13 +340,19 @@ export async function createTeam(
   if (team) {
     await supabase
       .from('team_members')
-      .insert({ team_id: team.id, profile_id: user.id, is_captain: true })
+      .insert({ team_id: team.id, profile_id: user.id, is_captain: true, status: 'active', event_id: team.event_id })
   }
   return team
 }
 
-/** 管理员为战队添加队员（后台选人；一人一队，已在其他队则失败） */
-export async function addTeamMember(teamId: string, profileId: string): Promise<boolean> {
+/** 管理员为战队添加成员（后台选人；role=active 正式队员 / benched 替补）。
+ *  约束：同一赛事内正式队员一人一队（数据库唯一索引）；替补可跨队（不受限）。
+ *  同队内重复添加或违反正式队员约束时抛错。 */
+export async function addTeamMember(
+  teamId: string,
+  profileId: string,
+  role: 'active' | 'benched' = 'active',
+): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) {
     const list = mockMembers[teamId] ?? (mockMembers[teamId] = [])
     if (list.some((m) => m.profile_id === profileId)) return false
@@ -356,15 +364,26 @@ export async function addTeamMember(teamId: string, profileId: string): Promise<
       nickname: p?.nickname ?? null,
       pw_username: p?.pw_username ?? null,
       is_captain: false,
-      status: 'active',
+      status: role,
     })
-    if (p) p.in_team = true
+    if (p && role === 'active') p.in_team = true
     return true
   }
-  const { error } = await supabase
-    .from('team_members')
-    .insert({ team_id: teamId, profile_id: profileId, is_captain: false })
-  return !error
+  // 查战队所属赛事，随名册行冗余记录（正式队员按「赛事 + profile」唯一约束依赖此列）
+  const { data: team } = await supabase
+    .from('teams')
+    .select('event_id')
+    .eq('id', teamId)
+    .maybeSingle()
+  const { error } = await supabase.from('team_members').insert({
+    team_id: teamId,
+    profile_id: profileId,
+    is_captain: false,
+    status: role,
+    event_id: team?.event_id ?? null,
+  })
+  if (error) throw new Error(error.message)
+  return true
 }
 
 /** 管理员从战队移除队员（队长不可移除） */
@@ -493,8 +512,14 @@ export async function createTeamByAdmin(input: {
   const team = data as Team | null
   if (team) {
     const members = [
-      { team_id: team.id, profile_id: input.captainId, is_captain: true },
-      ...input.memberIds.map((id) => ({ team_id: team.id, profile_id: id, is_captain: false })),
+      { team_id: team.id, profile_id: input.captainId, is_captain: true, status: 'active', event_id: team.event_id },
+      ...input.memberIds.map((id) => ({
+        team_id: team.id,
+        profile_id: id,
+        is_captain: false,
+        status: 'active',
+        event_id: team.event_id,
+      })),
     ]
     await supabase.from('team_members').insert(members)
   }
