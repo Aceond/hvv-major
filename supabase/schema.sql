@@ -249,6 +249,8 @@ alter table public.sync_logs add constraint sync_logs_match_id_fkey
 
 -- ============================================================
 -- 6. 积分榜视图（按阶段 + 组别：胜=3分，参考胜场/地图差排序）
+--     胜负按比分判定（比分高者为胜），与赛程页一致，不依赖 winner_id
+--     （历史数据 winner_id 曾与比分不一致导致积分错乱）
 -- ============================================================
 create or replace view public.standings as
 with expanded as (
@@ -258,7 +260,10 @@ with expanded as (
     t.id as team_id,
     case when t.id = m.team_a_id then m.team_a_score else m.team_b_score end as score_for,
     case when t.id = m.team_a_id then m.team_b_score else m.team_a_score end as score_against,
-    (m.winner_id = t.id) as is_win
+    case
+      when t.id = m.team_a_id then (m.team_a_score > m.team_b_score)
+      else (m.team_b_score > m.team_a_score)
+    end as is_win
   from public.matches m
   join public.teams t on t.id in (m.team_a_id, m.team_b_id)
   where m.status = 'completed' and m.team_b_id is not null
