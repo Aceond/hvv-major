@@ -16,9 +16,6 @@ import { listStages } from './match'
 // 演示模式下的注册申请（内存存储，页面刷新后清空；真实环境存 player_applications 表）
 const demoApplications: PlayerApplication[] = []
 
-/** 完美 ID 校验：完美对战平台用户名（2-24 位字母/数字/下划线） */
-const PW_RE = /^[a-zA-Z0-9_]{2,24}$/
-
 /** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，自选近 3 赛季最高段位（可选），选择在职状态（在职需填驻地和工号），上传最近 3-5 个赛季的截图，提交后由管理员审核 */
 export async function submitPlayerApplication(
   pwUsername: string,
@@ -32,8 +29,8 @@ export async function submitPlayerApplication(
   },
   rank?: string,
 ): Promise<PlayerApplication | null> {
-  if (!PW_RE.test(pwUsername)) {
-    throw new Error('完美 ID 需为 2-24 位字母、数字或下划线')
+  if (!pwUsername.trim()) {
+    throw new Error('请填写完美 ID')
   }
   if (!displayName.trim()) {
     throw new Error('请填写选手姓名')

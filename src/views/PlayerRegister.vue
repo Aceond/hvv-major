@@ -301,9 +301,8 @@ onMounted(async () => {
           <el-input
             v-model="form.pwUsername"
             placeholder="完美对战平台的用户名，如 yanlong"
-            maxlength="24"
           />
-          <div class="form-tip">后台将按此用户名记录选手数据（2-24 位字母、数字或下划线）</div>
+          <div class="form-tip">后台将按此用户名记录选手数据</div>
         </el-form-item>
         <el-form-item label="最高段位">
           <el-select
