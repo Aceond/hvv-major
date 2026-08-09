@@ -4,7 +4,13 @@ import Sortable from 'sortablejs'
 import type { Group, PlayerStatRow, Stage, TeamStatRow } from '@/api/types'
 import { STAGE_STATUS_LABEL } from '@/api/types'
 import { listGroups, listStages, stageDisplayName } from '@/api/match'
-import { getParticipatingTeams, getPlayerStatsAggregated, getTeamNetPoints, getTeamStats } from '@/api/stats'
+import {
+  getParticipatingTeams,
+  getPlayerStatsAggregated,
+  getTeamNetPoints,
+  getTeamStats,
+  getTeamWinStats,
+} from '@/api/stats'
 
 // 可排序列配置（拖拽表头可调整顺序）
 interface StatCol {
@@ -96,19 +102,24 @@ async function load() {
     const stageId = currentStage.value || undefined
     // 队伍排行：以「打过已完成比赛的参赛队伍」为底（录比分后两队都会出现），
     // 合并后台手动录入的统计（team_stats），净胜分实时从已完成比赛计算
-    const [teamStats, netMap, participating] = await Promise.all([
+    const [teamStats, netMap, participating, winStats] = await Promise.all([
       getTeamStats(groupId, stageId),
       getTeamNetPoints(groupId, stageId),
       getParticipatingTeams(groupId, stageId),
+      getTeamWinStats(groupId, stageId),
     ])
     const statsMap = new Map(teamStats.map((r) => [r.team_id, r]))
     const stageName = stageId ? stages.value.find((s) => s.id === stageId)?.name ?? null : null
     const merged = new Map<string, TeamStatRow>()
     for (const p of participating) {
       const base = statsMap.get(p.team_id)
+      const win = winStats[p.team_id]
       merged.set(p.team_id, {
         ...p,
         ...(base ?? {}),
+        // 比赛数/胜率/净胜分按已完成比赛实时计算（录完比分自动更新）
+        matches: win?.played ?? base?.matches ?? 0,
+        win_rate: win?.win_rate ?? base?.win_rate ?? 0,
         net: netMap[p.team_id] ?? 0,
         stage_name: base?.stage_name ?? stageName ?? p.stage_name,
         group_name: base?.group_name ?? p.group_name,
@@ -116,7 +127,15 @@ async function load() {
     }
     // 已手动录入统计但尚未打比赛的队也保留，避免从排行消失
     for (const r of teamStats) {
-      if (!merged.has(r.team_id)) merged.set(r.team_id, { ...r, net: netMap[r.team_id] ?? 0 })
+      if (!merged.has(r.team_id)) {
+        const win = winStats[r.team_id]
+        merged.set(r.team_id, {
+          ...r,
+          matches: win?.played ?? r.matches,
+          win_rate: win?.win_rate ?? r.win_rate,
+          net: netMap[r.team_id] ?? 0,
+        })
+      }
     }
     teamRows.value = [...merged.values()]
     // 个人排行：从比赛队员数据自动聚合（场均 = 总量/地图数，爆头率/ADR/WE/Rating 按指定口径）

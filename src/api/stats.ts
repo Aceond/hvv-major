@@ -145,6 +145,51 @@ export async function getTeamNetPoints(groupId?: string, stageId?: string): Prom
 }
 
 /**
+ * 实时胜负统计（比赛数 / 胜场 / 胜率）：按已完成比赛比分判定胜负逐场统计每队。
+ * 胜率 = 胜场 / 总场次，录完比分自动更新，不再依赖手动录入的 team_stats。
+ */
+export async function getTeamWinStats(
+  groupId?: string,
+  stageId?: string,
+): Promise<Record<string, { played: number; wins: number; win_rate: number }>> {
+  const rows = [] as Array<{ team_a_id: string | null; team_b_id: string | null; team_a_score: number; team_b_score: number }>
+  if (!isSupabaseConfigured || !supabase) {
+    for (const m of mockMatches) {
+      if (m.status !== 'completed') continue
+      if (groupId && m.group_id !== groupId) continue
+      if (stageId && m.stage_id !== stageId) continue
+      rows.push(m)
+    }
+  } else {
+    let query = supabase
+      .from('matches')
+      .select('team_a_id, team_b_id, team_a_score, team_b_score')
+      .eq('status', 'completed')
+    if (groupId) query = query.eq('group_id', groupId)
+    if (stageId) query = query.eq('stage_id', stageId)
+    const { data } = await query
+    rows.push(...((data ?? []) as any[]))
+  }
+  const stat = new Map<string, { played: number; wins: number }>()
+  for (const m of rows) {
+    if (!m.team_a_id || !m.team_b_id || m.team_a_id === m.team_b_id) continue
+    const touch = (tid: string, win: boolean) => {
+      const s = stat.get(tid) ?? { played: 0, wins: 0 }
+      s.played++
+      if (win) s.wins++
+      stat.set(tid, s)
+    }
+    touch(m.team_a_id, m.team_a_score > m.team_b_score)
+    touch(m.team_b_id, m.team_b_score > m.team_a_score)
+  }
+  const out: Record<string, { played: number; wins: number; win_rate: number }> = {}
+  for (const [tid, s] of stat) {
+    out[tid] = { played: s.played, wins: s.wins, win_rate: r2((s.wins / Math.max(s.played, 1)) * 100) }
+  }
+  return out
+}
+
+/**
  * 参赛队伍（该筛选范围内已完成比赛的对阵双方）：
  * 队伍排行为底使用，保证「只要打过比赛就出现在排行」，即使还没在后台手动录入 team_stats。
  * 净胜分/胜场等实时指标由调用方叠加 getTeamNetPoints 计算。
