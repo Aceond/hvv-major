@@ -272,7 +272,9 @@ async function removeCaster(item: MatchCaster) {
             BO{{ row.best_of }}{{ row.map ? ` · ${row.map}` : '' }}
           </template>
         </el-table-column>
-        <el-table-column prop="scheduled_at" label="时间" min-width="140" />
+        <el-table-column label="时间" min-width="110">
+          <template #default="{ row }">{{ row.scheduled_at ? row.scheduled_at.slice(0, 10) : '-' }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="matchStatusType(row.status)">
@@ -390,6 +392,11 @@ async function removeCaster(item: MatchCaster) {
 </template>
 
 <style scoped>
+/* 赛程页显示框整体加宽：双类选择器覆盖全局 .page-container 的 1120px 上限 */
+.page-container.page-container {
+  max-width: 1440px;
+}
+
 .title {
   margin: 0 0 16px;
 }
