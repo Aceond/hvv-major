@@ -291,6 +291,11 @@ async function removeCaster(item: MatchCaster) {
             <span class="group-count">{{ g.matches.length }} 场</span>
           </h4>
           <el-table :data="g.matches" stripe empty-text="该组暂无对阵">
+            <el-table-column label="组别" width="90">
+              <template #default="{ row }">
+                <el-tag size="small" effect="plain">{{ row.group_name ?? '跨组' }}</el-tag>
+              </template>
+            </el-table-column>
             <el-table-column label="对阵" min-width="300">
               <template #default="{ row }">
                 <div class="matchup">
