@@ -18,10 +18,13 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   // 账号人工审核状态（pending/approved/rejected，读 profiles.account_status）
   const accountStatus = ref<ApplicationStatus | null>(null)
+  // 游客浏览模式：无需注册/登录直接浏览公开内容，可刷新被清除（临时身份）
+  const guestMode = ref(false)
 
   const isLoggedIn = computed(() => user.value !== null)
   const isAdmin = computed(() => profile.value?.role === 'admin')
   const isCaster = computed(() => profile.value?.role === 'caster')
+  const isGuest = computed(() => guestMode.value)
 
   // 账号是否被审核拦截（待审核 / 被拒的新账号；管理员与已通过账号不受限）
   const reviewBlocked = computed(
@@ -47,6 +50,7 @@ export const useAuthStore = defineStore('auth', () => {
   /** 拉取当前登录用户及其资料（演示模式下跳过） */
   async function refresh() {
     if (!isSupabaseConfigured || !supabase) return
+    if (guestMode.value) return // 游客身份是临时的，不重复拉取真实会话
     loading.value = true
     try {
       const { data } = await supabase.auth.getUser()
@@ -95,11 +99,33 @@ export const useAuthStore = defineStore('auth', () => {
     accountStatus.value = d.status
   }
 
+  /** 游客登录：无需注册，以临时游客身份浏览公开内容（约战/个人中心等需登录的功能不可用） */
+  async function guestLogin() {
+    guestMode.value = true
+    user.value = {
+      id: 'guest',
+      email: 'guest@hvv-major.local',
+      user_metadata: {},
+      app_metadata: {},
+      aud: 'authenticated',
+      created_at: new Date().toISOString(),
+    } as User
+    profile.value = {
+      id: 'guest',
+      username: '游客',
+      nickname: null,
+      pw_username: null,
+      role: null,
+    }
+    accountStatus.value = null
+  }
+
   async function signOut() {
     if (supabase) await supabase.auth.signOut()
     user.value = null
     profile.value = null
     accountStatus.value = null
+    guestMode.value = false
   }
 
   return {
@@ -110,10 +136,12 @@ export const useAuthStore = defineStore('auth', () => {
     isLoggedIn,
     isAdmin,
     isCaster,
+    isGuest,
     reviewBlocked,
     refresh,
     loadAccountStatus,
     demoLogin,
+    guestLogin,
     signOut,
   }
 })

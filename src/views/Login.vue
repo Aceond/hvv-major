@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ElMessage, type FormInstance, type FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'element-plus'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
 import { sendPasswordReset, siteUrl } from '@/api/auth'
@@ -27,9 +27,9 @@ const form = reactive({
 })
 
 const rules: FormRules = {
+  // 登录可填用户名或邮箱，注册必须是邮箱（邮箱格式在提交时校验）
   email: [
-    { required: true, message: '请输入邮箱', trigger: 'blur' },
-    { type: 'email', message: '邮箱格式不正确', trigger: 'blur' },
+    { required: true, message: '请输入用户名或邮箱', trigger: 'blur' },
   ],
   password: [
     { required: true, message: '请输入密码', trigger: 'blur' },
@@ -64,8 +64,21 @@ async function submit() {
   try {
     await limitedSubmit(async () => {
       if (mode.value === 'login') {
+        // 支持用户名或邮箱登录：非邮箱输入时先解析出注册邮箱
+        let email = form.email.trim()
+        if (!email.includes('@')) {
+          const { data: resolved, error: resolveErr } = await client.rpc('resolve_login_email', {
+            p_identifier: email,
+          })
+          if (resolveErr) throw resolveErr
+          if (!resolved) {
+            ElMessage.error('用户名不存在，请确认后重试')
+            throw new Error('username-not-found')
+          }
+          email = resolved
+        }
         const { error } = await client.auth.signInWithPassword({
-          email: form.email,
+          email,
           password: form.password,
         })
         if (error) {
@@ -79,6 +92,10 @@ async function submit() {
         form.password = ''
         ElMessage.success('登录成功')
       } else {
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+          ElMessage.warning('请输入正确的邮箱地址')
+          return
+        }
         if (form.password.length < 6) {
           ElMessage.warning('密码至少需要 6 位')
           return
@@ -88,7 +105,7 @@ async function submit() {
           return
         }
         const { data, error } = await client.auth.signUp({
-          email: form.email,
+          email: form.email.trim(),
           password: form.password,
           options: {
             data: { username: form.username },
@@ -98,7 +115,12 @@ async function submit() {
         if (error) throw error
         if (data.session) {
           form.password = ''
-          ElMessage.success('注册成功，已自动登录')
+          // 新账号默认待审核，弹窗提示审核机制
+          await ElMessageBox.alert(
+            '您的账号正在审核中，管理员审核通过后即可使用全部功能，请耐心等待。',
+            '注册成功',
+            { type: 'info', confirmButtonText: '知道了' },
+          )
         } else {
           form.password = ''
           ElMessage.success('注册成功！请查收邮箱中的验证邮件，点击邮件内链接完成验证后即可登录（如未收到请检查垃圾邮件）。')
@@ -124,6 +146,13 @@ async function enterDemo(role: 'admin' | 'caster' | 'player') {
   const label = role === 'admin' ? '管理员' : role === 'caster' ? '解说' : '选手'
   ElMessage.success(`已进入演示模式（${label}）`)
   router.push(role === 'admin' ? { name: 'admin-dashboard' } : { name: 'home' })
+}
+
+/** 游客登录：无需注册，以临时游客身份浏览公开内容 */
+async function enterGuest() {
+  await auth.guestLogin()
+  ElMessage.success('已以游客身份进入，可浏览公开内容')
+  router.push({ name: 'home' })
 }
 
 async function sendReset() {
@@ -179,7 +208,11 @@ async function sendReset() {
           />
         </el-form-item>
         <el-form-item prop="email">
-          <el-input v-model="form.email" placeholder="邮箱" @keyup.enter.prevent="submit" />
+          <el-input
+            v-model="form.email"
+            :placeholder="mode === 'register' ? '邮箱' : '用户名 / 邮箱'"
+            @keyup.enter.prevent="submit"
+          />
         </el-form-item>
         <el-form-item prop="password">
           <el-input
@@ -214,6 +247,9 @@ async function sendReset() {
         >
           {{ mode === 'login' ? '登 录' : '注 册' }}
         </el-button>
+        <div class="guest-row">
+          <el-link type="primary" :underline="false" @click="enterGuest">无需注册，以游客身份浏览</el-link>
+        </div>
       </el-form>
 
       <el-divider v-if="!isSupabaseConfigured" />
@@ -274,6 +310,11 @@ async function sendReset() {
   display: flex;
   justify-content: flex-end;
   margin: -6px 0 12px;
+}
+
+.guest-row {
+  margin-top: 14px;
+  text-align: center;
 }
 
 .strength {

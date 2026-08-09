@@ -429,6 +429,19 @@ begin
 end;
 $$;
 
+-- 登录用：根据用户名或邮箱解析出登录邮箱（security definer 以 postgres 身份读 auth.users，
+-- 供「用户名登录」把用户名映射回邮箱；含 @ 直接视为邮箱返回原值）
+create or replace function public.resolve_login_email(p_identifier text)
+returns text
+language sql security definer stable set search_path = public
+as $$
+  select u.email
+  from auth.users u
+  where u.email = p_identifier
+     or exists (select 1 from public.profiles p where p.id = u.id and p.username = p_identifier)
+  limit 1
+$$;
+
 -- ============================================================
 -- 8. 行级安全（RLS）
 -- ============================================================
@@ -447,10 +460,10 @@ alter table public.player_stats   enable row level security;
 alter table public.sync_logs      enable row level security;
 alter table public.site_config     enable row level security;
 
--- profiles：本人读写，管理员可读全部
+-- profiles：公开可读（首页/赛程/排行榜展示选手昵称与完美 ID），仅本人/管理员可更新
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles
-  for select using (auth.uid() = id or public.is_admin());
+  for select using (true);
 drop policy if exists profiles_update on public.profiles;
 create policy profiles_update on public.profiles
   for update using (auth.uid() = id or public.is_admin()) with check (auth.uid() = id or public.is_admin());
@@ -690,8 +703,8 @@ create policy site_config_admin_all on public.site_config
 grant usage on schema public to anon, authenticated;
 
 grant select on public.profiles, public.groups, public.teams, public.team_members,
-  public.stages, public.matches, public.match_maps, public.match_casters, public.standings,
-  public.team_stats, public.player_stats, public.site_config, public.events
+  public.stages, public.matches, public.match_maps, public.match_casters, public.match_media,
+  public.standings, public.team_stats, public.player_stats, public.site_config, public.events
   to anon, authenticated;
 -- 审核通过时回填选手资料（pw_username/nickname/角色）需要 profiles 的 UPDATE 权限，否则选手池为空
 grant update on public.profiles to authenticated;
@@ -705,6 +718,10 @@ grant insert, update on public.events to authenticated;
 grant insert, update on public.player_applications to authenticated;
 grant insert, update, delete on public.matches to authenticated;
 grant insert, delete on public.match_casters to authenticated;
+-- 阶段管理：管理员在后台配置赛制/阶段（RLS 仅管理员可写，此处补齐表级权限）
+grant insert, update, delete on public.stages to authenticated;
+-- 比赛媒体：管理员登记/删除直播·录像链接（RLS 已限制仅管理员可写，此处补齐表级权限）
+grant insert, delete on public.match_media to authenticated;
 -- 地图明细 / 同步日志：RLS 仅管理员可写，此处补表级权限，避免出现「policy 允许但 table permission denied」
 grant insert, update, delete on public.match_maps to authenticated;
 grant insert, update, delete on public.sync_logs to authenticated;
@@ -713,6 +730,7 @@ grant insert, update, delete on public.team_stats to authenticated;
 grant insert, update, delete on public.player_stats to authenticated;
 
 grant execute on function public.upsert_match_result(uuid, int, int) to authenticated;
+grant execute on function public.resolve_login_email(text) to anon, authenticated;
 
 -- ============================================================
 -- 10. 初始管理员
