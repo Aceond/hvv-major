@@ -27,6 +27,7 @@ const groups = ref<Group[]>([])
 const booked = ref<Match[]>([])
 const loading = ref(false)
 const saving = ref(false)
+const currentStageId = ref('') // 录入阶段（当前组别，含跨组决赛）
 
 interface Row {
   opponentId: string
@@ -47,20 +48,41 @@ function eventLabel(e: EventItem) {
   return `${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`
 }
 
-/** 当前赛事可录入的阶段：进行中阶段优先，否则第一个 */
-const currentStageName = computed(() => {
+/** 阶段下拉文案：阶段名（组别名），进行中阶段加标记 */
+function stageLabel(s: Stage): string {
+  const g = s.group_name ? ` · ${s.group_name}` : ''
+  return `${s.name}${g}${s.status === 'running' ? '（进行中）' : ''}`
+}
+
+/** 对手分组：本组别队伍优先，其余放「其他组别」 */
+const myGroupId = computed(() => myTeam.value?.group_id ?? null)
+const groupOpponents = computed(() =>
+  opponents.value.filter((t) => t.group_id === myGroupId.value),
+)
+const otherOpponents = computed(() =>
+  opponents.value.filter((t) => t.group_id !== myGroupId.value),
+)
+
+/** 默认选中阶段：本组别进行中阶段优先，否则第一个 */
+function selectDefaultStage() {
   const list = stages.value
-  return list.find((s) => s.status === 'running')?.name ?? list[0]?.name ?? '待配置'
-})
+  const running = list.find((s) => s.status === 'running')
+  currentStageId.value = running?.id ?? list[0]?.id ?? ''
+}
 
 async function load() {
   if (!auth.isLoggedIn) return
   loading.value = true
   try {
-    stages.value = await listStages(currentEventId.value || undefined)
     groups.value = await listGroups()
     // 约战按赛事上下文取「我的战队」：该赛事下我是队长的已审核战队
     myTeam.value = await listMyTeam(auth.user?.id, currentEventId.value || null)
+    // 阶段：当前组别 + 跨组决赛（供录入选择）
+    stages.value = await listStages(
+      currentEventId.value || undefined,
+      myTeam.value?.group_id || undefined,
+    )
+    selectDefaultStage()
     if (myTeam.value) {
       opponents.value = await listApprovedTeams(currentEventId.value || null, myTeam.value.id)
       await loadBooked()
@@ -119,9 +141,9 @@ async function saveRows() {
       return
     }
   }
-  const stage = stages.value.find((s) => s.status === 'running') ?? stages.value[0]
+  const stage = stages.value.find((s) => s.id === currentStageId.value)
   if (!stage) {
-    ElMessage.warning('暂无可用的比赛阶段，请联系管理员')
+    ElMessage.warning('请先选择录入阶段')
     return
   }
   saving.value = true
@@ -199,7 +221,15 @@ onMounted(init)
           队长：{{ myTeam.captain_name || '-' }}（完美 ID：{{ myTeam.captain_pw || '-' }}）
         </div>
         <div class="stage-info">
-          录入阶段：<b>{{ currentStageName }}</b>
+          <span>录入阶段：</span>
+          <el-select
+            v-model="currentStageId"
+            size="small"
+            placeholder="选择阶段"
+            class="stage-select"
+          >
+            <el-option v-for="s in stages" :key="s.id" :label="stageLabel(s)" :value="s.id" />
+          </el-select>
         </div>
       </el-card>
 
@@ -223,12 +253,17 @@ onMounted(init)
             placeholder="选择对手战队"
             class="row-opponent"
           >
-            <el-option
-              v-for="t in opponents"
-              :key="t.id"
-              :label="`${t.name}（${groupName(t.group_id)}）`"
-              :value="t.id"
-            />
+            <el-option-group v-if="groupOpponents.length" label="本组别">
+              <el-option v-for="t in groupOpponents" :key="t.id" :label="t.name" :value="t.id" />
+            </el-option-group>
+            <el-option-group v-if="otherOpponents.length" label="其他组别">
+              <el-option
+                v-for="t in otherOpponents"
+                :key="t.id"
+                :label="`${t.name}（${groupName(t.group_id)}）`"
+                :value="t.id"
+              />
+            </el-option-group>
           </el-select>
 
           <el-date-picker
@@ -346,8 +381,15 @@ onMounted(init)
 }
 
 .stage-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   color: var(--cs2-text-regular, #c6ccd8);
   font-size: 13px;
+}
+
+.stage-select {
+  width: 220px;
 }
 
 .card-header {
