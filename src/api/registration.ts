@@ -412,13 +412,18 @@ export async function updateTeamMemberRole(
     return
   }
   if (role === 'captain') {
-    // 该队现有队长降为队员，并同步 teams.captain_id
-    await supabase
+    // 该队现有队长降为队员，并同步 teams.captain_id（任一失败都必须显式报错，否则角色变了但约战权限不对应）
+    const { error: downgradeErr } = await supabase
       .from('team_members')
       .update({ is_captain: false, status: 'active' })
       .eq('team_id', teamId)
       .eq('is_captain', true)
-    await supabase.from('teams').update({ captain_id: profileId }).eq('id', teamId)
+    if (downgradeErr) throw downgradeErr
+    const { error: capErr } = await supabase
+      .from('teams')
+      .update({ captain_id: profileId })
+      .eq('id', teamId)
+    if (capErr) throw new Error(`战队队长同步失败：${capErr.message}`)
   }
   const patch =
     role === 'captain'
