@@ -3,6 +3,7 @@ import { computed, ref } from 'vue'
 import type { User } from '@supabase/supabase-js'
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import type { ApplicationStatus } from '@/api/types'
+import { getSiteConfig } from '@/api/config'
 
 export interface Profile {
   id: string
@@ -18,6 +19,8 @@ export const useAuthStore = defineStore('auth', () => {
   const loading = ref(false)
   // 账号人工审核状态（pending/approved/rejected，读 profiles.account_status）
   const accountStatus = ref<ApplicationStatus | null>(null)
+  // 账号注册审核开关（读站点设置 site_config.require_account_review）：关时新账号注册即用，不拦截
+  const requireAccountReview = ref(true)
   // 游客浏览模式：无需注册/登录直接浏览公开内容，可刷新被清除（临时身份）
   const guestMode = ref(false)
 
@@ -26,9 +29,13 @@ export const useAuthStore = defineStore('auth', () => {
   const isCaster = computed(() => profile.value?.role === 'caster')
   const isGuest = computed(() => guestMode.value)
 
-  // 账号是否被审核拦截（待审核 / 被拒的新账号；管理员与已通过账号不受限）
+  // 账号是否被审核拦截（待审核 / 被拒的新账号；管理员与已通过账号不受限；审核开关关闭时全部放行）
   const reviewBlocked = computed(
-    () => isLoggedIn.value && !isAdmin.value && (accountStatus.value === 'pending' || accountStatus.value === 'rejected'),
+    () =>
+      requireAccountReview.value &&
+      isLoggedIn.value &&
+      !isAdmin.value &&
+      (accountStatus.value === 'pending' || accountStatus.value === 'rejected'),
   )
 
   /** 拉取当前用户账号的审核状态（profiles.account_status） */
@@ -47,9 +54,22 @@ export const useAuthStore = defineStore('auth', () => {
     accountStatus.value = (data?.account_status as ApplicationStatus | undefined) ?? null
   }
 
+  /** 拉取账号注册审核开关（站点设置；演示模式读 localStorage 配置） */
+  async function loadRequireAccountReview() {
+    try {
+      const cfg = await getSiteConfig()
+      requireAccountReview.value = cfg.require_account_review
+    } catch {
+      requireAccountReview.value = true // 读取失败时按最严格策略处理
+    }
+  }
+
   /** 拉取当前登录用户及其资料（演示模式下跳过） */
   async function refresh() {
-    if (!isSupabaseConfigured || !supabase) return
+    if (!isSupabaseConfigured || !supabase) {
+      await loadRequireAccountReview()
+      return
+    }
     if (guestMode.value) return // 游客身份是临时的，不重复拉取真实会话
     loading.value = true
     try {
@@ -67,6 +87,7 @@ export const useAuthStore = defineStore('auth', () => {
         profile.value = null
         accountStatus.value = null
       }
+      await loadRequireAccountReview()
     } finally {
       loading.value = false
     }
@@ -136,6 +157,7 @@ export const useAuthStore = defineStore('auth', () => {
     profile,
     loading,
     accountStatus,
+    requireAccountReview,
     isLoggedIn,
     isAdmin,
     isCaster,
@@ -143,6 +165,7 @@ export const useAuthStore = defineStore('auth', () => {
     reviewBlocked,
     refresh,
     loadAccountStatus,
+    loadRequireAccountReview,
     demoLogin,
     guestLogin,
     signOut,

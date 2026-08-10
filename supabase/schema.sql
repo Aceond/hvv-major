@@ -27,10 +27,21 @@ create or replace function public.handle_new_user()
 returns trigger
 language plpgsql security definer set search_path = public
 as $$
+declare
+  v_review boolean;
 begin
-  -- 新注册账号默认 account_status='pending'，需管理员在后台「账号审核」中通过后才解锁全部功能
+  -- 新注册账号是否待审核由站点设置「账号注册审核」开关决定：
+  -- 开（默认）→ account_status='pending'，管理员在后台「账号审核」通过后解锁全部功能；
+  -- 关 → 直接 'approved'，注册即可使用全部功能
+  select coalesce((select require_account_review from public.site_config where id = 1), true)
+    into v_review;
   insert into public.profiles (id, username, email, account_status)
-  values (new.id, new.raw_user_meta_data ->> 'username', new.email, 'pending');
+  values (
+    new.id,
+    new.raw_user_meta_data ->> 'username',
+    new.email,
+    case when v_review then 'pending' else 'approved' end
+  );
   return new;
 end;
 $$;
@@ -298,6 +309,9 @@ create table if not exists public.site_config (
   notice text not null default '',
   updated_at timestamptz not null default now()
 );
+
+-- 账号注册审核开关：true=新注册账号需管理员审核后可用全部功能；false=注册即可直接用
+alter table public.site_config add column if not exists require_account_review boolean not null default true;
 
 insert into public.site_config (id, brand_title, brand_overline, brand_slogan, notice)
 values (

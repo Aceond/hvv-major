@@ -7,6 +7,7 @@ export interface SiteConfig {
   brand_overline: string // 标题上方一行小字
   brand_slogan: string // 标题下方标语
   notice: string // 赛事公告
+  require_account_review: boolean // 账号注册审核开关：true=新注册账号需管理员审核
 }
 
 export const DEFAULT_SITE_CONFIG: SiteConfig = {
@@ -15,6 +16,7 @@ export const DEFAULT_SITE_CONFIG: SiteConfig = {
   brand_slogan: '战队报名 · 赛程赛制 · 积分排名 — 一站式 CS2 赛事平台',
   notice:
     '本系统为框架阶段骨架，赛程、比分与统计由管理员在后台录入维护。（此区域用于展示赛事公告）',
+  require_account_review: true,
 }
 
 const STORAGE_KEY = 'hvv_site_config'
@@ -32,7 +34,7 @@ export async function getSiteConfig(): Promise<SiteConfig> {
   }
   const { data } = await supabase
     .from('site_config')
-    .select('brand_title, brand_overline, brand_slogan, notice')
+    .select('brand_title, brand_overline, brand_slogan, notice, require_account_review')
     .eq('id', 1)
     .maybeSingle()
   if (data) return { ...DEFAULT_SITE_CONFIG, ...data }

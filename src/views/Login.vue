@@ -115,12 +115,17 @@ async function submit() {
         if (error) throw error
         if (data.session) {
           form.password = ''
-          // 新账号默认待审核，弹窗提示审核机制
-          await ElMessageBox.alert(
-            '您的账号正在审核中，管理员审核通过后即可使用全部功能，请耐心等待。',
-            '注册成功',
-            { type: 'info', confirmButtonText: '知道了' },
-          )
+          if (auth.requireAccountReview) {
+            // 审核开启：新账号默认待审核，弹窗提示审核机制
+            await ElMessageBox.alert(
+              '您的账号正在审核中，管理员审核通过后即可使用全部功能，请耐心等待。',
+              '注册成功',
+              { type: 'info', confirmButtonText: '知道了' },
+            )
+          } else {
+            // 审核关闭：注册即可使用全部功能
+            ElMessage.success('注册成功！账号已自动通过审核，可直接使用全部功能。')
+          }
         } else {
           form.password = ''
           ElMessage.success('注册成功！请查收邮箱中的验证邮件，点击邮件内链接完成验证后即可登录（如未收到请检查垃圾邮件）。')

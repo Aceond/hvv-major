@@ -46,6 +46,16 @@ async function save() {
       <el-form-item label="赛事公告">
         <el-input v-model="form.notice" type="textarea" :rows="3" placeholder="赛事公告内容" />
       </el-form-item>
+      <el-form-item label="账号注册审核">
+        <el-switch
+          v-model="form.require_account_review"
+          active-text="开启审核"
+          inactive-text="关闭审核"
+        />
+        <span class="hint">
+          开启时新注册账号默认待审核，管理员在后台「账号管理」通过后才能使用全部功能；关闭时注册即可直接使用全部功能（对已注册账号也即时生效）。
+        </span>
+      </el-form-item>
       <el-form-item>
         <el-button type="primary" :loading="saving" @click="save">保存修改</el-button>
       </el-form-item>
