@@ -407,8 +407,8 @@ async function signOut() {
   color: var(--cs2-accent);
 }
 
-/* ---------- 移动端适配 ---------- */
-@media (max-width: 768px) {
+/* ---------- 移动端适配（≤992px：手机/平板/桌面版网站模式都显示汉堡菜单） ---------- */
+@media (max-width: 992px) {
   .header {
     padding: 0 12px;
     gap: 10px;
