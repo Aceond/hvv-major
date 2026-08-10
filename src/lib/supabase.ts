@@ -29,7 +29,7 @@ const fetchWithTimeout: typeof fetch = (input, init) => {
   // 避免大请求在慢速网络上被 10s 兜底误杀导致 Failed to fetch
   const isLarge =
     (rawUrl.includes('/storage/v1/object') && (method === 'POST' || method === 'PUT')) ||
-    bodySize > 500_000
+    bodySize > 300_000
   const timeoutMs = isLarge ? UPLOAD_TIMEOUT_MS : REQUEST_TIMEOUT_MS
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   return fetch(input, { ...init, signal: controller.signal }).finally(() => clearTimeout(timer))

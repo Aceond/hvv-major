@@ -78,7 +78,7 @@ export async function submitPlayerApplication(
     throw new Error('登录状态已失效，请重新登录后再提交')
   }
   // 截图以压缩后的 data URL 直接存入申请记录（screenshots 为 jsonb），不依赖 Storage 桶配置，保证上传稳定。
-  // 注册页已先行压缩（最长边 1920px / JPEG），单张约几百 KB；后台审核与前台展示均直接读取。
+  // 注册页已先行压缩（自适应，单张 <~65KB，5 张总提交体 <~400KB，低于网络/网关拦截阈值）；后台审核与前台展示均直接读取。
   const { data, error: insertErr } = await supabase
     .from('player_applications')
     .insert({
