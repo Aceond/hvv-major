@@ -507,12 +507,22 @@ alter table public.site_config     enable row level security;
 alter table public.match_player_stats enable row level security;
 
 -- profiles：公开可读（首页/赛程/排行榜展示选手昵称与完美 ID），仅本人/管理员可更新
+-- 注意：匿名用户仅能读取公开展示列（不含 email/username），防邮箱与账号枚举泄露
 drop policy if exists profiles_select on public.profiles;
 create policy profiles_select on public.profiles
   for select using (true);
 drop policy if exists profiles_update on public.profiles;
 create policy profiles_update on public.profiles
-  for update using (auth.uid() = id or public.is_admin()) with check (auth.uid() = id or public.is_admin());
+  for update using (auth.uid() = id or public.is_admin())
+  with check (
+    public.is_admin()
+    or (
+      auth.uid() = id
+      -- 普通用户只能更新自己的资料，禁止改动 role / account_status（防提权为管理员）
+      and role = (select role from public.profiles where id = auth.uid())
+      and account_status = (select account_status from public.profiles where id = auth.uid())
+    )
+  );
 
 -- player_applications：本人可提交/查看自己的申请，管理员全量审核
 drop policy if exists player_applications_select on public.player_applications;
@@ -770,11 +780,14 @@ create policy site_config_admin_all on public.site_config
 -- ============================================================
 grant usage on schema public to anon, authenticated;
 
-grant select on public.profiles, public.groups, public.teams, public.team_members,
+grant select on public.groups, public.teams, public.team_members,
   public.stages, public.matches, public.match_maps, public.match_casters, public.match_media,
   public.match_player_stats, public.standings, public.team_stats, public.player_stats,
   public.site_config, public.events
   to anon, authenticated;
+-- profiles 列级授权：匿名用户仅能读公开展示列（不含 email/username，防隐私泄露）；已登录用户保留完整列（后台审核需邮箱）
+grant select (id, username, nickname, pw_username, highest_rank, role) on public.profiles to anon;
+grant select on public.profiles to authenticated;
 -- 审核通过时回填选手资料（pw_username/nickname/角色）需要 profiles 的 UPDATE 权限，否则选手池为空
 grant update on public.profiles to authenticated;
 grant select on public.sync_logs to authenticated;
