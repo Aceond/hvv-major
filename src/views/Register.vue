@@ -31,8 +31,8 @@ async function submit() {
     ElMessage.warning('请填写战队名称')
     return
   }
-  if (form.tag && !/^[a-zA-Z0-9]{2,6}$/.test(form.tag)) {
-    ElMessage.warning('战队 ID 需为 2-6 位字母或数字')
+  if (form.tag && !/^[a-zA-Z0-9]+$/.test(form.tag)) {
+    ElMessage.warning('战队 ID 仅限字母或数字')
     return
   }
   submitting.value = true
@@ -103,7 +103,7 @@ onMounted(async () => {
           <el-input v-model="form.teamName" placeholder="例如：Nova Velocity" />
         </el-form-item>
         <el-form-item label="战队 ID">
-          <el-input v-model="form.tag" placeholder="例如：NV11（2-6 位字母数字）" maxlength="6" />
+          <el-input v-model="form.tag" placeholder="例如：NV11（字母或数字，长度不限）" />
         </el-form-item>
         <el-form-item>
           <el-button type="primary" :loading="submitting" @click="submit">提交报名</el-button>
