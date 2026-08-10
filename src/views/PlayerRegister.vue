@@ -30,8 +30,6 @@ const screenshots = ref<string[]>([])
 const previewVisible = ref(false)
 const previewIndex = ref(0)
 
-const MAX_SHOTS = 5
-
 function readAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
@@ -153,11 +151,7 @@ async function submit() {
     ElMessage.warning('在职状态请填写工号')
     return
   }
-  // 赛季截图为选传：没传或上传失败都不拦截，后台审核时可联系选手补充
-  if (screenshots.value.length > MAX_SHOTS) {
-    ElMessage.warning(`最多上传 ${MAX_SHOTS} 张赛季截图`)
-    return
-  }
+  // 赛季截图为选传：数量不限，没传或上传失败都不拦截，后台审核时可联系选手补充
   saving.value = true
   try {
     const app = await submitPlayerApplication(
@@ -325,7 +319,6 @@ onMounted(async () => {
               list-type="picture-card"
               multiple
               accept="image/*"
-              :limit="MAX_SHOTS"
               :on-change="onUploadChange"
               :on-remove="onUploadRemove"
               :on-preview="onPreview"
@@ -333,7 +326,7 @@ onMounted(async () => {
               <el-icon><Plus /></el-icon>
             </el-upload>
             <div class="form-tip">
-              上传最近 3-5 个赛季的段位/战绩截图（选传，最多 {{ MAX_SHOTS }} 张），可一次框选多张，点击缩略图放大查看，供管理员审核；没上传或上传失败不影响提交
+              上传最近 3-5 个赛季的段位/战绩截图（选传，数量不限），可一次框选多张，点击缩略图放大查看，供管理员审核；没上传或上传失败不影响提交
             </div>
           </div>
         </el-form-item>
