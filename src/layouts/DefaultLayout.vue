@@ -221,9 +221,8 @@ async function signOut() {
   --el-tag-text-color: var(--cs2-accent);
 }
 
-/* 汉堡菜单按钮：桌面隐藏，移动端显示 */
+/* 汉堡菜单按钮：始终显示（桌面/手机均可打开抽屉菜单） */
 .menu-toggle {
-  display: none;
   color: var(--cs2-text-muted);
 }
 
