@@ -3,11 +3,47 @@ import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { AccountItem, ApplicationStatus } from '@/api/types'
 import { ROLE_LABEL } from '@/api/types'
-import { listAccounts, reviewAccount, setAccountRole } from '@/api/admin'
+import { listAccounts, reviewAccount, reviewAccounts, setAccountRole } from '@/api/admin'
 
 const rows = ref<AccountItem[]>([])
 const loading = ref(false)
 const filter = ref<'all' | ApplicationStatus>('all')
+// 批量审核：表格多选
+const selected = ref<AccountItem[]>([])
+
+const hasPendingSelected = computed(() =>
+  selected.value.some((a) => a.account_status === 'pending'),
+)
+
+/** 批量通过 / 拒绝：仅对选中的待审核账号生效（已审过的自动跳过） */
+async function batchDecide(status: ApplicationStatus) {
+  const action = status === 'approved' ? '通过' : '拒绝'
+  const pendingIds = selected.value
+    .filter((a) => a.account_status === 'pending')
+    .map((a) => a.id)
+  if (pendingIds.length === 0) {
+    ElMessage.warning('请先勾选待审核的账号')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认${action}选中的 ${pendingIds.length} 个账号吗？${action === '通过' ? '通过后即可使用全部功能。' : '拒绝后将无法使用系统功能。'}`,
+      '批量审核',
+      { type: 'warning', confirmButtonText: action, cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await reviewAccounts(pendingIds, status)
+  } catch (e: any) {
+    ElMessage.error(e.message || '批量审核失败')
+    return
+  }
+  ElMessage.success(`已${action} ${pendingIds.length} 个账号`)
+  selected.value = []
+  load()
+}
 
 const filteredRows = computed(() =>
   filter.value === 'all' ? rows.value : rows.value.filter((a) => a.account_status === filter.value),
@@ -87,14 +123,32 @@ onMounted(load)
       class="tip"
     />
 
-    <el-radio-group v-model="filter" class="filters">
-      <el-radio-button value="all">全部（{{ counts.all }}）</el-radio-button>
-      <el-radio-button value="pending">待审核（{{ counts.pending }}）</el-radio-button>
-      <el-radio-button value="approved">已通过（{{ counts.approved }}）</el-radio-button>
-      <el-radio-button value="rejected">已拒绝（{{ counts.rejected }}）</el-radio-button>
-    </el-radio-group>
+    <div class="filter-bar">
+      <el-radio-group v-model="filter" class="filters">
+        <el-radio-button value="all">全部（{{ counts.all }}）</el-radio-button>
+        <el-radio-button value="pending">待审核（{{ counts.pending }}）</el-radio-button>
+        <el-radio-button value="approved">已通过（{{ counts.approved }}）</el-radio-button>
+        <el-radio-button value="rejected">已拒绝（{{ counts.rejected }}）</el-radio-button>
+      </el-radio-group>
+      <div class="batch-actions">
+        <span v-if="selected.length > 0" class="batch-tip">已选 {{ selected.length }} 个账号</span>
+        <el-button type="success" plain :disabled="!hasPendingSelected" @click="batchDecide('approved')">
+          批量通过
+        </el-button>
+        <el-button type="danger" plain :disabled="!hasPendingSelected" @click="batchDecide('rejected')">
+          批量拒绝
+        </el-button>
+      </div>
+    </div>
 
-    <el-table v-loading="loading" :data="filteredRows" stripe empty-text="暂无账号">
+    <el-table
+      v-loading="loading"
+      :data="filteredRows"
+      stripe
+      empty-text="暂无账号"
+      @selection-change="(v: AccountItem[]) => (selected = v)"
+    >
+      <el-table-column type="selection" width="48" />
       <el-table-column prop="username" label="用户名" min-width="140">
         <template #default="{ row }">
           <span class="acc-name">{{ row.username || '-' }}</span>
@@ -166,8 +220,28 @@ onMounted(load)
   margin-bottom: 12px;
 }
 
-.filters {
+.filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
   margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.filters {
+  margin-bottom: 0;
+}
+
+.batch-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.batch-tip {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
 }
 
 .done-text {

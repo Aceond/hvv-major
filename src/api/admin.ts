@@ -46,6 +46,18 @@ export async function reviewAccount(id: string, status: ApplicationStatus) {
   if (error) throw error
 }
 
+/** 批量账号审核：一次通过 / 拒绝多个账号（只更新当前为待审核的，避免覆盖已审核结果） */
+export async function reviewAccounts(ids: string[], status: ApplicationStatus) {
+  if (!isSupabaseConfigured || !supabase) return
+  if (ids.length === 0) return
+  const { error } = await supabase
+    .from('profiles')
+    .update({ account_status: status })
+    .eq('account_status', 'pending')
+    .in('id', ids)
+  if (error) throw error
+}
+
 /** 设置账号角色（管理员把用户设为解说 / 选手等；RLS 限制普通用户不可改 role） */
 export async function setAccountRole(id: string, role: 'caster' | 'player') {
   if (!isSupabaseConfigured || !supabase) return
