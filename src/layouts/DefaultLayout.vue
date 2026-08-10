@@ -1,6 +1,8 @@
 <script setup lang="ts">
+import { ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
+import { Menu } from '@element-plus/icons-vue'
 import { useAuthStore } from '@/stores/auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import Cs2Logo from '@/components/Cs2Logo.vue'
@@ -8,6 +10,9 @@ import Cs2Logo from '@/components/Cs2Logo.vue'
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+
+// 移动端抽屉菜单开关
+const menuOpen = ref(false)
 
 /** 进入管理后台：管理员直接进入，其他人引导到登录页 */
 function goAdmin() {
@@ -40,6 +45,11 @@ async function signOut() {
       <el-tag v-if="!isSupabaseConfigured" class="demo-tag" size="small" effect="plain">
         演示模式
       </el-tag>
+
+      <!-- 移动端菜单按钮（桌面隐藏） -->
+      <el-button class="menu-toggle" circle text @click="menuOpen = true">
+        <el-icon :size="20"><Menu /></el-icon>
+      </el-button>
 
       <el-menu
         mode="horizontal"
@@ -99,6 +109,62 @@ async function signOut() {
       HVV Major · 报名 / 数据 / 比赛 三合一赛事平台
     </el-footer>
   </el-container>
+
+  <!-- 移动端抽屉菜单 -->
+  <el-drawer
+    v-model="menuOpen"
+    direction="ltr"
+    size="280px"
+    :with-header="false"
+    class="mobile-drawer"
+  >
+    <div class="drawer-body">
+      <div class="drawer-brand" @click="router.push({ name: 'home' }); menuOpen = false">
+        <Cs2Logo :size="28" />
+        <div class="drawer-brand-text">
+          <span class="drawer-name">HVV MAJOR</span>
+          <span class="drawer-sub">CS2 赛事平台</span>
+        </div>
+      </div>
+      <el-menu
+        :default-active="route.path"
+        router
+        class="drawer-menu"
+        @select="menuOpen = false"
+      >
+        <el-menu-item index="/">首页</el-menu-item>
+        <el-menu-item index="/events">赛事</el-menu-item>
+        <el-menu-item
+          v-if="auth.isLoggedIn && !auth.isGuest && !auth.reviewBlocked"
+          index="/player/register"
+        >
+          个人注册
+        </el-menu-item>
+        <el-menu-item
+          v-if="auth.isLoggedIn && !auth.isGuest && !auth.reviewBlocked"
+          index="/register"
+        >
+          战队报名
+        </el-menu-item>
+        <el-menu-item index="/matches">赛程</el-menu-item>
+        <el-menu-item
+          v-if="auth.isLoggedIn && !auth.isGuest && !auth.reviewBlocked"
+          index="/booking"
+        >
+          约战录入
+        </el-menu-item>
+        <el-menu-item index="/standings">积分榜</el-menu-item>
+        <el-menu-item index="/rankings">数据排行</el-menu-item>
+        <el-menu-item v-if="auth.reviewBlocked" index="/review-status">账号审核状态</el-menu-item>
+        <el-menu-item
+          v-if="auth.isLoggedIn && !auth.isGuest && !auth.reviewBlocked"
+          index="/profile"
+        >
+          个人中心
+        </el-menu-item>
+      </el-menu>
+    </div>
+  </el-drawer>
 </template>
 
 <style scoped>
@@ -153,6 +219,12 @@ async function signOut() {
   --el-tag-bg-color: var(--cs2-accent-soft);
   --el-tag-border-color: rgba(255, 176, 32, 0.4);
   --el-tag-text-color: var(--cs2-accent);
+}
+
+/* 汉堡菜单按钮：桌面隐藏，移动端显示 */
+.menu-toggle {
+  display: none;
+  color: var(--cs2-text-muted);
 }
 
 .nav {
@@ -274,6 +346,67 @@ async function signOut() {
   color: var(--cs2-accent);
 }
 
+/* ---------- 移动端抽屉菜单（渲染在 body，需全局样式） ---------- */
+.mobile-drawer .drawer-body {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.mobile-drawer .drawer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 8px 18px;
+  cursor: pointer;
+  border-bottom: 1px solid var(--cs2-border);
+  margin-bottom: 12px;
+}
+
+.mobile-drawer .drawer-brand-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+}
+
+.mobile-drawer .drawer-name {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  background: linear-gradient(120deg, #fff, var(--cs2-accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.mobile-drawer .drawer-sub {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: var(--cs2-text-muted);
+}
+
+.mobile-drawer .drawer-menu {
+  flex: 1;
+  border-right: none;
+  --el-menu-bg-color: transparent;
+  --el-menu-text-color: var(--cs2-text-muted);
+  --el-menu-hover-bg-color: var(--cs2-panel-2);
+  --el-menu-active-color: var(--cs2-accent);
+}
+
+.mobile-drawer .drawer-menu .el-menu-item {
+  height: 46px;
+  margin: 2px 0;
+  border-radius: 8px;
+  font-weight: 600;
+  letter-spacing: 1px;
+}
+
+.mobile-drawer .drawer-menu .el-menu-item.is-active {
+  background: var(--cs2-accent-soft);
+  color: var(--cs2-accent);
+}
+
 /* ---------- 移动端适配 ---------- */
 @media (max-width: 768px) {
   .header {
@@ -289,15 +422,15 @@ async function signOut() {
     font-size: 14px;
   }
 
-  /* 导航：横向可滑动（隐藏滚动条），保留全部入口 */
+  /* 导航：移动端隐藏横向菜单，改用汉堡抽屉 */
   .nav {
-    overflow-x: auto;
-    scrollbar-width: none;
-    -ms-overflow-style: none;
-  }
-  .nav::-webkit-scrollbar {
     display: none;
   }
+
+  .menu-toggle {
+    display: inline-flex;
+  }
+
   .nav :deep(.el-menu-item),
   .nav :deep(.el-sub-menu__title) {
     padding: 0 12px;
