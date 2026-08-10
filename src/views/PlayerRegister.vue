@@ -30,13 +30,13 @@ const screenshots = ref<string[]>([])
 const previewVisible = ref(false)
 const previewIndex = ref(0)
 
-const MIN_SHOTS = 3
 const MAX_SHOTS = 5
 
 function readAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve) => {
+  return new Promise((resolve, reject) => {
     const reader = new FileReader()
     reader.onload = () => resolve(reader.result as string)
+    reader.onerror = () => reject(new Error('读取失败'))
     reader.readAsDataURL(file)
   })
 }
@@ -101,7 +101,11 @@ async function handleFiles(files: UploadFile[]) {
     try {
       urls.push(await compressImage(f.raw))
     } catch {
-      urls.push(await readAsDataUrl(f.raw)) // 压缩失败则用原图
+      try {
+        urls.push(await readAsDataUrl(f.raw)) // 压缩失败则用原图
+      } catch {
+        // 图片读取/压缩失败：跳过该张，不报错、不拦截提交（后台没截图可联系选手补）
+      }
     }
   }
   // 只保留最后一次读取结果，避免较早的异步读取晚返回时覆盖新选择
@@ -148,10 +152,7 @@ async function submit() {
     ElMessage.warning('在职状态请填写工号')
     return
   }
-  if (screenshots.value.length < MIN_SHOTS) {
-    ElMessage.warning(`请至少上传 ${MIN_SHOTS} 张赛季截图（当前 ${screenshots.value.length} 张）`)
-    return
-  }
+  // 赛季截图为选传：没传或上传失败都不拦截，后台审核时可联系选手补充
   if (screenshots.value.length > MAX_SHOTS) {
     ElMessage.warning(`最多上传 ${MAX_SHOTS} 张赛季截图`)
     return
@@ -235,7 +236,7 @@ onMounted(async () => {
         type="error"
         :closable="false"
         title="申请未通过"
-        description="你的注册申请未通过审核，请核对完美 ID 与赛季截图后重新提交。"
+        description="你的注册申请未通过审核，请核对完美 ID 后重新提交。"
         class="tip"
       />
 
@@ -243,7 +244,7 @@ onMounted(async () => {
         type="info"
         :closable="false"
         title="注册流程"
-        description="选择要报名的赛事，填写选手姓名、完美 ID（完美对战平台用户名）与在职状态（在职需填驻地和工号），并上传最近 3-5 个赛季的截图，提交后由管理员审核。审核通过后进入该赛事选手池（以选手姓名展示），队长创建战队时将从池中选择队员；每人只能加入一支战队。"
+        description="选择要报名的赛事，填写选手姓名、完美 ID（完美对战平台用户名）与在职状态（在职需填驻地和工号），并上传最近 3-5 个赛季的截图（可选，也可不上传），提交后由管理员审核。审核通过后进入该赛事选手池（以选手姓名展示），队长创建战队时将从池中选择队员；每人只能加入一支战队。"
         class="tip"
       />
 
@@ -331,7 +332,7 @@ onMounted(async () => {
               <el-icon><Plus /></el-icon>
             </el-upload>
             <div class="form-tip">
-              上传最近 3-5 个赛季的段位/战绩截图（必传 {{ MIN_SHOTS }} 张，最多 {{ MAX_SHOTS }} 张），可一次框选多张，点击缩略图放大查看，供管理员审核
+              上传最近 3-5 个赛季的段位/战绩截图（选传，最多 {{ MAX_SHOTS }} 张），可一次框选多张，点击缩略图放大查看，供管理员审核；没上传或上传失败不影响提交
             </div>
           </div>
         </el-form-item>
