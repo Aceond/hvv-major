@@ -50,7 +50,7 @@ async function signOut() {
       >
         <el-menu-item index="/">首页</el-menu-item>
         <el-menu-item index="/events">赛事</el-menu-item>
-        <el-sub-menu v-if="!auth.reviewBlocked" index="signup">
+        <el-sub-menu v-if="auth.isLoggedIn && !auth.isGuest && !auth.reviewBlocked" index="signup">
           <template #title>报名</template>
           <el-menu-item index="/player/register">个人注册</el-menu-item>
           <el-menu-item index="/register">战队报名</el-menu-item>
@@ -58,7 +58,7 @@ async function signOut() {
         <el-sub-menu index="match">
           <template #title>比赛</template>
           <el-menu-item index="/matches">赛程</el-menu-item>
-          <el-menu-item v-if="!auth.reviewBlocked" index="/booking">约战录入</el-menu-item>
+          <el-menu-item v-if="auth.isLoggedIn && !auth.isGuest && !auth.reviewBlocked" index="/booking">约战录入</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="data">
           <template #title>数据</template>
@@ -76,7 +76,7 @@ async function signOut() {
             <span class="username">{{ auth.profile?.username }}</span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item v-if="!auth.reviewBlocked" @click="router.push({ name: 'profile' })">个人中心</el-dropdown-item>
+                <el-dropdown-item v-if="auth.isLoggedIn && !auth.isGuest && !auth.reviewBlocked" @click="router.push({ name: 'profile' })">个人中心</el-dropdown-item>
                 <el-dropdown-item v-if="auth.reviewBlocked" @click="router.push({ name: 'review-status' })">账号审核状态</el-dropdown-item>
                 <el-dropdown-item divided @click="signOut">退出登录</el-dropdown-item>
               </el-dropdown-menu>

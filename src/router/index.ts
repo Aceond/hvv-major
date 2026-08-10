@@ -46,6 +46,8 @@ const router = createRouter({
 
 // 待审核/被拒账号仅可访问的页面白名单（公开浏览 + 审核状态提示页 + 两个报名入口，否则新注册用户永远报不了名）
 const REVIEW_OPEN_PAGES = ['home', 'events', 'matches', 'standings', 'rankings', 'review-status', 'login', 'player-register', 'register']
+// 需登录才能使用的页面（未登录 / 游客一律跳转登录页，权限与游客一致）
+const AUTH_PAGES = ['booking', 'profile', 'player-register', 'register']
 
 /** 给 Promise 加超时竞速：超过 timeoutMs 直接放行，避免导航被挂起的请求无限阻塞 */
 function withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T | undefined> {
@@ -55,12 +57,15 @@ function withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T | undefined
   ])
 }
 
-// 路由守卫：进入 /admin 前校验管理员角色；未过审账号仅开放白名单页面
+// 路由守卫：进入 /admin 前校验管理员角色；未登录/游客只能浏览公开页面；未过审账号仅开放白名单页面
 router.beforeEach(async (to) => {
   const auth = useAuthStore()
   if (!auth.isLoggedIn) await withTimeout(auth.refresh(), 3000)
   if (to.meta.requiresAdmin && !auth.isAdmin) {
     return { name: 'home' }
+  }
+  if ((!auth.isLoggedIn || auth.isGuest) && AUTH_PAGES.includes(to.name as string)) {
+    return { name: 'login' }
   }
   if (auth.reviewBlocked && !REVIEW_OPEN_PAGES.includes(to.name as string)) {
     return { name: 'home' }
