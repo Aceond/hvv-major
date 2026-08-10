@@ -235,4 +235,29 @@ onMounted(load)
 .ended-tag {
   color: var(--cs2-text-muted);
 }
+
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 768px) {
+  .event-row {
+    flex-direction: column;
+    gap: 12px;
+    padding: 16px 16px 16px 14px;
+  }
+
+  .row-info {
+    padding-right: 0;
+  }
+
+  .event-name {
+    font-size: 19px;
+  }
+
+  .row-actions {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    min-width: 0;
+    width: 100%;
+  }
+}
 </style>

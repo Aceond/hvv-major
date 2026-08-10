@@ -804,4 +804,36 @@ async function savePassword() {
   font-size: 12px;
   color: var(--cs2-text-muted);
 }
+
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 768px) {
+  .radar-svg {
+    width: 100%;
+    max-width: 240px;
+    height: auto;
+    margin: 0 auto;
+  }
+
+  .radar-body {
+    justify-content: center;
+    gap: 16px;
+  }
+
+  .radar-side {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .radar-filters {
+    width: 100%;
+  }
+
+  .radar-filters .el-select {
+    width: 100% !important;
+  }
+
+  .team-head {
+    flex-wrap: wrap;
+  }
+}
 </style>

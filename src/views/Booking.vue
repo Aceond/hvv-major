@@ -450,4 +450,36 @@ onMounted(init)
   color: var(--cs2-accent);
   font-weight: 700;
 }
+
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 768px) {
+  .booking-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--cs2-border);
+    border-radius: 8px;
+  }
+
+  .row-opponent,
+  .row-time,
+  .row-bo {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .row-remove {
+    align-self: flex-end;
+  }
+
+  .form-actions .el-button {
+    width: 100%;
+  }
+
+  .stage-select {
+    width: 100%;
+    flex: 1;
+  }
+}
 </style>

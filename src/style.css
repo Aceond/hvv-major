@@ -214,3 +214,96 @@ html.dark .el-radio-button__inner {
 html.dark .el-radio-button__inner:hover {
   color: var(--cs2-accent);
 }
+
+/* ============================================================
+   移动端适配（≤ 768px：手机竖屏/横屏与小平板）
+   原则：内容优先，表格/页签/操作区允许横向滚动，弹窗贴近屏幕
+   ============================================================ */
+@media (max-width: 768px) {
+  /* 页面容器：缩小留白，充分利用窄屏宽度 */
+  .page-container {
+    padding: 16px 12px 32px;
+  }
+
+  /* 表格：卡片内横向滚动，避免列被挤压换行（列多时左右滑动查看） */
+  .el-card {
+    overflow-x: auto;
+  }
+  .el-card .el-table {
+    min-width: 640px;
+  }
+  html.dark .el-table__fixed-left,
+  html.dark .el-table__fixed-right {
+    box-shadow: none;
+  }
+
+  /* 弹窗：贴近屏幕宽度，body 可滚动 */
+  .el-dialog {
+    width: calc(100vw - 20px) !important;
+    max-height: 88vh;
+    display: flex;
+    flex-direction: column;
+  }
+  .el-dialog__body {
+    overflow-y: auto;
+  }
+
+  /* 页签 / 组别筛选：横向可滚动 */
+  .el-tabs__nav-wrap::after {
+    display: none;
+  }
+  .el-tabs__nav-scroll {
+    overflow-x: auto;
+  }
+  .el-radio-group {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+  .el-radio-group .el-radio-button {
+    flex-shrink: 0;
+  }
+
+  /* 表单：label 收窄，避免窄屏下挤压输入区 */
+  .el-form-item__label {
+    width: auto !important;
+    max-width: 86px;
+    padding-right: 10px;
+  }
+  .el-form-item__content {
+    margin-left: 86px !important;
+  }
+
+  /* 操作按钮区：允许换行 */
+  .el-form-item .el-form-item__content > .el-button + .el-button {
+    margin-left: 10px;
+  }
+
+  /* 步骤条：压缩文字 */
+  .el-steps .el-step__title {
+    font-size: 12px;
+  }
+
+  /* 分页器：窄屏下换行居中 */
+  .el-pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+
+/* 超窄屏（≤ 480px）：进一步压缩 */
+@media (max-width: 480px) {
+  .page-title {
+    font-size: 19px;
+  }
+
+  .hero-hud {
+    font-size: 9px;
+    letter-spacing: 2px;
+  }
+
+  .el-steps .el-step__description {
+    display: none;
+  }
+}

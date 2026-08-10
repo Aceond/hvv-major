@@ -185,4 +185,60 @@ async function signOut() {
 .main {
   background: var(--cs2-bg);
 }
+
+/* ---------- 移动端适配：侧栏改为顶部横向菜单 ---------- */
+@media (max-width: 768px) {
+  .admin-layout {
+    display: block;
+  }
+
+  .aside {
+    flex-direction: row;
+    align-items: center;
+    width: 100% !important;
+    border-right: none;
+    border-bottom: 1px solid var(--cs2-border);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
+
+  .aside-brand {
+    padding: 10px 12px;
+    flex-shrink: 0;
+  }
+  .aside-brand .brand-title {
+    display: none;
+  }
+
+  .aside-menu {
+    display: flex;
+    flex-direction: row;
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .aside-menu::-webkit-scrollbar {
+    display: none;
+  }
+  .aside-menu :deep(.el-menu-item) {
+    margin: 2px 4px;
+    height: 40px;
+    white-space: nowrap;
+  }
+
+  .header {
+    padding: 0 12px;
+    height: 48px;
+  }
+  .header-actions {
+    gap: 6px;
+  }
+  .admin-name {
+    display: none;
+  }
+  .header-title {
+    font-size: 13px;
+  }
+}
 </style>

@@ -273,4 +273,52 @@ async function signOut() {
 .el-menu--popup .el-menu-item.is-active {
   color: var(--cs2-accent);
 }
+
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 768px) {
+  .header {
+    padding: 0 12px;
+    gap: 10px;
+  }
+
+  .brand-text .brand-sub {
+    display: none;
+  }
+
+  .brand-name {
+    font-size: 14px;
+  }
+
+  /* 导航：横向可滑动（隐藏滚动条），保留全部入口 */
+  .nav {
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .nav::-webkit-scrollbar {
+    display: none;
+  }
+  .nav :deep(.el-menu-item),
+  .nav :deep(.el-sub-menu__title) {
+    padding: 0 12px;
+    font-size: 13px;
+  }
+
+  .user-area {
+    gap: 8px;
+  }
+
+  .admin-btn {
+    padding: 4px 8px;
+    font-size: 12px;
+  }
+
+  .username {
+    max-width: 80px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+  }
+}
 </style>

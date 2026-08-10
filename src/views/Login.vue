@@ -368,6 +368,18 @@ async function sendReset() {
   color: #f56c6c;
 }
 
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 768px) {
+  .login-page {
+    padding-top: 24px;
+  }
+
+  .login-card {
+    width: 100%;
+    max-width: 420px;
+  }
+}
+
 .strength-label.medium {
   color: #e6a23c;
 }

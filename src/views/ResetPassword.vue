@@ -118,4 +118,16 @@ async function submit() {
   margin-top: 12px;
   text-align: center;
 }
+
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 768px) {
+  .reset-page {
+    padding-top: 24px;
+  }
+
+  .reset-card {
+    width: 100%;
+    max-width: 420px;
+  }
+}
 </style>

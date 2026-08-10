@@ -395,4 +395,20 @@ function format(col: StatCol, value: number): string {
 :deep(.el-table__header th:active) {
   cursor: grabbing;
 }
+
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 768px) {
+  .filters {
+    gap: 8px;
+  }
+
+  .filter-item {
+    width: 100%;
+    flex: 1 1 100%;
+  }
+
+  .tip-hint {
+    width: 100%;
+  }
+}
 </style>

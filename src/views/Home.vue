@@ -393,6 +393,70 @@ onMounted(async () => {
   }
 }
 
+@media (max-width: 768px) {
+  .hero {
+    padding: 56px 12px 40px;
+  }
+
+  .hero-overline {
+    font-size: 10px;
+    letter-spacing: 2px;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .hero-title {
+    font-size: clamp(28px, 9vw, 40px);
+    letter-spacing: 2px;
+    width: 100%;
+  }
+
+  .hero-slogan {
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+
+  .cta {
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .cta .el-button {
+    width: 100%;
+    max-width: 300px;
+    margin-left: 0 !important;
+  }
+
+  .week-matches {
+    padding: 14px 12px 6px;
+  }
+
+  .week-header {
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  /* 最近比赛行：对阵整行置顶，其余信息换行排列 */
+  .match-row {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+    padding: 10px;
+  }
+
+  .matchup {
+    order: -1;
+    width: 100%;
+    flex-basis: 100%;
+    justify-content: space-between;
+  }
+
+  .match-info {
+    min-width: 0;
+    flex: 1;
+  }
+}
+
 .cta {
   display: flex;
   justify-content: center;
