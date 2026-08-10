@@ -273,7 +273,7 @@ export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
   let query = supabase
     .from('profiles')
     .select('id, nickname, pw_username, highest_rank, team_members(team_id, status)')
-    .eq('role', 'player')
+    .in('role', ['player', 'caster']) // 选手与解说均进入选手池（解说也可作为队员被选入战队）
     .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
   const { data } = await query
