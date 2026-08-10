@@ -193,6 +193,27 @@ function cellClass(col: StatCol, value: number): string {
   return ''
 }
 
+/** 胜率排序：胜率相同按净胜分高者优先（第二参考项） */
+function teamWinRateSort(a: TeamStatRow, b: TeamStatRow): number {
+  const d = (a.win_rate ?? 0) - (b.win_rate ?? 0)
+  if (d !== 0) return d
+  return (a.net ?? 0) - (b.net ?? 0)
+}
+
+/** 净胜分排序：净胜分相同按胜率高者优先（与胜率排序互逆，保证两个方向排名一致） */
+function teamNetSort(a: TeamStatRow, b: TeamStatRow): number {
+  const d = (a.net ?? 0) - (b.net ?? 0)
+  if (d !== 0) return d
+  return (a.win_rate ?? 0) - (b.win_rate ?? 0)
+}
+
+/** 动态列：胜率列与净胜分列走复合排序，其余列默认单键排序 */
+function teamSortMethodFor(col: StatCol): ((a: TeamStatRow, b: TeamStatRow) => number) | undefined {
+  if (col.key === 'win_rate') return teamWinRateSort
+  if (col.key === 'net') return teamNetSort
+  return undefined
+}
+
 function format(col: StatCol, value: number): string {
   if (col.fmt === 'pct0') return `${value}%`
   if (col.fmt === 'pct1') return `${value.toFixed(1)}%`
@@ -270,6 +291,7 @@ function format(col: StatCol, value: number): string {
           :label="col.label"
           :width="col.width"
           sortable
+          :sort-method="teamSortMethodFor(col)"
           :label-class-name="'drag-col-' + col.key"
         >
           <template #default="{ row }">
