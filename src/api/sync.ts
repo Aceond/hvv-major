@@ -12,7 +12,7 @@ export interface SyncResult {
   source: string
 }
 
-const MAPS = ['Mirage', 'Inferno', 'Anubis', 'Nuke', 'Dust2', 'Ancient']
+const MAPS = ['Mirage', 'Inferno', 'Anubis', 'Nuke', 'Dust2', 'Ancient', 'Cache']
 
 export async function runSync(source = 'demo'): Promise<SyncResult> {
   // 演示模式：随机为 scheduled 比赛生成比分

@@ -319,7 +319,7 @@ export const mockMatches: Match[] = [
   { id: 'match-5', stage_id: 'stage-1', group_id: 'g2', round_number: 1, team_a_id: 'team-3', team_b_id: 'team-4', best_of: 1, map: 'Dust2', team_a_score: 13, team_b_score: 10, winner_id: 'team-3', status: 'completed', scheduled_at: '2026-08-01 19:00' },
   { id: 'match-6', stage_id: 'stage-1', group_id: 'g2', round_number: 1, team_a_id: 'team-3', team_b_id: 'team-9', best_of: 1, map: 'Ancient', team_a_score: 13, team_b_score: 8, winner_id: 'team-3', status: 'completed', scheduled_at: '2026-08-02 20:30' },
   { id: 'match-7', stage_id: 'stage-1', group_id: 'g2', round_number: 1, team_a_id: 'team-4', team_b_id: 'team-9', best_of: 1, map: 'Mirage', team_a_score: 9, team_b_score: 13, winner_id: 'team-9', status: 'completed', scheduled_at: '2026-08-02 19:00' },
-  { id: 'match-8', stage_id: 'stage-1', group_id: 'g2', round_number: 2, team_a_id: 'team-3', team_b_id: 'team-9', best_of: 1, map: 'Overpass', team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: '2026-08-04 20:30' },
+  { id: 'match-8', stage_id: 'stage-1', group_id: 'g2', round_number: 2, team_a_id: 'team-3', team_b_id: 'team-9', best_of: 1, map: 'Cache', team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: '2026-08-04 20:30' },
   // 挑战组 g3
   { id: 'match-9', stage_id: 'stage-1', group_id: 'g3', round_number: 1, team_a_id: 'team-2', team_b_id: 'team-5', best_of: 1, map: 'Nuke', team_a_score: 13, team_b_score: 9, winner_id: 'team-2', status: 'completed', scheduled_at: '2026-08-01 21:00' },
   { id: 'match-10', stage_id: 'stage-1', group_id: 'g3', round_number: 1, team_a_id: 'team-2', team_b_id: 'team-8', best_of: 1, map: 'Dust2', team_a_score: 13, team_b_score: 6, winner_id: 'team-2', status: 'completed', scheduled_at: '2026-08-02 21:00' },
@@ -336,7 +336,7 @@ export const mockMatches: Match[] = [
   // 第 2 轮（1-0 与 1-0、0-1 与 0-1 之间配对）
   { id: 'match-18', stage_id: 'stage-3', group_id: null, round_number: 2, team_a_id: 'team-1', team_b_id: 'team-3', best_of: 1, map: 'Dust2', team_a_score: 13, team_b_score: 10, winner_id: 'team-1', status: 'completed', scheduled_at: '2026-08-11 19:00' },
   { id: 'match-19', stage_id: 'stage-3', group_id: null, round_number: 2, team_a_id: 'team-9', team_b_id: 'team-2', best_of: 1, map: 'Ancient', team_a_score: 8, team_b_score: 13, winner_id: 'team-2', status: 'completed', scheduled_at: '2026-08-11 19:00' },
-  { id: 'match-20', stage_id: 'stage-3', group_id: null, round_number: 2, team_a_id: 'team-6', team_b_id: 'team-12', best_of: 1, map: 'Overpass', team_a_score: 11, team_b_score: 13, winner_id: 'team-12', status: 'completed', scheduled_at: '2026-08-11 20:30' },
+  { id: 'match-20', stage_id: 'stage-3', group_id: null, round_number: 2, team_a_id: 'team-6', team_b_id: 'team-12', best_of: 1, map: 'Cache', team_a_score: 11, team_b_score: 13, winner_id: 'team-12', status: 'completed', scheduled_at: '2026-08-11 20:30' },
   { id: 'match-21', stage_id: 'stage-3', group_id: null, round_number: 2, team_a_id: 'team-4', team_b_id: 'team-8', best_of: 1, map: 'Mirage', team_a_score: 7, team_b_score: 13, winner_id: 'team-8', status: 'completed', scheduled_at: '2026-08-11 20:30' },
   // 第 3 轮（2-0 / 1-1 / 0-2 分区配对）
   { id: 'match-22', stage_id: 'stage-3', group_id: null, round_number: 3, team_a_id: 'team-1', team_b_id: 'team-2', best_of: 1, map: null, team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: '2026-08-12 19:00' },

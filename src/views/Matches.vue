@@ -71,7 +71,7 @@ const mapRows = reactive<MapRow[]>([
 ])
 // 服役图池（Active Duty）7 张
 const MAP_OPTIONS = [
-  '荒漠迷城', '炙热沙城Ⅱ', '炼狱小镇', '核子危机', '远古遗迹', '阿努比斯', '游乐园',
+  '荒漠迷城', '炙热沙城Ⅱ', '炼狱小镇', '核子危机', '远古遗迹', '阿努比斯', '死城之谜',
 ]
 // 战队 -> 队长映射（判定当前用户是否为参赛队队长）
 const teamsCaptainMap = ref<Record<string, string>>({})
