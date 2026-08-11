@@ -189,7 +189,7 @@ onMounted(async () => {
           </el-card>
         </el-col>
         <el-col :xs="24" :md="16">
-          <el-card class="card">
+          <el-card class="card points-side-card">
             <template #header><span class="card-title">竞猜赛事</span></template>
             <el-select
               v-model="currentEvent"
@@ -442,6 +442,12 @@ onMounted(async () => {
 .card-title {
   font-weight: 700;
   letter-spacing: 1px;
+}
+
+/* 积分与赛事卡片等高，底部对齐（删提示文字后保持框高一致） */
+.points-card,
+.points-side-card {
+  height: 100%;
 }
 
 .points-card .points-body {
