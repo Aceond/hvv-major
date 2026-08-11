@@ -36,6 +36,9 @@ const recordByPoll = computed(() => {
 const openPolls = computed(() => polls.value.filter((p) => p.status === 'open'))
 const settledPolls = computed(() => polls.value.filter((p) => p.status === 'settled'))
 
+/** 组别冠军竞猜的投注选择（poll_id -> option_id）：下拉选择预测的冠军队伍 */
+const champChoice = ref<Record<string, string>>({})
+
 function eventName(id: string | null) {
   return events.value.find((e) => e.id === id)?.name ?? '未关联赛事'
 }
@@ -78,6 +81,17 @@ async function onEventChange() {
   } finally {
     loading.value = false
   }
+}
+
+/** 组别冠军投注：先校验已从下拉框选择队伍，再进入投注 */
+async function doChampBet(poll: BetPoll) {
+  const optId = champChoice.value[poll.id]
+  if (!optId) {
+    ElMessage.warning('请先选择你预测的冠军队伍')
+    return
+  }
+  const opt = poll.options.find((o) => o.id === optId)
+  if (opt) await doBet(poll, opt)
 }
 
 async function doBet(poll: BetPoll, opt: BetOption) {
@@ -191,26 +205,60 @@ onMounted(async () => {
               <el-tag size="small" type="warning" effect="plain">{{ kindLabel(poll.kind) }}</el-tag>
               <el-tag size="small" effect="plain">{{ eventName(poll.event_id) }}</el-tag>
             </div>
-            <div class="options">
-              <div v-for="opt in poll.options" :key="opt.id" class="option-row">
-                <div class="option-info">
-                  <span class="option-label">{{ opt.label }}</span>
-                  <el-tag size="small" type="danger" effect="plain">赔率 {{ opt.odds }}</el-tag>
-                </div>
+
+            <!-- 组别冠军：下拉选择预测的冠军队后投注 -->
+            <template v-if="poll.kind === 'group_champion'">
+              <div class="champ-bet">
+                <el-select
+                  v-model="champChoice[poll.id]"
+                  placeholder="选择你预测的冠军队伍"
+                  style="flex: 1"
+                  :disabled="!!recordByPoll.get(poll.id)"
+                >
+                  <el-option
+                    v-for="opt in poll.options"
+                    :key="opt.id"
+                    :label="`${opt.label}（赔率 ${opt.odds}）`"
+                    :value="opt.id"
+                  />
+                </el-select>
                 <el-button
-                  size="small"
                   type="primary"
-                  plain
                   :loading="betting"
-                  @click="doBet(poll, opt)"
+                  :disabled="!!recordByPoll.get(poll.id)"
+                  @click="doChampBet(poll)"
                 >
                   {{ recordByPoll.get(poll.id) ? '已投注' : '投注' }}
                 </el-button>
               </div>
-            </div>
-            <div v-if="recordByPoll.get(poll.id)" class="my-bet">
-              我的投注：{{ recordByPoll.get(poll.id)?.option_label }}（{{ recordByPoll.get(poll.id)?.stake }} 分 @{{ recordByPoll.get(poll.id)?.odds }}）
-            </div>
+              <div v-if="recordByPoll.get(poll.id)" class="my-bet">
+                我的投注：{{ recordByPoll.get(poll.id)?.option_label }}（{{ recordByPoll.get(poll.id)?.stake }} 分 @{{ recordByPoll.get(poll.id)?.odds }}）
+              </div>
+            </template>
+
+            <!-- 其他类型：选项行直接投注 -->
+            <template v-else>
+              <div class="options">
+                <div v-for="opt in poll.options" :key="opt.id" class="option-row">
+                  <div class="option-info">
+                    <span class="option-label">{{ opt.label }}</span>
+                    <el-tag size="small" type="danger" effect="plain">赔率 {{ opt.odds }}</el-tag>
+                  </div>
+                  <el-button
+                    size="small"
+                    type="primary"
+                    plain
+                    :loading="betting"
+                    @click="doBet(poll, opt)"
+                  >
+                    {{ recordByPoll.get(poll.id) ? '已投注' : '投注' }}
+                  </el-button>
+                </div>
+              </div>
+              <div v-if="recordByPoll.get(poll.id)" class="my-bet">
+                我的投注：{{ recordByPoll.get(poll.id)?.option_label }}（{{ recordByPoll.get(poll.id)?.stake }} 分 @{{ recordByPoll.get(poll.id)?.odds }}）
+              </div>
+            </template>
           </div>
         </el-card>
 
@@ -343,6 +391,13 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.champ-bet {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .option-row {
