@@ -6,6 +6,7 @@ import type { ApplicationStatus, EventItem, Team, TeamMember } from '@/api/types
 import { listEvents, listSignupEvents } from '@/api/event'
 import { createTeam, listMembers, listMyTeams } from '@/api/registration'
 import { formatDateTime } from '@/utils/format'
+import PlayerRadar from '@/components/PlayerRadar.vue'
 
 const auth = useAuthStore()
 
@@ -204,6 +205,9 @@ onMounted(async () => {
           </el-form>
         </template>
       </el-card>
+
+      <!-- 战绩五维图 -->
+      <PlayerRadar />
     </template>
   </div>
 </template>
