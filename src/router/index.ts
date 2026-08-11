@@ -14,6 +14,7 @@ const router = createRouter({
         { path: 'events', name: 'events', component: () => import('@/views/Events.vue') },
         { path: 'player/register', name: 'player-register', component: () => import('@/views/PlayerRegister.vue') },
         { path: 'register', name: 'register', component: () => import('@/views/Register.vue') },
+        { path: 'my-team', name: 'my-team', component: () => import('@/views/MyTeam.vue') },
         { path: 'matches', name: 'matches', component: () => import('@/views/Matches.vue') },
         { path: 'booking', name: 'booking', component: () => import('@/views/Booking.vue') },
         { path: 'standings', name: 'standings', component: () => import('@/views/Standings.vue') },
@@ -45,9 +46,9 @@ const router = createRouter({
 })
 
 // 待审核/被拒账号仅可访问的页面白名单（公开浏览 + 审核状态提示页 + 两个报名入口，否则新注册用户永远报不了名）
-const REVIEW_OPEN_PAGES = ['home', 'events', 'matches', 'standings', 'rankings', 'review-status', 'login', 'player-register', 'register']
+const REVIEW_OPEN_PAGES = ['home', 'events', 'matches', 'standings', 'rankings', 'review-status', 'login', 'player-register', 'register', 'my-team']
 // 需登录才能使用的页面（未登录 / 游客一律跳转登录页，权限与游客一致）
-const AUTH_PAGES = ['booking', 'profile', 'player-register', 'register']
+const AUTH_PAGES = ['booking', 'profile', 'player-register', 'register', 'my-team']
 
 /** 给 Promise 加超时竞速：超过 timeoutMs 直接放行，避免导航被挂起的请求无限阻塞 */
 function withTimeout<T>(p: Promise<T>, timeoutMs: number): Promise<T | undefined> {

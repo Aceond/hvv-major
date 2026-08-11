@@ -64,6 +64,7 @@ async function signOut() {
           <template #title>报名</template>
           <el-menu-item index="/player/register">个人注册</el-menu-item>
           <el-menu-item index="/register">战队报名</el-menu-item>
+          <el-menu-item index="/my-team">我的战队</el-menu-item>
         </el-sub-menu>
         <el-sub-menu index="match">
           <template #title>比赛</template>
@@ -145,6 +146,12 @@ async function signOut() {
           index="/register"
         >
           战队报名
+        </el-menu-item>
+        <el-menu-item
+          v-if="auth.isLoggedIn && !auth.isGuest && !auth.reviewBlocked"
+          index="/my-team"
+        >
+          我的战队
         </el-menu-item>
         <el-menu-item index="/matches">赛程</el-menu-item>
         <el-menu-item
