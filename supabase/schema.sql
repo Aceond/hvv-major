@@ -822,3 +822,31 @@ grant execute on function public.resolve_login_email(text) to anon, authenticate
 -- 1) 先在 Auth -> Users 中手动创建管理员账号
 -- 2) 将下方 UUID 替换为该用户 id 后执行：
 -- update public.profiles set role = 'admin' where id = '00000000-0000-0000-0000-000000000000';
+
+-- ============================================================
+-- 11. 拒绝战队自动释放名册（可重复执行）
+-- ============================================================
+-- 1) 清理历史已拒绝战队的名册（队长+队员），成员回到选手池可重新报名
+delete from public.team_members tm
+where tm.team_id in (select id from public.teams where status = 'rejected');
+
+-- 2) 触发器：战队状态改为 rejected 时，自动删除该队名册（幂等，可重复创建）
+create or replace function public.release_rejected_team_members()
+returns trigger
+language plpgsql
+security definer set search_path = public
+as $$
+begin
+  if new.status = 'rejected' then
+    delete from public.team_members where team_id = old.id;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_team_status_rejected on public.teams;
+create trigger trg_team_status_rejected
+after update of status on public.teams
+for each row
+when (new.status = 'rejected')
+execute function public.release_rejected_team_members();

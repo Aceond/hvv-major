@@ -8,6 +8,7 @@ import {
   listMembers,
   listPlayers,
   listTeams,
+  releaseTeamMembers,
   removeTeamMember,
   updateTeamGroup,
   updateTeamMemberRole,
@@ -93,16 +94,24 @@ async function decide(team: Team, status: TeamStatus) {
     return
   }
   const action = status === 'approved' ? '通过' : '拒绝'
+  const message =
+    status === 'rejected'
+      ? `确认拒绝「${team.name}」的报名吗？拒绝后该队所有成员将自动释放，可重新报名。`
+      : `确认${action}「${team.name}」的报名吗？`
   try {
-    await ElMessageBox.confirm(
-      `确认${action}「${team.name}」的报名吗？`,
-      '审核确认',
-      { type: 'warning', confirmButtonText: action, cancelButtonText: '取消' },
-    )
+    await ElMessageBox.confirm(message, '审核确认', {
+      type: 'warning',
+      confirmButtonText: action,
+      cancelButtonText: '取消',
+    })
   } catch {
     return
   }
   await updateTeamStatus(team.id, status)
+  if (status === 'rejected') {
+    // 拒绝战队：释放全部名册（队长+队员），解除「同赛事正式队员一人一队」的占用
+    await releaseTeamMembers(team.id)
+  }
   ElMessage.success(`已${action}「${team.name}」`)
   load()
 }

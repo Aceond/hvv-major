@@ -1,7 +1,7 @@
 // 管理端数据访问层（所有操作受 RLS 的 admin 策略约束）
 // 未配置 Supabase（演示模式）时直接读写内存中的 mock 数据。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
-import { mockMatches, mockStages, mockTeams } from '@/mock/data'
+import { mockMatches, mockMembers, mockStages, mockTeams } from '@/mock/data'
 import type { AccountItem, ApplicationStatus, Match, Stage, Team, TeamStatus } from './types'
 import { listGroups, listMatches, listStages } from './match'
 import {
@@ -80,6 +80,17 @@ export async function updateTeamStatus(id: string, status: TeamStatus) {
     return
   }
   await supabase.from('teams').update({ status }).eq('id', id)
+}
+
+/** 释放战队全部名册（拒绝战队时调用：删除队长+队员记录，成员回到选手池可重新报名）。
+ *  真实环境 RLS 允许管理员删除任意名册；演示模式清空 mock。 */
+export async function releaseTeamMembers(teamId: string) {
+  if (!isSupabaseConfigured || !supabase) {
+    delete mockMembers[teamId]
+    return
+  }
+  const { error } = await supabase.from('team_members').delete().eq('team_id', teamId)
+  if (error) throw error
 }
 
 /** 调整战队所属组别（传奇组 / 大师组 / 挑战组） */
