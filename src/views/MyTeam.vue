@@ -2,9 +2,10 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import type { ApplicationStatus, EventItem, Team, TeamMember } from '@/api/types'
+import type { ApplicationStatus, EventItem, Group, Team, TeamMember } from '@/api/types'
 import { listEvents, listSignupEvents } from '@/api/event'
 import { createTeam, listMembers, listMyTeams } from '@/api/registration'
+import { listGroups } from '@/api/match'
 import { formatDateTime } from '@/utils/format'
 import PlayerRadar from '@/components/PlayerRadar.vue'
 
@@ -13,6 +14,7 @@ const auth = useAuthStore()
 const teams = ref<Team[]>([])
 const rosters = ref<Record<string, TeamMember[]>>({})
 const events = ref<EventItem[]>([])
+const groups = ref<Group[]>([])
 const loading = ref(false)
 const submitting = ref(false)
 
@@ -42,6 +44,10 @@ function eventName(eventId: string | null) {
   return events.value.find((e) => e.id === eventId)?.name ?? '未关联赛事'
 }
 
+function groupName(groupId: string | null) {
+  return groups.value.find((g) => g.id === groupId)?.name ?? '未分组'
+}
+
 function myRoleIn(t: Team): '队长' | '队员' {
   return t.captain_id === auth.profile?.id ? '队长' : '队员'
 }
@@ -59,6 +65,7 @@ async function load() {
   loading.value = true
   try {
     events.value = await listEvents()
+    groups.value = await listGroups()
     teams.value = await listMyTeams()
     // 默认选中第一支战队所属赛事，让审批状态默认就有明确的赛事上下文
     if (!currentEvent.value && teams.value[0]) {
@@ -189,6 +196,7 @@ onMounted(async () => {
                   {{ statusLabel(t.status) }}
                 </el-tag>
                 <el-tag size="small" effect="plain">{{ eventName(t.event_id) }}</el-tag>
+                <el-tag size="small" type="info" effect="plain">{{ groupName(t.group_id) }}</el-tag>
                 <span v-if="t.tag" class="team-tag">ID：{{ t.tag }}</span>
                 <span class="team-time">报名：{{ formatDateTime(t.created_at) }}</span>
               </div>
