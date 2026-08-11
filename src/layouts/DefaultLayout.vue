@@ -457,6 +457,8 @@ async function signOut() {
 
   .user-area {
     gap: 8px;
+    /* 移动端导航隐藏后不再撑开中间空间，改为自身贴右对齐 */
+    margin-left: auto;
   }
 
   .admin-btn {
