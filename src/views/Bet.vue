@@ -2,8 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import type { EventItem } from '@/api/types'
+import type { EventItem, Match } from '@/api/types'
 import { listEvents } from '@/api/event'
+import { listAllStageMatches } from '@/api/match'
 import {
   getMyBetAccount,
   listMyRecords,
@@ -25,6 +26,14 @@ const records = ref<BetRecord[]>([])
 const account = ref({ points: 100, exists: false })
 const loading = ref(false)
 const betting = ref(false)
+
+/** 当前赛事比赛映射（比赛胜者竞猜展示对阵/阶段/时间用） */
+const matchMap = ref<Map<string, Match>>(new Map())
+
+/** 竞猜关联的比赛（自动生成的比赛胜者竞猜带 match_id） */
+function matchOf(poll: BetPoll): Match | null {
+  return poll.match_id ? matchMap.value.get(poll.match_id) ?? null : null
+}
 
 /** 我的投注按竞猜项映射 */
 const recordByPoll = computed(() => {
@@ -59,14 +68,16 @@ async function load() {
   try {
     events.value = await listEvents()
     if (!currentEvent.value && events.value[0]) currentEvent.value = events.value[0].id
-    const [acc, ps, rs] = await Promise.all([
+    const [acc, ps, rs, ms] = await Promise.all([
       getMyBetAccount(),
       listPolls(currentEvent.value || undefined),
       listMyRecords(),
+      listAllStageMatches(currentEvent.value || undefined),
     ])
     account.value = acc
     polls.value = ps
     records.value = rs
+    matchMap.value = new Map(ms.map((m) => [m.id, m]))
   } finally {
     loading.value = false
   }
@@ -75,9 +86,14 @@ async function load() {
 async function onEventChange() {
   loading.value = true
   try {
-    const [acc, ps] = await Promise.all([getMyBetAccount(), listPolls(currentEvent.value || undefined)])
+    const [acc, ps, ms] = await Promise.all([
+      getMyBetAccount(),
+      listPolls(currentEvent.value || undefined),
+      listAllStageMatches(currentEvent.value || undefined),
+    ])
     account.value = acc
     polls.value = ps
+    matchMap.value = new Map(ms.map((m) => [m.id, m]))
   } finally {
     loading.value = false
   }
@@ -236,6 +252,51 @@ onMounted(async () => {
               </div>
             </template>
 
+            <!-- 比赛胜者：对阵一行（参考赛程页格式，附比赛信息） -->
+            <template v-else-if="poll.kind === 'match_winner'">
+              <div class="match-bet">
+                <div class="match-line">
+                  <div class="side">
+                    <span class="side-team">{{ matchOf(poll)?.team_a_name || poll.options[0]?.label || '-' }}</span>
+                    <el-tag size="small" type="danger" effect="plain">@{{ poll.options[0]?.odds ?? '-' }}</el-tag>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      :loading="betting"
+                      :disabled="!!recordByPoll.get(poll.id)"
+                      @click="poll.options[0] && doBet(poll, poll.options[0])"
+                    >
+                      {{ recordByPoll.get(poll.id) ? '已投注' : '投注' }}
+                    </el-button>
+                  </div>
+                  <div class="middle">
+                    <span class="vs">VS</span>
+                    <div v-if="matchOf(poll)" class="match-meta">
+                      <span v-if="matchOf(poll)?.stage_name">{{ matchOf(poll)?.stage_name }}</span>
+                      <span v-if="matchOf(poll)?.group_name">{{ matchOf(poll)?.group_name }}</span>
+                      <span v-if="matchOf(poll)?.scheduled_at">{{ formatDateTime(matchOf(poll)?.scheduled_at) }}</span>
+                    </div>
+                  </div>
+                  <div class="side">
+                    <span class="side-team">{{ matchOf(poll)?.team_b_name || poll.options[1]?.label || '-' }}</span>
+                    <el-tag size="small" type="danger" effect="plain">@{{ poll.options[1]?.odds ?? '-' }}</el-tag>
+                    <el-button
+                      size="small"
+                      type="primary"
+                      :loading="betting"
+                      :disabled="!!recordByPoll.get(poll.id)"
+                      @click="poll.options[1] && doBet(poll, poll.options[1])"
+                    >
+                      {{ recordByPoll.get(poll.id) ? '已投注' : '投注' }}
+                    </el-button>
+                  </div>
+                </div>
+                <div v-if="recordByPoll.get(poll.id)" class="my-bet">
+                  我的投注：{{ recordByPoll.get(poll.id)?.option_label }}（{{ recordByPoll.get(poll.id)?.stake }} 分 @{{ recordByPoll.get(poll.id)?.odds }}）
+                </div>
+              </div>
+            </template>
+
             <!-- 其他类型：选项行直接投注 -->
             <template v-else>
               <div class="options">
@@ -273,23 +334,71 @@ onMounted(async () => {
               <el-tag size="small" effect="plain">{{ eventName(poll.event_id) }}</el-tag>
               <el-tag size="small" type="success" effect="dark">已结算</el-tag>
             </div>
-            <div class="options">
-              <div
-                v-for="opt in poll.options"
-                :key="opt.id"
-                class="option-row"
-                :class="{ winner: opt.id === poll.winning_option_id }"
-              >
-                <div class="option-info">
-                  <span class="option-label">{{ opt.label }}</span>
-                  <el-tag size="small" type="danger" effect="plain">赔率 {{ opt.odds }}</el-tag>
-                  <el-tag v-if="opt.id === poll.winning_option_id" size="small" type="success" effect="dark">中奖</el-tag>
+
+            <!-- 比赛胜者：对阵一行 -->
+            <template v-if="poll.kind === 'match_winner'">
+              <div class="match-bet">
+                <div class="match-line">
+                  <div class="side" :class="{ winner: poll.options[0]?.id === poll.winning_option_id }">
+                    <span class="side-team">{{ matchOf(poll)?.team_a_name || poll.options[0]?.label || '-' }}</span>
+                    <el-tag size="small" type="danger" effect="plain">@{{ poll.options[0]?.odds ?? '-' }}</el-tag>
+                    <div class="side-result">
+                      <el-tag v-if="poll.options[0]?.id === poll.winning_option_id" size="small" type="success" effect="dark">中奖</el-tag>
+                      <el-tag
+                        v-if="recordByPoll.get(poll.id)?.option_id === poll.options[0]?.id"
+                        size="small"
+                        :type="recordResult(recordByPoll.get(poll.id)).type"
+                      >
+                        {{ recordResult(recordByPoll.get(poll.id)).text }}
+                      </el-tag>
+                    </div>
+                  </div>
+                  <div class="middle">
+                    <span class="vs">VS</span>
+                    <div v-if="matchOf(poll)" class="match-meta">
+                      <span v-if="matchOf(poll)?.stage_name">{{ matchOf(poll)?.stage_name }}</span>
+                      <span v-if="matchOf(poll)?.group_name">{{ matchOf(poll)?.group_name }}</span>
+                      <span v-if="matchOf(poll)?.scheduled_at">{{ formatDateTime(matchOf(poll)?.scheduled_at) }}</span>
+                    </div>
+                  </div>
+                  <div class="side" :class="{ winner: poll.options[1]?.id === poll.winning_option_id }">
+                    <span class="side-team">{{ matchOf(poll)?.team_b_name || poll.options[1]?.label || '-' }}</span>
+                    <el-tag size="small" type="danger" effect="plain">@{{ poll.options[1]?.odds ?? '-' }}</el-tag>
+                    <div class="side-result">
+                      <el-tag v-if="poll.options[1]?.id === poll.winning_option_id" size="small" type="success" effect="dark">中奖</el-tag>
+                      <el-tag
+                        v-if="recordByPoll.get(poll.id)?.option_id === poll.options[1]?.id"
+                        size="small"
+                        :type="recordResult(recordByPoll.get(poll.id)).type"
+                      >
+                        {{ recordResult(recordByPoll.get(poll.id)).text }}
+                      </el-tag>
+                    </div>
+                  </div>
                 </div>
-                <el-tag v-if="recordByPoll.get(poll.id)?.option_id === opt.id" size="small" :type="recordResult(recordByPoll.get(poll.id)).type">
-                  {{ recordResult(recordByPoll.get(poll.id)).text }}
-                </el-tag>
               </div>
-            </div>
+            </template>
+
+            <!-- 其他类型：选项行展示 + 中奖标记 -->
+            <template v-else>
+              <div class="options">
+                <div
+                  v-for="opt in poll.options"
+                  :key="opt.id"
+                  class="option-row"
+                  :class="{ winner: opt.id === poll.winning_option_id }"
+                >
+                  <div class="option-info">
+                    <span class="option-label">{{ opt.label }}</span>
+                    <el-tag size="small" type="danger" effect="plain">赔率 {{ opt.odds }}</el-tag>
+                    <el-tag v-if="opt.id === poll.winning_option_id" size="small" type="success" effect="dark">中奖</el-tag>
+                  </div>
+                  <el-tag v-if="recordByPoll.get(poll.id)?.option_id === opt.id" size="small" :type="recordResult(recordByPoll.get(poll.id)).type">
+                    {{ recordResult(recordByPoll.get(poll.id)).text }}
+                  </el-tag>
+                </div>
+              </div>
+            </template>
           </div>
         </el-card>
 
@@ -393,6 +502,77 @@ onMounted(async () => {
   gap: 6px;
 }
 
+.match-bet {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.match-line {
+  display: flex;
+  align-items: stretch;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--cs2-panel-2);
+}
+
+.side {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 8px;
+}
+
+.side.winner {
+  outline: 1px solid #67c23a;
+  background: rgba(103, 194, 58, 0.08);
+}
+
+.side-team {
+  font-weight: 700;
+  color: var(--cs2-text);
+  text-align: center;
+  line-height: 1.3;
+}
+
+.side-result {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+.middle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 72px;
+}
+
+.vs {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--cs2-accent);
+}
+
+.match-meta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  color: var(--cs2-text-muted);
+}
+
 .champ-bet {
   display: flex;
   align-items: center;
@@ -431,5 +611,24 @@ onMounted(async () => {
   margin-top: 6px;
   font-size: 12px;
   color: var(--cs2-accent);
+}
+
+/* ---------- 移动端适配 ---------- */
+@media (max-width: 600px) {
+  .match-line {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .middle {
+    min-width: 0;
+    order: 0;
+  }
+
+  .side {
+    flex-direction: row;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
 }
 </style>

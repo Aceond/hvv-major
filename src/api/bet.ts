@@ -22,6 +22,7 @@ export interface BetPoll {
   options: BetOption[]
   status: BetPollStatus
   winning_option_id: string | null
+  match_id: string | null
   created_at: string
 }
 
@@ -70,6 +71,7 @@ const mockPolls: BetPoll[] = [
     ],
     status: 'open',
     winning_option_id: null,
+    match_id: null,
     created_at: '2026-08-01 09:00',
   },
   {
@@ -83,6 +85,7 @@ const mockPolls: BetPoll[] = [
     ],
     status: 'open',
     winning_option_id: null,
+    match_id: null,
     created_at: '2026-08-02 10:00',
   },
   {
@@ -97,6 +100,7 @@ const mockPolls: BetPoll[] = [
     ],
     status: 'settled',
     winning_option_id: 'bet3-o1',
+    match_id: null,
     created_at: '2026-06-01 09:00',
   },
 ]
@@ -209,6 +213,7 @@ export async function createPoll(input: {
       ...input,
       status: 'open',
       winning_option_id: null,
+      match_id: null,
       created_at: new Date().toISOString(),
     })
     return
