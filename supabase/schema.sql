@@ -1027,6 +1027,7 @@ returns trigger
 language plpgsql security definer set search_path = public
 as $$
 declare
+  v_event uuid;
   v_a_rate numeric;
   v_b_rate numeric;
   v_a_odds numeric;
@@ -1040,6 +1041,11 @@ begin
   if exists (select 1 from public.bet_polls bp where bp.match_id = new.id) then
     return new;
   end if;
+  -- 赛事由阶段关联（matches 无 event_id 列）
+  select event_id into v_event from public.stages where id = new.stage_id;
+  if v_event is null then
+    return new;
+  end if;
   v_a_rate := public.team_win_rate(new.team_a_id);
   v_b_rate := public.team_win_rate(new.team_b_id);
   v_a_odds := least(20, greatest(1.05, (greatest(v_a_rate, 0.001) + v_b_rate) / greatest(v_a_rate, 0.001)));
@@ -1048,7 +1054,7 @@ begin
   select name into v_tb_name from public.teams where id = new.team_b_id;
   insert into public.bet_polls (event_id, title, kind, options, match_id)
   values (
-    new.event_id,
+    v_event,
     '比赛胜者：' || coalesce(v_ta_name, 'A 队') || ' vs ' || coalesce(v_tb_name, 'B 队'),
     'match_winner',
     jsonb_build_array(
@@ -1081,7 +1087,7 @@ execute function public.auto_create_match_bet();
 -- 4) 回填：为已存在但尚未生成竞猜的待赛对阵补生成（可重复执行）
 insert into public.bet_polls (event_id, title, kind, options, match_id)
 select
-  m.event_id,
+  s.event_id,
   '比赛胜者：' || ta.name || ' vs ' || tb.name,
   'match_winner',
   jsonb_build_array(
@@ -1100,6 +1106,7 @@ select
   ),
   m.id
 from public.matches m
+join public.stages s on s.id = m.stage_id
 join public.teams ta on ta.id = m.team_a_id
 join public.teams tb on tb.id = m.team_b_id
 where m.status = 'scheduled'
