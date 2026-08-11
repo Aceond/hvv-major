@@ -11,7 +11,8 @@ onMounted(async () => {
     listStages(),
   ])
   stats.value = {
-    teams: teams.length,
+    // 战队总数不含已拒绝的战队（被拒绝的队伍不计入）
+    teams: teams.filter((t) => t.status !== 'rejected').length,
     pending: teams.filter((t) => t.status === 'pending').length,
     completed: matches.filter((m) => m.status === 'completed').length,
     stages: stages.length,
