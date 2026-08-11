@@ -413,8 +413,8 @@ onMounted(load)
               <span v-else class="draft-label">{{ opt.label }}</span>
               <el-input-number
                 v-model="opt.odds"
-                :min="1.05"
-                :max="20"
+                :min="1.2"
+                :max="5"
                 :step="0.1"
                 :precision="2"
                 size="small"

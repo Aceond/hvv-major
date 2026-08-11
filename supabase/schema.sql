@@ -1048,8 +1048,8 @@ begin
   end if;
   v_a_rate := public.team_win_rate(new.team_a_id);
   v_b_rate := public.team_win_rate(new.team_b_id);
-  v_a_odds := least(20, greatest(1.05, (greatest(v_a_rate, 0.001) + v_b_rate) / greatest(v_a_rate, 0.001)));
-  v_b_odds := least(20, greatest(1.05, (greatest(v_b_rate, 0.001) + v_a_rate) / greatest(v_b_rate, 0.001)));
+  v_a_odds := least(5, greatest(1.2, (greatest(v_a_rate, 0.001) + v_b_rate) / greatest(v_a_rate, 0.001)));
+  v_b_odds := least(5, greatest(1.2, (greatest(v_b_rate, 0.001) + v_a_rate) / greatest(v_b_rate, 0.001)));
   select name into v_ta_name from public.teams where id = new.team_a_id;
   select name into v_tb_name from public.teams where id = new.team_b_id;
   insert into public.bet_polls (event_id, title, kind, options, match_id)
@@ -1095,13 +1095,13 @@ select
       'id', gen_random_uuid()::text,
       'label', ta.name || ' 胜',
       'team_id', m.team_a_id,
-      'odds', round(least(20, greatest(1.05, (greatest(public.team_win_rate(m.team_a_id), 0.001) + public.team_win_rate(m.team_b_id)) / greatest(public.team_win_rate(m.team_a_id), 0.001))), 2)
+      'odds', round(least(5, greatest(1.2, (greatest(public.team_win_rate(m.team_a_id), 0.001) + public.team_win_rate(m.team_b_id)) / greatest(public.team_win_rate(m.team_a_id), 0.001))), 2)
     ),
     jsonb_build_object(
       'id', gen_random_uuid()::text,
       'label', tb.name || ' 胜',
       'team_id', m.team_b_id,
-      'odds', round(least(20, greatest(1.05, (greatest(public.team_win_rate(m.team_b_id), 0.001) + public.team_win_rate(m.team_a_id)) / greatest(public.team_win_rate(m.team_b_id), 0.001))), 2)
+      'odds', round(least(5, greatest(1.2, (greatest(public.team_win_rate(m.team_b_id), 0.001) + public.team_win_rate(m.team_a_id)) / greatest(public.team_win_rate(m.team_b_id), 0.001))), 2)
     )
   ),
   m.id
