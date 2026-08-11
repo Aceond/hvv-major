@@ -112,7 +112,7 @@ export async function computeMatchOdds(
   const pb = (winStats[teamBId]?.win_rate ?? 0) / 100
   const r = (self: number, other: number) => {
     const s = Math.max(self, 0.001)
-    return Math.min(5, Math.round(Math.max(1.2, (s + other) / s) * 100) / 100)
+    return Math.min(2, Math.round(Math.max(1.2, (s + other) / s) * 100) / 100)
   }
   return { a: r(pa, pb), b: r(pb, pa) }
 }

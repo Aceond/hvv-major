@@ -89,12 +89,12 @@ function onKindChange() {
   stageMatches.value = []
 }
 
-/** 组别冠军 / 阶段晋级：由所选组别/阶段的队伍生成选项 */
+/** 组别冠军 / 阶段晋级：由所选组别/阶段的队伍生成选项（组别冠军默认统一赔率 2.5） */
 function buildTeamOptions(teamIds: string[]) {
   const map = new Map(teams.value.map((t) => [t.id, t]))
   draftOptions.value = [...new Set(teamIds)].map((tid) => {
     const t = map.get(tid)
-    return { id: newOptionId(), label: t?.name ?? '未知队伍', team_id: tid, odds: 1.5 }
+    return { id: newOptionId(), label: t?.name ?? '未知队伍', team_id: tid, odds: 2.5 }
   })
 }
 
@@ -189,7 +189,41 @@ async function submitCreate() {
   }
 }
 
-// ---------------- 操作：截止 / 重开 / 结算 / 删除 ----------------
+// ---------------- 操作：编辑 / 截止 / 重开 / 结算 / 删除 ----------------
+
+/** 编辑竞猜（标题 / 单个选项赔率），已发布后仍可调整 */
+const editVisible = ref(false)
+const editPoll = ref<BetPoll | null>(null)
+const editTitle = ref('')
+const editOptions = ref<BetOption[]>([])
+
+function openEdit(poll: BetPoll) {
+  editPoll.value = poll
+  editTitle.value = poll.title
+  editOptions.value = poll.options.map((o) => ({ ...o }))
+  editVisible.value = true
+}
+
+async function saveEdit() {
+  if (!editPoll.value) return
+  const valid = editOptions.value.filter((o) => o.label.trim() && o.odds >= 1.2)
+  if (valid.length < 2) {
+    ElMessage.warning('至少需要 2 个有效选项，且赔率不低于 1.2')
+    return
+  }
+  try {
+    await updatePoll(editPoll.value.id, {
+      title: editTitle.value.trim(),
+      options: valid,
+    })
+    ElMessage.success('已更新竞猜')
+    editVisible.value = false
+    await load()
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败')
+  }
+}
+
 async function toggleClose(poll: BetPoll) {
   const to = poll.status === 'open' ? 'closed' : 'open'
   try {
@@ -307,8 +341,9 @@ onMounted(load)
       <el-table-column label="发布时间" min-width="130">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="240">
         <template #default="{ row }">
+          <el-button v-if="row.status !== 'settled'" size="small" @click="openEdit(row)">编辑</el-button>
           <el-button v-if="row.status === 'open'" size="small" @click="toggleClose(row)">截止</el-button>
           <el-button v-else-if="row.status === 'closed'" size="small" @click="toggleClose(row)">重开</el-button>
           <el-button v-if="row.status !== 'settled'" size="small" type="success" @click="openSettle(row)">
@@ -441,6 +476,36 @@ onMounted(load)
       <template #footer>
         <el-button @click="dialogVisible = false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="submitCreate">发布</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑竞猜（标题 / 单个选项赔率） -->
+    <el-dialog v-model="editVisible" title="编辑竞猜" width="520px">
+      <el-form label-width="90px">
+        <el-form-item label="竞猜标题">
+          <el-input v-model="editTitle" maxlength="60" />
+        </el-form-item>
+        <el-form-item label="选项赔率">
+          <div class="draft-options">
+            <div v-for="opt in editOptions" :key="opt.id" class="draft-row">
+              <span class="draft-label">{{ opt.label }}</span>
+              <el-input-number
+                v-model="opt.odds"
+                :min="1.2"
+                :max="5"
+                :step="0.1"
+                :precision="2"
+                size="small"
+                title="赔率"
+              />
+            </div>
+            <div class="draft-empty">修改单个队伍的赔率，保存后前台即时生效（已投注记录不受影响）</div>
+          </div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
 
