@@ -19,12 +19,23 @@ const submitting = ref(false)
 // 报名表单（无战队时展示，逻辑与「战队报名」一致）
 const form = reactive({ eventId: '', teamName: '', tag: '' })
 
-/** 主战队：优先取当前用户担任队长的战队，否则取所在的第一支战队 */
-const mainTeam = computed(
-  () => teams.value.find((t) => t.captain_id === auth.profile?.id) ?? teams.value[0] ?? null,
+// 赛事筛选：'' = 全部；审批状态跟随所选赛事
+const currentEvent = ref('')
+const filteredTeams = computed(() =>
+  teams.value.filter((t) => !currentEvent.value || t.event_id === currentEvent.value),
 )
-const mainStatus = computed<ApplicationStatus | null>(() => mainTeam.value?.status ?? null)
-/** 步骤条：未报名 0 / 待审核 1 / 已通过 2 */
+
+/** 主战队：优先取当前用户担任队长的战队，否则取所在的第一支战队（仅在按赛事筛选时才有唯一含义） */
+const mainTeam = computed(
+  () =>
+    filteredTeams.value.find((t) => t.captain_id === auth.profile?.id) ??
+    filteredTeams.value[0] ??
+    null,
+)
+const mainStatus = computed<ApplicationStatus | null>(() =>
+  currentEvent.value ? (mainTeam.value?.status ?? null) : null,
+)
+/** 步骤条：未报名 0 / 待审核 1 / 已通过 2（仅按赛事筛选时展示） */
 const stepsActive = computed(() => (mainStatus.value === 'approved' ? 2 : mainStatus.value ? 1 : 0))
 
 function eventName(eventId: string | null) {
@@ -49,6 +60,10 @@ async function load() {
   try {
     events.value = await listEvents()
     teams.value = await listMyTeams()
+    // 默认选中第一支战队所属赛事，让审批状态默认就有明确的赛事上下文
+    if (!currentEvent.value && teams.value[0]) {
+      currentEvent.value = teams.value[0].event_id ?? ''
+    }
     const map: Record<string, TeamMember[]> = {}
     for (const t of teams.value) {
       map[t.id] = await listMembers(t.id)
@@ -144,32 +159,52 @@ onMounted(async () => {
           class="tip"
         />
 
-        <!-- 已有战队：展示战队信息与名册 -->
+        <!-- 已有战队：按赛事筛选展示战队信息与名册 -->
         <template v-if="teams.length > 0">
-          <div v-for="t in teams" :key="t.id" class="team-block">
-            <div class="team-head">
-              <span class="team-name">{{ t.name }}</span>
-              <el-tag size="small" :type="myRoleIn(t) === '队长' ? 'danger' : 'info'" effect="plain">
-                {{ myRoleIn(t) }}
-              </el-tag>
-              <el-tag size="small" :type="statusType(t.status)" effect="plain">
-                {{ statusLabel(t.status) }}
-              </el-tag>
-              <el-tag size="small" effect="plain">{{ eventName(t.event_id) }}</el-tag>
-              <span v-if="t.tag" class="team-tag">ID：{{ t.tag }}</span>
-              <span class="team-time">报名：{{ formatDateTime(t.created_at) }}</span>
-            </div>
-            <div class="roster">
-              <span v-for="m in rosters[t.id]" :key="m.id" class="roster-item">
-                {{ m.nickname || m.pw_username || '未知选手' }}
-                <el-tag v-if="m.is_captain" size="small" type="danger" effect="plain">队长</el-tag>
-                <el-tag v-else-if="m.status === 'benched'" size="small" type="info" effect="plain">替补</el-tag>
-              </span>
-            </div>
-            <div v-if="(rosters[t.id] ?? []).length === 0" class="roster-empty">
-              名册为空，等待管理员分配队员
-            </div>
+          <div class="filters-bar">
+            <el-select
+              v-model="currentEvent"
+              placeholder="全部赛事"
+              clearable
+              style="width: 220px"
+            >
+              <el-option
+                v-for="e in events"
+                :key="e.id"
+                :label="`${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`"
+                :value="e.id"
+              />
+            </el-select>
+            <span class="filter-hint">审批状态跟随所选赛事显示</span>
           </div>
+
+          <template v-if="filteredTeams.length > 0">
+            <div v-for="t in filteredTeams" :key="t.id" class="team-block">
+              <div class="team-head">
+                <span class="team-name">{{ t.name }}</span>
+                <el-tag size="small" :type="myRoleIn(t) === '队长' ? 'danger' : 'info'" effect="plain">
+                  {{ myRoleIn(t) }}
+                </el-tag>
+                <el-tag size="small" :type="statusType(t.status)" effect="plain">
+                  {{ statusLabel(t.status) }}
+                </el-tag>
+                <el-tag size="small" effect="plain">{{ eventName(t.event_id) }}</el-tag>
+                <span v-if="t.tag" class="team-tag">ID：{{ t.tag }}</span>
+                <span class="team-time">报名：{{ formatDateTime(t.created_at) }}</span>
+              </div>
+              <div class="roster">
+                <span v-for="m in rosters[t.id]" :key="m.id" class="roster-item">
+                  {{ m.nickname || m.pw_username || '未知选手' }}
+                  <el-tag v-if="m.is_captain" size="small" type="danger" effect="plain">队长</el-tag>
+                  <el-tag v-else-if="m.status === 'benched'" size="small" type="info" effect="plain">替补</el-tag>
+                </span>
+              </div>
+              <div v-if="(rosters[t.id] ?? []).length === 0" class="roster-empty">
+                名册为空，等待管理员分配队员
+              </div>
+            </div>
+          </template>
+          <el-empty v-else description="该赛事暂无你的战队报名" :image-size="60" />
         </template>
 
         <!-- 无战队：报名表单（逻辑与「战队报名」一致） -->
@@ -227,6 +262,19 @@ onMounted(async () => {
 
 .register-card {
   max-width: 680px;
+}
+
+.filters-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.filter-hint {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
 }
 
 .team-block {
