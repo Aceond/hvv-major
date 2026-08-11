@@ -5,20 +5,18 @@ import { ElMessage, ElMessageBox, type FormInstance, type FormRules } from 'elem
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { useAuthStore } from '@/stores/auth'
 import { sendPasswordReset, siteUrl } from '@/api/auth'
-import { useRateLimit } from '@/composables/useRateLimit'
 
 const router = useRouter()
 const auth = useAuthStore()
 
 const mode = ref<'login' | 'register'>('login')
 const formRef = ref<FormInstance>()
-// 登录/注册用同一限流：按邮箱做本地计数 + 指数退避，后端同时做真实拦截（见 SQL 脚本）
-const { submitting, submit: limitedSubmit, reset } = useRateLimit('auth:login-register', 5)
+const submitting = ref(false)
 
 // 忘记密码
 const forgotDialog = ref(false)
 const forgotEmail = ref('')
-const { submitting: forgotSubmitting, submit: limitedForgotSubmit } = useRateLimit('auth:forgot', 4)
+const forgotSubmitting = ref(false)
 
 const form = reactive({
   email: '',
@@ -61,87 +59,87 @@ async function submit() {
     return
   }
   const client = supabase // 闭包内 null 收窄
+  submitting.value = true
   try {
-    await limitedSubmit(async () => {
-      if (mode.value === 'login') {
-        // 支持用户名或邮箱登录：非邮箱输入时先解析出注册邮箱
-        let email = form.email.trim()
-        if (!email.includes('@')) {
-          const { data: resolved, error: resolveErr } = await client.rpc('resolve_login_email', {
-            p_identifier: email,
-          })
-          if (resolveErr) throw resolveErr
-          if (!resolved) {
-            ElMessage.error('用户名不存在，请确认后重试')
-            throw new Error('username-not-found')
-          }
-          email = resolved
-        }
-        const { error } = await client.auth.signInWithPassword({
-          email,
-          password: form.password,
+    if (mode.value === 'login') {
+      // 支持用户名或邮箱登录：非邮箱输入时先解析出注册邮箱
+      let email = form.email.trim()
+      if (!email.includes('@')) {
+        const { data: resolved, error: resolveErr } = await client.rpc('resolve_login_email', {
+          p_identifier: email,
         })
-        if (error) {
-          if (/email.*confirm|confirm.*email/i.test(error.message)) {
-            ElMessage.warning('该邮箱尚未完成验证，请先通过邮箱验证后登录')
-          } else {
-            ElMessage.error('用户不存在或密码错误')
-          }
-          throw error // 让限流把本次记作失败，启用指数退避
+        if (resolveErr) throw resolveErr
+        if (!resolved) {
+          ElMessage.error('用户名不存在，请确认后重试')
+          throw new Error('username-not-found')
         }
-        form.password = ''
-        ElMessage.success('登录成功')
-      } else {
-        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
-          ElMessage.warning('请输入正确的邮箱地址')
-          return
-        }
-        if (form.password.length < 6) {
-          ElMessage.warning('密码至少需要 6 位')
-          return
-        }
-        if (strength.value.level === 'weak') {
-          ElMessage.warning('密码强度较弱，建议至少 8 位并包含大小写字母与数字')
-          return
-        }
-        const { data, error } = await client.auth.signUp({
-          email: form.email.trim(),
-          password: form.password,
-          options: {
-            data: { username: form.username },
-            emailRedirectTo: siteUrl(),
-          },
-        })
-        if (error) throw error
-        if (data.session) {
-          form.password = ''
-          if (auth.requireAccountReview) {
-            // 审核开启：新账号默认待审核，弹窗提示审核机制
-            await ElMessageBox.alert(
-              '您的账号正在审核中，管理员审核通过后即可使用全部功能，请耐心等待。',
-              '注册成功',
-              { type: 'info', confirmButtonText: '知道了' },
-            )
-          } else {
-            // 审核关闭：注册即可使用全部功能
-            ElMessage.success('注册成功！账号已自动通过审核，可直接使用全部功能。')
-          }
-        } else {
-          form.password = ''
-          ElMessage.success('注册成功！请查收邮箱中的验证邮件，点击邮件内链接完成验证后即可登录（如未收到请检查垃圾邮件）。')
-          return
-        }
+        email = resolved
       }
-      await auth.refresh()
-      reset() // 成功后清掉失败计数，下一次登录不受退避影响
-      router.push({ name: 'home' })
-    })
+      const { error } = await client.auth.signInWithPassword({
+        email,
+        password: form.password,
+      })
+      if (error) {
+        if (/email.*confirm|confirm.*email/i.test(error.message)) {
+          ElMessage.warning('该邮箱尚未完成验证，请先通过邮箱验证后登录')
+        } else {
+          ElMessage.error('用户不存在或密码错误')
+        }
+        throw error
+      }
+      form.password = ''
+      ElMessage.success('登录成功')
+    } else {
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email.trim())) {
+        ElMessage.warning('请输入正确的邮箱地址')
+        return
+      }
+      if (form.password.length < 6) {
+        ElMessage.warning('密码至少需要 6 位')
+        return
+      }
+      if (strength.value.level === 'weak') {
+        ElMessage.warning('密码强度较弱，建议至少 8 位并包含大小写字母与数字')
+        return
+      }
+      const { data, error } = await client.auth.signUp({
+        email: form.email.trim(),
+        password: form.password,
+        options: {
+          data: { username: form.username },
+          emailRedirectTo: siteUrl(),
+        },
+      })
+      if (error) throw error
+      if (data.session) {
+        form.password = ''
+        if (auth.requireAccountReview) {
+          // 审核开启：新账号默认待审核，弹窗提示审核机制
+          await ElMessageBox.alert(
+            '您的账号正在审核中，管理员审核通过后即可使用全部功能，请耐心等待。',
+            '注册成功',
+            { type: 'info', confirmButtonText: '知道了' },
+          )
+        } else {
+          // 审核关闭：注册即可使用全部功能
+          ElMessage.success('注册成功！账号已自动通过审核，可直接使用全部功能。')
+        }
+      } else {
+        form.password = ''
+        ElMessage.success('注册成功！请查收邮箱中的验证邮件，点击邮件内链接完成验证后即可登录（如未收到请检查垃圾邮件）。')
+        return
+      }
+    }
+    await auth.refresh()
+    router.push({ name: 'home' })
   } catch (e: any) {
     if (e?.message && /操作过于频繁/.test(e.message)) {
       ElMessage.error(e.message)
     } else if (e?.message) {
       // 其它错误已在分支内单独提示，这里只兜底
     }
+  } finally {
+    submitting.value = false
   }
 }
 
@@ -166,25 +164,26 @@ async function sendReset() {
     ElMessage.warning('请输入注册邮箱')
     return
   }
+  forgotSubmitting.value = true
   try {
-    await limitedForgotSubmit(async () => {
-      const res = await sendPasswordReset(forgotEmail.value.trim())
-      if (res.demo) {
-        ElMessage.warning('未配置 Supabase，无法发送重置邮件')
-        return
-      }
-      if (res.error) {
-        ElMessage.error(res.error.message)
-        throw res.error
-      }
-      forgotDialog.value = false
-      forgotEmail.value = ''
-      ElMessage.success('重置链接已发送，请查收邮件（若该邮箱已注册）')
-    })
+    const res = await sendPasswordReset(forgotEmail.value.trim())
+    if (res.demo) {
+      ElMessage.warning('未配置 Supabase，无法发送重置邮件')
+      return
+    }
+    if (res.error) {
+      ElMessage.error(res.error.message)
+      return
+    }
+    forgotDialog.value = false
+    forgotEmail.value = ''
+    ElMessage.success('重置链接已发送，请查收邮件（若该邮箱已注册）')
   } catch (e: any) {
     if (e?.message && /操作过于频繁/.test(e.message)) {
       ElMessage.error(e.message)
     }
+  } finally {
+    forgotSubmitting.value = false
   }
 }
 </script>
