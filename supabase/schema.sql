@@ -992,3 +992,116 @@ grant select on public.bet_polls, public.bet_accounts, public.bet_records to aut
 grant insert, update, delete on public.bet_polls to authenticated;
 grant execute on function public.place_bet(uuid, text, int) to authenticated;
 grant execute on function public.settle_bet(uuid, text) to authenticated;
+
+-- ============================================================
+-- 13. 比赛胜者竞猜自动生成（可重复执行）
+--     排了对阵（matches 插入且双方确定、状态 scheduled）时，
+--     触发器自动生成「比赛胜者」竞猜，赔率按两队历史胜率自动计算。
+-- ============================================================
+
+-- 1) bet_polls 增加比赛关联列（同一场比赛只生成一次竞猜）
+alter table public.bet_polls add column if not exists match_id uuid
+  references public.matches (id) on delete set null;
+drop index if exists bet_polls_match_key;
+create unique index bet_polls_match_key
+  on public.bet_polls (match_id) where match_id is not null;
+
+-- 2) 队伍历史胜率（0-1）：已完成比赛中胜场 / 总场次，无记录返回 0
+create or replace function public.team_win_rate(p_team uuid)
+returns numeric
+language sql stable security definer set search_path = public
+as $$
+  select case when count(*) = 0 then 0
+    else count(*) filter (
+      where (team_a_id = p_team and team_a_score > team_b_score)
+         or (team_b_id = p_team and team_b_score > team_a_score)
+    )::numeric / count(*)::numeric
+  end
+  from public.matches
+  where status = 'completed' and (team_a_id = p_team or team_b_id = p_team);
+$$;
+
+-- 3) 触发器：插入待赛对阵后自动生成竞猜（幂等，同场比赛不重复）
+create or replace function public.auto_create_match_bet()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_a_rate numeric;
+  v_b_rate numeric;
+  v_a_odds numeric;
+  v_b_odds numeric;
+  v_ta_name text;
+  v_tb_name text;
+begin
+  if new.team_a_id is null or new.team_b_id is null or new.status <> 'scheduled' then
+    return new;
+  end if;
+  if exists (select 1 from public.bet_polls bp where bp.match_id = new.id) then
+    return new;
+  end if;
+  v_a_rate := public.team_win_rate(new.team_a_id);
+  v_b_rate := public.team_win_rate(new.team_b_id);
+  v_a_odds := least(20, greatest(1.05, (greatest(v_a_rate, 0.001) + v_b_rate) / greatest(v_a_rate, 0.001)));
+  v_b_odds := least(20, greatest(1.05, (greatest(v_b_rate, 0.001) + v_a_rate) / greatest(v_b_rate, 0.001)));
+  select name into v_ta_name from public.teams where id = new.team_a_id;
+  select name into v_tb_name from public.teams where id = new.team_b_id;
+  insert into public.bet_polls (event_id, title, kind, options, match_id)
+  values (
+    new.event_id,
+    '比赛胜者：' || coalesce(v_ta_name, 'A 队') || ' vs ' || coalesce(v_tb_name, 'B 队'),
+    'match_winner',
+    jsonb_build_array(
+      jsonb_build_object(
+        'id', gen_random_uuid()::text,
+        'label', coalesce(v_ta_name, 'A 队') || ' 胜',
+        'team_id', new.team_a_id,
+        'odds', round(v_a_odds, 2)
+      ),
+      jsonb_build_object(
+        'id', gen_random_uuid()::text,
+        'label', coalesce(v_tb_name, 'B 队') || ' 胜',
+        'team_id', new.team_b_id,
+        'odds', round(v_b_odds, 2)
+      )
+    ),
+    new.id
+  )
+  on conflict (match_id) where match_id is not null do nothing;
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_match_auto_bet on public.matches;
+create trigger trg_match_auto_bet
+after insert on public.matches
+for each row
+execute function public.auto_create_match_bet();
+
+-- 4) 回填：为已存在但尚未生成竞猜的待赛对阵补生成（可重复执行）
+insert into public.bet_polls (event_id, title, kind, options, match_id)
+select
+  m.event_id,
+  '比赛胜者：' || ta.name || ' vs ' || tb.name,
+  'match_winner',
+  jsonb_build_array(
+    jsonb_build_object(
+      'id', gen_random_uuid()::text,
+      'label', ta.name || ' 胜',
+      'team_id', m.team_a_id,
+      'odds', round(least(20, greatest(1.05, (greatest(public.team_win_rate(m.team_a_id), 0.001) + public.team_win_rate(m.team_b_id)) / greatest(public.team_win_rate(m.team_a_id), 0.001))), 2)
+    ),
+    jsonb_build_object(
+      'id', gen_random_uuid()::text,
+      'label', tb.name || ' 胜',
+      'team_id', m.team_b_id,
+      'odds', round(least(20, greatest(1.05, (greatest(public.team_win_rate(m.team_b_id), 0.001) + public.team_win_rate(m.team_a_id)) / greatest(public.team_win_rate(m.team_b_id), 0.001))), 2)
+    )
+  ),
+  m.id
+from public.matches m
+join public.teams ta on ta.id = m.team_a_id
+join public.teams tb on tb.id = m.team_b_id
+where m.status = 'scheduled'
+  and not exists (select 1 from public.bet_polls bp where bp.match_id = m.id)
+on conflict (match_id) where match_id is not null do nothing;
