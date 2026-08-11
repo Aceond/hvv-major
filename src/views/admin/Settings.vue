@@ -15,6 +15,8 @@ async function save() {
   try {
     await updateSiteConfig({ ...form })
     ElMessage.success('已保存，首页将展示更新后的内容')
+  } catch (e: any) {
+    ElMessage.error(`保存失败：${e?.message ?? '未知错误，请检查数据库权限'}`)
   } finally {
     saving.value = false
   }
