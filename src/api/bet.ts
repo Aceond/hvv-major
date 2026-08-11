@@ -121,11 +121,11 @@ export async function computeMatchOdds(
   return { a: r(pa, pb), b: r(pb, pa) }
 }
 
-/** 我的积分账户（未创建时返回初始 100） */
+/** 我的积分账户（未创建时返回初始 200） */
 export async function getMyBetAccount(): Promise<{ points: number; exists: boolean }> {
   if (!isSupabaseConfigured || !supabase) {
     const p = mockAccounts.get('demo-player')
-    return p === undefined ? { points: 100, exists: false } : { points: p, exists: true }
+    return p === undefined ? { points: 200, exists: false } : { points: p, exists: true }
   }
   const {
     data: { user },
@@ -136,7 +136,7 @@ export async function getMyBetAccount(): Promise<{ points: number; exists: boole
     .select('points')
     .eq('user_id', user.id)
     .maybeSingle()
-  return data ? { points: data.points as number, exists: true } : { points: 100, exists: false }
+  return data ? { points: data.points as number, exists: true } : { points: 200, exists: false }
 }
 
 /** 竞猜项列表（可按赛事过滤） */
@@ -174,7 +174,7 @@ export async function placeBet(pollId: string, optionId: string, stake: number) 
     if (mockRecords.some((r) => r.poll_id === pollId && r.user_id === me)) {
       throw new Error('你已参与过该竞猜，每人限投一次')
     }
-    const cur = mockAccounts.get(me) ?? 100
+    const cur = mockAccounts.get(me) ?? 200
     if (cur < stake) throw new Error(`积分不足（当前 ${cur} 分）`)
     mockAccounts.set(me, cur - stake)
     mockRecords.push({
@@ -262,7 +262,7 @@ export async function settlePoll(pollId: string, winningOptionId: string) {
       if (r.poll_id !== pollId || r.status !== 'pending') continue
       if (r.option_id === winningOptionId) {
         r.status = 'won'
-        mockAccounts.set(r.user_id, (mockAccounts.get(r.user_id) ?? 100) + Math.round(r.stake * r.odds))
+        mockAccounts.set(r.user_id, (mockAccounts.get(r.user_id) ?? 200) + Math.round(r.stake * r.odds))
       } else {
         r.status = 'lost'
       }

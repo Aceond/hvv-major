@@ -853,7 +853,7 @@ execute function public.release_rejected_team_members();
 
 -- ============================================================
 -- 12. 竞猜系统（可重复执行）
---     每届赛事独立的竞猜项；积分跨赛事互通，账户初始 100 分。
+--     每届赛事独立的竞猜项；积分跨赛事互通，账户初始 200 分。
 --     赔率：比赛胜者由系统按双方战绩/胜率生成；组别冠军/阶段晋级/自定义由管理员发布时手动填写。
 -- ============================================================
 
@@ -871,10 +871,10 @@ create table if not exists public.bet_polls (
   created_at timestamptz not null default now()
 );
 
--- 积分账户（每用户一行，初始 100）
+-- 积分账户（每用户一行，初始 200）
 create table if not exists public.bet_accounts (
   user_id uuid primary key references public.profiles (id) on delete cascade,
-  points int not null default 100,
+  points int not null default 200,
   updated_at timestamptz not null default now()
 );
 
@@ -923,7 +923,7 @@ begin
   end if;
   select * into v_acc from public.bet_accounts where user_id = v_user;
   if v_acc.user_id is null then
-    insert into public.bet_accounts (user_id, points) values (v_user, 100)
+    insert into public.bet_accounts (user_id, points) values (v_user, 200)
     returning * into v_acc;
   end if;
   if v_acc.points < p_stake then raise exception '积分不足（当前 % 分）', v_acc.points; end if;

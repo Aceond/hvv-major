@@ -23,7 +23,7 @@ const events = ref<EventItem[]>([])
 const currentEvent = ref('')
 const polls = ref<BetPoll[]>([])
 const records = ref<BetRecord[]>([])
-const account = ref({ points: 100, exists: false })
+const account = ref({ points: 200, exists: false })
 const loading = ref(false)
 const betting = ref(false)
 
@@ -185,7 +185,6 @@ onMounted(async () => {
             <div class="points-body">
               <div class="points-label">我的竞猜积分</div>
               <div class="points-value">{{ account.points }}</div>
-              <div class="points-tip">初始 100 分，每赛事独立竞猜、积分跨赛事互通</div>
             </div>
           </el-card>
         </el-col>
@@ -460,11 +459,6 @@ onMounted(async () => {
   font-weight: 800;
   color: var(--cs2-accent);
   margin: 6px 0;
-}
-
-.points-tip {
-  font-size: 12px;
-  color: var(--cs2-text-muted);
 }
 
 .event-tip {
