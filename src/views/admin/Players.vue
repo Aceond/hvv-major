@@ -5,6 +5,7 @@ import type { ApplicationStatus, EventItem, PlayerApplication } from '@/api/type
 import { CS2_RANKS } from '@/api/types'
 import { listEvents } from '@/api/event'
 import { listPlayerApplications, reviewPlayerApplication } from '@/api/admin'
+import { formatDateTime } from '@/utils/format'
 
 const rows = ref<PlayerApplication[]>([])
 const events = ref<EventItem[]>([])
@@ -172,7 +173,9 @@ onMounted(load)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="created_at" label="提交时间" min-width="140" />
+      <el-table-column label="提交时间" min-width="140">
+        <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+      </el-table-column>
       <el-table-column label="操作" width="150">
         <template #default="{ row }">
           <template v-if="row.status === 'pending'">

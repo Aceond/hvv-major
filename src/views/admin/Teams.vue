@@ -15,6 +15,7 @@ import {
   updateTeamStatus,
 } from '@/api/admin'
 import { listEvents } from '@/api/event'
+import { formatDateTime } from '@/utils/format'
 
 const rows = ref<Team[]>([])
 const groups = ref<Group[]>([])
@@ -257,7 +258,9 @@ onMounted(load)
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="created_at" label="报名时间" min-width="130" />
+      <el-table-column label="报名时间" min-width="130">
+        <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+      </el-table-column>
       <el-table-column label="状态" width="90">
         <template #default="{ row }">
           <el-tag

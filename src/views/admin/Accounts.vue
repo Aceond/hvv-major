@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { AccountItem, ApplicationStatus } from '@/api/types'
 import { ROLE_LABEL } from '@/api/types'
 import { listAccounts, reviewAccount, reviewAccounts, setAccountRole } from '@/api/admin'
+import { formatDateTime } from '@/utils/format'
 
 const rows = ref<AccountItem[]>([])
 const loading = ref(false)
@@ -181,7 +182,9 @@ onMounted(load)
           </el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="created_at" label="注册时间" min-width="150" />
+      <el-table-column label="注册时间" min-width="150">
+        <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
+      </el-table-column>
       <el-table-column label="操作" width="210">
         <template #default="{ row }">
           <template v-if="row.account_status === 'pending'">
