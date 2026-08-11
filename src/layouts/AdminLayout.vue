@@ -46,6 +46,9 @@ async function signOut() {
         <el-menu-item index="/admin/stats">
           <span class="menu-label">数据录入</span>
         </el-menu-item>
+        <el-menu-item index="/admin/bets">
+          <span class="menu-label">竞猜管理</span>
+        </el-menu-item>
         <el-menu-item index="/admin/settings">
           <span class="menu-label">站点设置</span>
         </el-menu-item>

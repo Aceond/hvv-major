@@ -850,3 +850,145 @@ after update of status on public.teams
 for each row
 when (new.status = 'rejected')
 execute function public.release_rejected_team_members();
+
+-- ============================================================
+-- 12. 竞猜系统（可重复执行）
+--     每届赛事独立的竞猜项；积分跨赛事互通，账户初始 100 分。
+--     赔率：比赛胜者由系统按双方战绩/胜率生成；组别冠军/阶段晋级/自定义由管理员发布时手动填写。
+-- ============================================================
+
+-- 竞猜项（选项与赔率内嵌 JSONB：[{id, label, team_id, odds}]）
+create table if not exists public.bet_polls (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references public.events (id) on delete cascade,
+  title text not null,
+  kind text not null default 'custom'
+    check (kind in ('group_champion', 'match_winner', 'stage_advance', 'custom')),
+  options jsonb not null default '[]'::jsonb,
+  status text not null default 'open'
+    check (status in ('open', 'closed', 'settled')),
+  winning_option_id text,
+  created_at timestamptz not null default now()
+);
+
+-- 积分账户（每用户一行，初始 100）
+create table if not exists public.bet_accounts (
+  user_id uuid primary key references public.profiles (id) on delete cascade,
+  points int not null default 100,
+  updated_at timestamptz not null default now()
+);
+
+-- 投注记录（每人每个竞猜项仅可投一次；odds 为投注时赔率快照）
+create table if not exists public.bet_records (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  poll_id uuid not null references public.bet_polls (id) on delete cascade,
+  option_id text not null,
+  option_label text not null,
+  odds numeric not null,
+  stake int not null,
+  status text not null default 'pending'
+    check (status in ('pending', 'won', 'lost')),
+  created_at timestamptz not null default now(),
+  unique (user_id, poll_id)
+);
+create index if not exists bet_records_user_idx on public.bet_records (user_id);
+create index if not exists bet_records_poll_idx on public.bet_records (poll_id);
+
+-- 投注 RPC：原子扣减积分并写入投注记录（security definer，绕过 RLS）
+create or replace function public.place_bet(p_poll_id uuid, p_option_id text, p_stake int)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_user uuid := auth.uid();
+  v_poll public.bet_polls%rowtype;
+  v_opt jsonb;
+  v_odds numeric;
+  v_acc public.bet_accounts%rowtype;
+begin
+  if v_user is null then raise exception '请先登录'; end if;
+  if p_stake < 1 then raise exception '投注积分至少为 1'; end if;
+  select * into v_poll from public.bet_polls where id = p_poll_id;
+  if v_poll.id is null then raise exception '竞猜项不存在'; end if;
+  if v_poll.status <> 'open' then raise exception '该竞猜已截止，无法投注'; end if;
+  select o into v_opt
+  from jsonb_array_elements(v_poll.options) o
+  where o ->> 'id' = p_option_id
+  limit 1;
+  if v_opt is null then raise exception '竞猜选项不存在'; end if;
+  v_odds := (v_opt ->> 'odds')::numeric;
+  if exists (select 1 from public.bet_records where poll_id = p_poll_id and user_id = v_user) then
+    raise exception '你已参与过该竞猜，每人限投一次';
+  end if;
+  select * into v_acc from public.bet_accounts where user_id = v_user;
+  if v_acc.user_id is null then
+    insert into public.bet_accounts (user_id, points) values (v_user, 100)
+    returning * into v_acc;
+  end if;
+  if v_acc.points < p_stake then raise exception '积分不足（当前 % 分）', v_acc.points; end if;
+  update public.bet_accounts
+  set points = points - p_stake, updated_at = now()
+  where user_id = v_user;
+  insert into public.bet_records (user_id, poll_id, option_id, option_label, odds, stake)
+  values (v_user, p_poll_id, p_option_id, v_opt ->> 'label', v_odds, p_stake);
+end;
+$$;
+
+-- 结算 RPC：标记中奖选项并按投注赔率发放积分（security definer）
+create or replace function public.settle_bet(p_poll_id uuid, p_winning_option_id text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_poll public.bet_polls%rowtype;
+  v_rec record;
+begin
+  select * into v_poll from public.bet_polls where id = p_poll_id;
+  if v_poll.id is null then raise exception '竞猜项不存在'; end if;
+  if v_poll.status = 'settled' then raise exception '该竞猜已结算'; end if;
+  if not exists (
+    select 1 from jsonb_array_elements(v_poll.options) o where o ->> 'id' = p_winning_option_id
+  ) then raise exception '中奖选项不存在'; end if;
+  update public.bet_polls
+  set status = 'settled', winning_option_id = p_winning_option_id
+  where id = p_poll_id;
+  for v_rec in
+    select * from public.bet_records where poll_id = p_poll_id and status = 'pending'
+  loop
+    if v_rec.option_id = p_winning_option_id then
+      update public.bet_records set status = 'won' where id = v_rec.id;
+      update public.bet_accounts
+      set points = points + round(v_rec.stake * v_rec.odds), updated_at = now()
+      where user_id = v_rec.user_id;
+    else
+      update public.bet_records set status = 'lost' where id = v_rec.id;
+    end if;
+  end loop;
+end;
+$$;
+
+-- 行级安全
+alter table public.bet_polls enable row level security;
+alter table public.bet_accounts enable row level security;
+alter table public.bet_records enable row level security;
+
+drop policy if exists bet_polls_select on public.bet_polls;
+create policy bet_polls_select on public.bet_polls
+  for select using (true);
+drop policy if exists bet_polls_admin_all on public.bet_polls;
+create policy bet_polls_admin_all on public.bet_polls
+  for all using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists bet_accounts_select on public.bet_accounts;
+create policy bet_accounts_select on public.bet_accounts
+  for select using (auth.uid() = user_id);
+drop policy if exists bet_records_select on public.bet_records;
+create policy bet_records_select on public.bet_records
+  for select using (auth.uid() = user_id);
+
+-- 权限授予：竞猜仅注册用户可见（bet_polls 只授 authenticated，anon 无权限）
+grant select on public.bet_polls, public.bet_accounts, public.bet_records to authenticated;
+grant insert, update, delete on public.bet_polls to authenticated;
+grant execute on function public.place_bet(uuid, text, int) to authenticated;
+grant execute on function public.settle_bet(uuid, text) to authenticated;
