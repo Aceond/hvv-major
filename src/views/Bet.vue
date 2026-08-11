@@ -178,7 +178,7 @@ onMounted(async () => {
     />
 
     <template v-if="auth.isLoggedIn">
-      <el-row :gutter="16">
+      <el-row :gutter="16" class="points-row">
         <!-- 我的积分 -->
         <el-col :xs="24" :md="8">
           <el-card class="card points-card">
@@ -444,15 +444,37 @@ onMounted(async () => {
   letter-spacing: 1px;
 }
 
-/* 积分与赛事卡片等高，底部对齐（删提示文字后保持框高一致） */
+/* 积分与赛事卡片等高，底部对齐；下间距统一由 points-row 提供，
+   避免卡片 height:100% 与 margin-bottom 叠加溢出导致与下方卡片挤在一起 */
+.points-row {
+  margin-bottom: 16px;
+}
+
 .points-card,
 .points-side-card {
   height: 100%;
+  margin-bottom: 0;
 }
 
 .points-card .points-body {
   text-align: center;
   padding: 6px 0;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+/* 移动端两卡片堆叠：恢复各自的下间距 */
+@media (max-width: 768px) {
+  .points-card,
+  .points-side-card {
+    height: auto;
+    margin-bottom: 16px;
+  }
+  .points-row {
+    margin-bottom: 0;
+  }
 }
 
 .points-label {
