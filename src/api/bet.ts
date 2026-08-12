@@ -2,6 +2,7 @@
 // 真实环境：bet_polls / bet_accounts / bet_records 三表 + place_bet / settle_bet 两个 RPC（见 schema.sql 第 12 节）
 // 未配置 Supabase（演示模式）时读写内存 mock。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
+import { mockMatches } from '@/mock/data'
 
 export type BetKind = 'group_champion' | 'match_winner' | 'stage_advance' | 'custom'
 export type BetPollStatus = 'open' | 'closed' | 'settled'
