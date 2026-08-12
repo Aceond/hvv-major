@@ -198,3 +198,13 @@ export async function updateMatchResult(
     await supabase.from('matches').update(patch).eq('id', matchId)
   }
 }
+
+/** 更新对阵基础字段（如轮次） */
+export async function updateMatch(id: string, partial: Partial<Match>) {
+  if (!isSupabaseConfigured || !supabase) {
+    const m = mockMatches.find((x) => x.id === id)
+    if (m) Object.assign(m, partial)
+    return
+  }
+  await supabase.from('matches').update(partial).eq('id', id)
+}

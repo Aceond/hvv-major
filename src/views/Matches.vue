@@ -511,6 +511,9 @@ async function removeCaster(item: MatchCaster) {
                 {{ row.stage_name ?? '-' }}{{ row.stage_name && row.group_name ? ' · ' + row.group_name : '' }}
               </template>
             </el-table-column>
+            <el-table-column label="轮次" width="80" align="center">
+              <template #default="{ row }">第 {{ row.round_number ?? 1 }} 轮</template>
+            </el-table-column>
             <el-table-column label="赛制 / 地图" width="180">
               <template #default="{ row }">
                 <span class="bo-info">
@@ -634,6 +637,9 @@ async function removeCaster(item: MatchCaster) {
               </span>
             </div>
           </template>
+        </el-table-column>
+        <el-table-column label="轮次" width="80" align="center">
+          <template #default="{ row }">第 {{ row.round_number ?? 1 }} 轮</template>
         </el-table-column>
         <el-table-column label="赛制 / 地图" width="180">
           <template #default="{ row }">

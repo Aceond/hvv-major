@@ -11,6 +11,7 @@ import {
   listMatches,
   listStages,
   listTeams,
+  updateMatch,
   updateStage,
 } from '@/api/admin'
 import { listMatchMaps, stageDisplayName, submitMatchScore } from '@/api/match'
@@ -263,6 +264,18 @@ async function addMatch() {
   matchDialog.value = false
   ElMessage.success('对阵已创建')
   onFilterChange()
+}
+
+/** 行内修改对阵轮次（淘汰赛按 1/4 决赛、半决赛、决赛分轮） */
+async function saveRound(row: Match, round: number | undefined) {
+  const r = Math.max(1, Number(round ?? 1))
+  try {
+    await updateMatch(row.id, { round_number: r })
+    row.round_number = r
+    ElMessage.success(`已更新为第 ${r} 轮`)
+  } catch (e: any) {
+    ElMessage.error(e.message || '轮次更新失败')
+  }
 }
 
 // ---------------- 自动排阵（按大小分：大分=胜场，小分=净胜局） ----------------
@@ -544,6 +557,18 @@ onMounted(load)
           <el-table-column label="赛制" width="70">
             <template #default="{ row }">BO{{ row.best_of }}</template>
           </el-table-column>
+          <el-table-column label="轮次" width="110">
+            <template #default="{ row }">
+              <el-input-number
+                :model-value="row.round_number ?? 1"
+                :min="1"
+                size="small"
+                controls-position="right"
+                style="width: 88px"
+                @change="(val: number | undefined) => saveRound(row, val)"
+              />
+            </template>
+          </el-table-column>
           <el-table-column prop="map" label="地图" width="90">
             <template #default="{ row }">{{ row.map ?? '-' }}</template>
           </el-table-column>
@@ -705,6 +730,10 @@ onMounted(load)
             <el-radio :value="1">BO1</el-radio>
             <el-radio :value="3">BO3</el-radio>
           </el-radio-group>
+        </el-form-item>
+        <el-form-item label="轮次">
+          <el-input-number v-model="matchForm.roundNumber" :min="1" style="width: 160px" />
+          <span class="mode-hint" style="margin-left: 12px">淘汰赛：1 = 1/4 决赛，2 = 半决赛，3 = 决赛</span>
         </el-form-item>
         <el-form-item label="开赛时间"><el-input v-model="matchForm.scheduledAt" placeholder="2026-08-15 13:00" /></el-form-item>
       </el-form>
