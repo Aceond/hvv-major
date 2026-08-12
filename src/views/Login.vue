@@ -135,9 +135,14 @@ async function submit() {
   } catch (e: any) {
     if (e?.message && /操作过于频繁/.test(e.message)) {
       ElMessage.error(e.message)
-    } else if (e?.message) {
-      // 其它错误已在分支内单独提示，这里只兜底
+    } else if (
+      // 网络异常 / 请求超时（10s 兜底 abort）类错误：给出明确提示，避免转圈结束后毫无反应
+      e instanceof TypeError ||
+      /fetch|abort|network|timeout|超时|failed/i.test(e?.message ?? '')
+    ) {
+      ElMessage.error('网络异常或请求超时，请检查网络后重试')
     }
+    // 其它业务错误已在分支内单独提示，这里不再重复弹窗
   } finally {
     submitting.value = false
   }
@@ -181,6 +186,11 @@ async function sendReset() {
   } catch (e: any) {
     if (e?.message && /操作过于频繁/.test(e.message)) {
       ElMessage.error(e.message)
+    } else if (
+      e instanceof TypeError ||
+      /fetch|abort|network|timeout|超时|failed/i.test(e?.message ?? '')
+    ) {
+      ElMessage.error('网络异常或请求超时，请检查网络后重试')
     }
   } finally {
     forgotSubmitting.value = false
