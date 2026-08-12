@@ -13,6 +13,7 @@ import {
   listApprovedTeams,
   listMyBookedMatches,
   listMyTeam,
+  setMatchTime,
 } from '@/api/booking'
 
 const auth = useAuthStore()
@@ -41,6 +42,7 @@ function groupName(id: string | null): string {
 }
 
 function teamName(id: string | null): string {
+  if (id && id === myTeam.value?.id) return myTeam.value?.name ?? '本队'
   return opponents.value.find((t) => t.id === id)?.name ?? '待定'
 }
 
@@ -176,6 +178,39 @@ async function removeMatch(m: Match) {
   await loadBooked()
 }
 
+// 为系统自动排阵的比赛补录约战时间
+const timeDialog = ref(false)
+const timeForm = reactive({ matchId: '', scheduledAt: '' })
+const savingTime = ref(false)
+
+function openTimeDialog(m: Match) {
+  timeForm.matchId = m.id
+  timeForm.scheduledAt = ''
+  timeDialog.value = true
+}
+
+async function saveTime() {
+  if (!timeForm.scheduledAt) {
+    ElMessage.warning('请选择比赛时间')
+    return
+  }
+  if (new Date(timeForm.scheduledAt.replace(' ', 'T')).getTime() <= Date.now()) {
+    ElMessage.warning('比赛时间需为未来时间')
+    return
+  }
+  savingTime.value = true
+  try {
+    await setMatchTime(timeForm.matchId, timeForm.scheduledAt)
+    ElMessage.success('时间已保存，赛程页将公开展示')
+    timeDialog.value = false
+    await loadBooked()
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败，请检查权限')
+  } finally {
+    savingTime.value = false
+  }
+}
+
 onMounted(init)
 </script>
 
@@ -304,7 +339,12 @@ onMounted(init)
           <span>我的未来比赛（{{ booked.length }}）</span>
         </template>
         <el-table :data="booked" stripe empty-text="暂无已录入的约战">
-          <el-table-column prop="scheduled_at" label="时间" min-width="150" />
+          <el-table-column label="时间" min-width="150">
+            <template #default="{ row }">
+              <span v-if="row.scheduled_at">{{ row.scheduled_at }}</span>
+              <el-tag v-else size="small" type="warning" effect="plain">待定（系统排阵）</el-tag>
+            </template>
+          </el-table-column>
           <el-table-column label="对阵" min-width="220">
             <template #default="{ row }">
               <span class="vs">{{ teamName(row.team_a_id) }}</span>
@@ -322,13 +362,47 @@ onMounted(init)
               </el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="90">
+          <el-table-column label="操作" width="110">
             <template #default="{ row }">
-              <el-button link type="danger" @click="removeMatch(row)">删除</el-button>
+              <el-button
+                v-if="!row.scheduled_at"
+                link
+                type="primary"
+                @click="openTimeDialog(row)"
+              >
+                录时间
+              </el-button>
+              <el-button v-else link type="danger" @click="removeMatch(row)">删除</el-button>
             </template>
           </el-table-column>
         </el-table>
       </el-card>
+
+      <!-- 为系统排阵比赛补录时间 -->
+      <el-dialog v-model="timeDialog" title="补录比赛时间" width="380px">
+        <el-alert
+          type="info"
+          :closable="false"
+          title="该比赛由系统自动排阵生成，对阵已确定，只需补录约战时间。保存后将在赛程页公开展示。"
+          class="time-tip"
+        />
+        <el-form label-width="80px" class="time-form">
+          <el-form-item label="比赛时间">
+            <el-date-picker
+              v-model="timeForm.scheduledAt"
+              type="datetime"
+              placeholder="选择比赛时间"
+              format="YYYY-MM-DD HH:mm"
+              value-format="YYYY-MM-DD HH:mm"
+              style="width: 100%"
+            />
+          </el-form-item>
+        </el-form>
+        <template #footer>
+          <el-button @click="timeDialog = false">取消</el-button>
+          <el-button type="primary" :loading="savingTime" @click="saveTime">保存</el-button>
+        </template>
+      </el-dialog>
     </template>
   </div>
 </template>
@@ -439,6 +513,10 @@ onMounted(init)
 
 .list-card {
   margin-bottom: 16px;
+}
+
+.time-tip {
+  margin-bottom: 12px;
 }
 
 .vs {

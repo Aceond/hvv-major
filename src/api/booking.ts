@@ -125,7 +125,7 @@ export async function createBookedMatches(
   }))
 }
 
-/** 本队未来已录比赛（待开赛，按时间升序） */
+/** 本队未来已录比赛（待开赛，按时间升序；系统排阵未定时间的比赛排最前，便于补录时间） */
 export async function listMyBookedMatches(teamId: string): Promise<Match[]> {
   if (!isSupabaseConfigured || !supabase) {
     const now = new Date()
@@ -136,19 +136,36 @@ export async function listMyBookedMatches(teamId: string): Promise<Match[]> {
         (m) =>
           m.status === 'scheduled' &&
           (m.team_a_id === teamId || m.team_b_id === teamId) &&
-          !!m.scheduled_at &&
-          m.scheduled_at >= nowStr,
+          (!m.scheduled_at || m.scheduled_at >= nowStr),
       )
-      .sort((a, b) => (a.scheduled_at ?? '').localeCompare(b.scheduled_at ?? ''))
+      .sort((a, b) => {
+        if (!a.scheduled_at) return -1
+        if (!b.scheduled_at) return 1
+        return a.scheduled_at.localeCompare(b.scheduled_at)
+      })
   }
   const { data } = await supabase
     .from('matches')
     .select('*')
     .or(`team_a_id.eq.${teamId},team_b_id.eq.${teamId}`)
     .eq('status', 'scheduled')
-    .gte('scheduled_at', new Date().toISOString())
-    .order('scheduled_at')
+    .or(`scheduled_at.is.null,scheduled_at.gte.${new Date().toISOString()}`)
+    .order('scheduled_at', { ascending: true, nullsFirst: true })
   return (data as Match[]) ?? []
+}
+
+/** 为系统自动排阵的比赛补录约战时间（队长可更新自己参与的比赛，管理员全量） */
+export async function setMatchTime(matchId: string, scheduledAt: string): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    const m = mockMatches.find((x) => x.id === matchId)
+    if (m) m.scheduled_at = scheduledAt
+    return
+  }
+  const { error } = await supabase
+    .from('matches')
+    .update({ scheduled_at: scheduledAt })
+    .eq('id', matchId)
+  if (error) throw new Error(error.message)
 }
 
 /** 删除约战（仅允许本队成员删除自己参与的待开赛比赛） */
