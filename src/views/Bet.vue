@@ -65,7 +65,7 @@ const nonMatchPolls = computed(() => openPolls.value.filter((p) => p.kind !== 'm
 
 /** 比赛胜者卡片：点击队伍行投注该队（已投注则忽略） */
 function betMatchOption(poll: BetPoll, opt: BetPoll['options'][number] | undefined) {
-  if (!opt || recordByPoll.get(poll.id)) return
+  if (!opt || recordByPoll.value.get(poll.id)) return
   doBet(poll, opt)
 }
 
