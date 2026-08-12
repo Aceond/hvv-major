@@ -2,7 +2,7 @@
 // 真实环境：bet_polls / bet_accounts / bet_records 三表 + place_bet / settle_bet 两个 RPC（见 schema.sql 第 12 节）
 // 未配置 Supabase（演示模式）时读写内存 mock。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
-import { mockMatches } from '@/mock/data'
+import { mockMatches, mockStages } from '@/mock/data'
 
 export type BetKind = 'group_champion' | 'match_winner' | 'stage_advance' | 'custom'
 export type BetPollStatus = 'open' | 'closed' | 'settled'
@@ -114,14 +114,20 @@ interface CompletedRow {
   team_b_score: number
 }
 
-async function loadCompletedMatches(): Promise<CompletedRow[]> {
+async function loadCompletedMatches(eventId?: string): Promise<CompletedRow[]> {
   if (!isSupabaseConfigured || !supabase) {
-    return mockMatches.filter((m) => m.status === 'completed')
+    return mockMatches.filter(
+      (m) =>
+        m.status === 'completed' &&
+        (!eventId || mockStages.find((s) => s.id === m.stage_id)?.event_id === eventId),
+    )
   }
-  const { data } = await supabase
+  let q = supabase
     .from('matches')
-    .select('team_a_id, team_b_id, team_a_score, team_b_score')
+    .select('team_a_id, team_b_id, team_a_score, team_b_score, stages!inner(event_id)')
     .eq('status', 'completed')
+  if (eventId) q = q.eq('stages.event_id', eventId)
+  const { data } = await q
   return ((data as CompletedRow[] | null) ?? []).filter(
     (m) => m.team_a_id && m.team_b_id && m.team_a_id !== m.team_b_id,
   )
@@ -179,12 +185,13 @@ function teamStrengthMap(rows: CompletedRow[]): Map<string, number> {
   return out
 }
 
-/** 按双方综合强度生成比赛胜者赔率（系统自动；强度高者赔率低），范围 1.2~2 */
+/** 按双方综合强度生成比赛胜者赔率（系统自动；强度高者赔率低），范围 1.2~2；可按赛事过滤避免历史赛事污染 */
 export async function computeMatchOdds(
   teamAId: string,
   teamBId: string,
+  eventId?: string,
 ): Promise<{ a: number; b: number }> {
-  const rows = await loadCompletedMatches()
+  const rows = await loadCompletedMatches(eventId)
   const strengths = teamStrengthMap(rows)
   const sa = strengths.get(teamAId) ?? 0
   const sb = strengths.get(teamBId) ?? 0

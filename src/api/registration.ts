@@ -259,8 +259,9 @@ async function ensurePlayerStats(profileId: string, eventId: string | null) {
   if (error) console.warn('选手个人数据初始化失败（不影响审核结果）：', error.message)
 }
 
-/** 选手池（仅完成个人注册审核通过的选手，可按完美 ID/姓名搜索；in_team 表示已加入战队，不可再选） */
-export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
+/** 选手池（仅完成个人注册审核通过的选手，可按完美 ID/姓名搜索；in_team 表示已加入战队，不可再选）
+ *   eventId 用于按目标赛事过滤「已在同赛事他队正式入队」的选手（跨赛事可重复入队） */
+export async function listPlayers(keyword?: string, eventId?: string | null): Promise<PlayerItem[]> {
   if (!isSupabaseConfigured || !supabase) {
     const kw = (keyword ?? '').trim().toLowerCase()
     return mockPlayers.filter(
@@ -272,15 +273,15 @@ export async function listPlayers(keyword?: string): Promise<PlayerItem[]> {
   }
   let query = supabase
     .from('profiles')
-    .select('id, nickname, pw_username, highest_rank, team_members(team_id, status)')
+    .select('id, nickname, pw_username, highest_rank, team_members(team_id, status, event_id)')
     .in('role', ['player', 'caster']) // 选手与解说均进入选手池（解说也可作为队员被选入战队）
     .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
   const { data } = await query
   return ((data ?? []) as any[]).map((p) => {
-    // 仅「正式队员」（active）视为已入队；替补可跨队，不影响正式入队判定
-    const tm = (p.team_members ?? []) as Array<{ team_id: string; status: string }>
-    const active = tm.filter((x) => x.status === 'active')
+    // 仅「正式队员」（active）且属于目标赛事视为已入队；替补可跨队，不影响正式入队判定
+    const tm = (p.team_members ?? []) as Array<{ team_id: string; status: string; event_id: string | null }>
+    const active = tm.filter((x) => x.status === 'active' && (!eventId || x.event_id === eventId))
     return {
       id: p.id,
       nickname: p.nickname,
@@ -335,9 +336,26 @@ export async function createTeam(
     .single()
   const team = data as Team | null
   if (team) {
-    await supabase
+    // 报名前校验：同赛事已是其他战队正式队员则拒绝（防空名册残废队），并回滚刚创建的战队
+    const { data: conflict } = await supabase
+      .from('team_members')
+      .select('team_id')
+      .eq('profile_id', user.id)
+      .eq('event_id', team.event_id)
+      .eq('status', 'active')
+      .limit(1)
+    if (conflict && conflict.length > 0) {
+      await supabase.from('teams').delete().eq('id', team.id)
+      throw new Error('你在该赛事已是其他战队的正式队员，不能重复报名')
+    }
+    const { error } = await supabase
       .from('team_members')
       .insert({ team_id: team.id, profile_id: user.id, is_captain: true, status: 'active', event_id: team.event_id })
+    if (error) {
+      // 名册写入失败（如唯一索引兜底拦截）：回滚刚创建的战队，避免「报名成功但无队长」的残废队
+      await supabase.from('teams').delete().eq('id', team.id)
+      throw new Error(error.message)
+    }
   }
   return team
 }

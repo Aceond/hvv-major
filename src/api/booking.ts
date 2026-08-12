@@ -42,13 +42,14 @@ export async function listMyTeam(
     .select('*, captain:profiles(nickname, pw_username)')
     .eq('status', 'approved')
   if (isAdmin) {
+    // 管理员固定绑定目标队：不受所选赛事过滤（绑队可能跨赛事运营，避免切赛事时约战入口消失）
     query = query.eq('id', ADMIN_BOUND_TEAM_ID)
   } else {
     query = query
       .eq('captain_id', user.id)
       .order('created_at', { ascending: false })
+    if (eventId) query = query.eq('event_id', eventId)
   }
-  if (eventId) query = query.eq('event_id', eventId)
   const { data } = await query.limit(1).maybeSingle()
   const team = data as (Team & { captain?: { nickname: string | null; pw_username: string | null } }) | null
   if (!team) return null

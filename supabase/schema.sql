@@ -962,6 +962,7 @@ begin
   select * into v_poll from public.bet_polls where id = p_poll_id;
   if v_poll.id is null then raise exception '竞猜项不存在'; end if;
   if v_poll.status <> 'open' then raise exception '该竞猜已截止，无法投注'; end if;
+  if v_poll.winning_option_id is not null then raise exception '该竞猜已结算，无法重新投注'; end if;
   select o into v_opt
   from jsonb_array_elements(v_poll.options) o
   where o ->> 'id' = p_option_id
@@ -1075,24 +1076,26 @@ drop index if exists bet_polls_match_key;
 create unique index bet_polls_match_key
   on public.bet_polls (match_id) where match_id is not null;
 
--- 2) 队伍历史胜率（0-1）：已完成比赛中胜场 / 总场次，无记录返回 0
-create or replace function public.team_win_rate(p_team uuid)
+-- 2) 队伍历史胜率（0-1，限定赛事）：已完成比赛中胜场 / 总场次，无记录返回 0
+--    通过 stage_id → stages 关联赛事，避免历史赛事结果污染当前赛事
+create or replace function public.team_win_rate(p_team uuid, p_event uuid)
 returns numeric
 language sql stable security definer set search_path = public
 as $$
   select case when count(*) = 0 then 0
     else count(*) filter (
-      where (team_a_id = p_team and team_a_score > team_b_score)
-         or (team_b_id = p_team and team_b_score > team_a_score)
+      where (m.team_a_id = p_team and m.team_a_score > m.team_b_score)
+         or (m.team_b_id = p_team and m.team_b_score > m.team_a_score)
     )::numeric / count(*)::numeric
   end
-  from public.matches
-  where status = 'completed' and (team_a_id = p_team or team_b_id = p_team);
+  from public.matches m
+  where m.status = 'completed' and (m.team_a_id = p_team or m.team_b_id = p_team)
+    and exists (select 1 from public.stages s where s.id = m.stage_id and s.event_id = p_event);
 $$;
 
--- 2.5) 队伍综合强度（0~1）：胜率 50% + 净胜局 30% + 对手平均胜率 20%
---      用于比赛胜者竞猜赔率，兼顾对手强弱与净胜分，避免只看胜率（与前端 bet.ts teamStrengthMap 一致）
-create or replace function public.team_strength(p_team uuid)
+-- 2.5) 队伍综合强度（0~1，限定赛事）：胜率 50% + 净胜局 30% + 对手平均胜率 20%
+--      用于比赛胜者竞猜赔率，兼顾对手强弱与净胜分（与前端 bet.ts teamStrengthMap 一致）
+create or replace function public.team_strength(p_team uuid, p_event uuid)
 returns numeric
 language plpgsql stable security definer set search_path = public
 as $$
@@ -1105,27 +1108,29 @@ begin
   select
     case when count(*) = 0 then 0
       else count(*) filter (
-        where (team_a_id = p_team and team_a_score > team_b_score)
-           or (team_b_id = p_team and team_b_score > team_a_score)
+        where (m.team_a_id = p_team and m.team_a_score > m.team_b_score)
+           or (m.team_b_id = p_team and m.team_b_score > m.team_a_score)
       )::numeric / count(*)::numeric
     end,
     case when count(*) = 0 then 0
       else avg(
-        case when team_a_id = p_team then team_a_score - team_b_score
-             else team_b_score - team_a_score end
+        case when m.team_a_id = p_team then m.team_a_score - m.team_b_score
+             else m.team_b_score - m.team_a_score end
       )::numeric
     end
   into v_win_rate, v_net
-  from public.matches
-  where status = 'completed' and (team_a_id = p_team or team_b_id = p_team);
+  from public.matches m
+  where m.status = 'completed' and (m.team_a_id = p_team or m.team_b_id = p_team)
+    and exists (select 1 from public.stages s where s.id = m.stage_id and s.event_id = p_event);
   -- 场均净胜局映射到 0~1：场均净胜 6 局即满格（BO3 约 2:0，BO1 约 13:7）
   v_net_rate := greatest(0, least(1, 0.5 + v_net / 12));
-  -- 对手平均胜率（对手强弱）
-  select coalesce(avg(public.team_win_rate(x.opp)), 0) into v_opp_rate
+  -- 对手平均胜率（对手强弱，同样限定赛事）
+  select coalesce(avg(public.team_win_rate(x.opp, p_event)), 0) into v_opp_rate
   from (
-    select case when team_a_id = p_team then team_b_id else team_a_id end as opp
-    from public.matches
-    where status = 'completed' and (team_a_id = p_team or team_b_id = p_team)
+    select case when m.team_a_id = p_team then m.team_b_id else m.team_a_id end as opp
+    from public.matches m
+    where m.status = 'completed' and (m.team_a_id = p_team or m.team_b_id = p_team)
+      and exists (select 1 from public.stages s where s.id = m.stage_id and s.event_id = p_event)
   ) x;
   return round(0.5 * v_win_rate + 0.3 * v_net_rate + 0.2 * v_opp_rate, 4);
 end;
@@ -1156,8 +1161,8 @@ begin
   if v_event is null then
     return new;
   end if;
-  v_a_rate := public.team_strength(new.team_a_id);
-  v_b_rate := public.team_strength(new.team_b_id);
+  v_a_rate := public.team_strength(new.team_a_id, v_event);
+  v_b_rate := public.team_strength(new.team_b_id, v_event);
   v_a_odds := least(2, greatest(1.2, (greatest(v_a_rate, 0.001) + v_b_rate) / greatest(v_a_rate, 0.001)));
   v_b_odds := least(2, greatest(1.2, (greatest(v_b_rate, 0.001) + v_a_rate) / greatest(v_b_rate, 0.001)));
   select name into v_ta_name from public.teams where id = new.team_a_id;
@@ -1256,13 +1261,13 @@ select
       'id', gen_random_uuid()::text,
       'label', ta.name || ' 胜',
       'team_id', m.team_a_id,
-      'odds', round(least(2, greatest(1.2, (greatest(public.team_strength(m.team_a_id), 0.001) + public.team_strength(m.team_b_id)) / greatest(public.team_strength(m.team_a_id), 0.001))), 2)
+      'odds', round(least(2, greatest(1.2, (greatest(public.team_strength(m.team_a_id, s.event_id), 0.001) + public.team_strength(m.team_b_id, s.event_id)) / greatest(public.team_strength(m.team_a_id, s.event_id), 0.001))), 2)
     ),
     jsonb_build_object(
       'id', gen_random_uuid()::text,
       'label', tb.name || ' 胜',
       'team_id', m.team_b_id,
-      'odds', round(least(2, greatest(1.2, (greatest(public.team_strength(m.team_b_id), 0.001) + public.team_strength(m.team_a_id)) / greatest(public.team_strength(m.team_b_id), 0.001))), 2)
+      'odds', round(least(2, greatest(1.2, (greatest(public.team_strength(m.team_b_id, s.event_id), 0.001) + public.team_strength(m.team_a_id, s.event_id)) / greatest(public.team_strength(m.team_b_id, s.event_id), 0.001))), 2)
     )
   ),
   m.id

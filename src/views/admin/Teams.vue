@@ -126,7 +126,7 @@ async function openRoster(team: Team) {
   selectedPlayer.value = ''
   addRole.value = 'active'
   roster.value = await listMembers(team.id)
-  pool.value = await listPlayers()
+  pool.value = await listPlayers(undefined, team.event_id)
   rosterVisible.value = true
 }
 

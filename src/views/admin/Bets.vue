@@ -135,7 +135,8 @@ async function onStageForMatch() {
 async function onMatchSelect() {
   const m = stageMatches.value.find((x) => x.id === draftMatch.value)
   if (!m || !m.team_a_id || !m.team_b_id) return
-  const { a, b } = await computeMatchOdds(m.team_a_id, m.team_b_id)
+  const stage = stages.value.find((s) => s.id === draftStage.value)
+  const { a, b } = await computeMatchOdds(m.team_a_id, m.team_b_id, stage?.event_id ?? undefined)
   const nameOf = (tid: string | null) => teams.value.find((t) => t.id === tid)?.name ?? '未知队伍'
   draftOptions.value = [
     { id: newOptionId(), label: `${nameOf(m.team_a_id)} 胜`, team_id: m.team_a_id, odds: a },

@@ -222,7 +222,12 @@ onMounted(init)
     </p>
 
     <div class="event-bar" v-if="events.length">
-      <el-select v-model="currentEventId" placeholder="选择赛事" @change="load">
+      <el-select
+        v-model="currentEventId"
+        placeholder="选择赛事"
+        :clearable="false"
+        @change="load"
+      >
         <el-option v-for="e in events" :key="e.id" :label="eventLabel(e)" :value="e.id" />
       </el-select>
     </div>
