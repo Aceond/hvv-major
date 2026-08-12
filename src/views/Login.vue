@@ -69,24 +69,14 @@ async function submit() {
           p_identifier: email,
         })
         if (resolveErr) throw resolveErr
-        if (!resolved) {
-          ElMessage.error('用户名不存在，请确认后重试')
-          throw new Error('username-not-found')
-        }
+        if (!resolved) throw new Error('USERNAME_NOT_FOUND')
         email = resolved
       }
       const { error } = await client.auth.signInWithPassword({
         email,
         password: form.password,
       })
-      if (error) {
-        if (/email.*confirm|confirm.*email/i.test(error.message)) {
-          ElMessage.warning('该邮箱尚未完成验证，请先通过邮箱验证后登录')
-        } else {
-          ElMessage.error('用户不存在或密码错误')
-        }
-        throw error
-      }
+      if (error) throw error
       form.password = ''
       ElMessage.success('登录成功')
     } else {
@@ -133,16 +123,25 @@ async function submit() {
     await auth.refresh()
     router.push({ name: 'home' })
   } catch (e: any) {
-    if (e?.message && /操作过于频繁/.test(e.message)) {
-      ElMessage.error(e.message)
-    } else if (
-      // 网络异常 / 请求超时（10s 兜底 abort）类错误：给出明确提示，避免转圈结束后毫无反应
-      e instanceof TypeError ||
-      /fetch|abort|network|timeout|超时|failed/i.test(e?.message ?? '')
-    ) {
+    // 所有错误统一在这里给出明确提示（登录/注册/忘记密码均不静默）
+    const msg = e?.message ?? ''
+    if (/操作过于频繁/.test(msg)) {
+      ElMessage.error(msg)
+    } else if (e instanceof TypeError || /fetch|abort|network|timeout|超时|failed/i.test(msg)) {
       ElMessage.error('网络异常或请求超时，请检查网络后重试')
+    } else if (msg === 'USERNAME_NOT_FOUND') {
+      ElMessage.error('用户名不存在，请确认后重试')
+    } else if (/email.*confirm|confirm.*email/i.test(msg)) {
+      ElMessage.warning('该邮箱尚未完成验证，请先通过邮箱验证后登录')
+    } else if (/already.*register|register.*already|user.*exist|duplicate/i.test(msg)) {
+      ElMessage.error('该邮箱已注册，请直接登录或更换邮箱')
+    } else if (/invalid login|invalid.*credential|password.*incorrect|bad.*request/i.test(msg)) {
+      ElMessage.error('用户不存在或密码错误')
+    } else if (msg) {
+      ElMessage.error(msg)
+    } else {
+      ElMessage.error('操作失败，请稍后重试')
     }
-    // 其它业务错误已在分支内单独提示，这里不再重复弹窗
   } finally {
     submitting.value = false
   }
