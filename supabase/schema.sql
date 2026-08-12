@@ -450,8 +450,8 @@ begin
     raise exception 'match not found';
   end if;
 
-  -- 权限：仅管理员或参赛队伍队长可录入比分
-  if not public.is_admin() and not exists (
+  -- 权限：仅管理员或参赛队伍队长可录入比分（账号需审核通过）
+  if not public.can_use_features() and not exists (
     select 1 from public.teams t
     where (t.id = v_match.team_a_id or t.id = v_match.team_b_id)
       and t.captain_id = auth.uid()
@@ -615,25 +615,29 @@ create policy match_casters_write on public.match_casters
     public.is_admin()
     or exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'caster')
   );
--- 约战录入：本队队长可录入本队参与的待开赛比赛（自由约战制，仅队长约对手、定时间）
+-- 约战录入：本队队长可录入本队参与的待开赛比赛（自由约战制，仅队长约对手、定时间；账号需审核通过）
 drop policy if exists matches_insert on public.matches;
 create policy matches_insert on public.matches
   for insert with check (
-    public.is_admin()
-    or exists (
-      select 1 from public.teams t
-      where t.id = team_a_id and t.captain_id = auth.uid()
-    )
-    or exists (
-      select 1 from public.teams t
-      where t.id = team_b_id and t.captain_id = auth.uid()
+    public.can_use_features()
+    and (
+      public.is_admin()
+      or exists (
+        select 1 from public.teams t
+        where t.id = team_a_id and t.captain_id = auth.uid()
+      )
+      or exists (
+        select 1 from public.teams t
+        where t.id = team_b_id and t.captain_id = auth.uid()
+      )
     )
   );
--- 约战删除：本队队长可删除本队参与的待开赛比赛（已开赛/已结束的不允许删）
+-- 约战删除：本队队长可删除本队参与的待开赛比赛（已开赛/已结束的不允许删；账号需审核通过）
 drop policy if exists matches_team_delete on public.matches;
 create policy matches_team_delete on public.matches
   for delete using (
-    status = 'scheduled'
+    public.can_use_features()
+    and status = 'scheduled'
     and (
       public.is_admin()
       or exists (
@@ -652,56 +656,66 @@ create policy match_maps_select on public.match_maps
 drop policy if exists match_maps_admin_all on public.match_maps;
 create policy match_maps_admin_all on public.match_maps
   for all using (public.is_admin()) with check (public.is_admin());
--- 比分录入：参赛队伍队长可更新自己参与的比赛比分/地图/时间（管理员全量见 matches_admin_all）
+-- 比分录入：参赛队伍队长可更新自己参与的比赛比分/地图/时间（管理员全量见 matches_admin_all；账号需审核通过）
 drop policy if exists matches_captain_update on public.matches;
 create policy matches_captain_update on public.matches
   for update using (
-    exists (
+    public.can_use_features()
+    and exists (
       select 1 from public.teams t
       where (t.id = team_a_id or t.id = team_b_id) and t.captain_id = auth.uid()
     )
   ) with check (
-    exists (
+    public.can_use_features()
+    and exists (
       select 1 from public.teams t
       where (t.id = team_a_id or t.id = team_b_id) and t.captain_id = auth.uid()
     )
   );
--- 逐图比分：参赛队伍队长可管理自己参与比赛的 match_maps（管理员全量见 match_maps_admin_all）
+-- 逐图比分：参赛队伍队长可管理自己参与比赛的 match_maps（管理员全量见 match_maps_admin_all；账号需审核通过）
 drop policy if exists match_maps_captain_all on public.match_maps;
 create policy match_maps_captain_all on public.match_maps
   for all using (
-    exists (
+    public.can_use_features()
+    and exists (
       select 1 from public.matches m
       join public.teams t on t.id in (m.team_a_id, m.team_b_id)
       where m.id = match_id and t.captain_id = auth.uid()
     )
   ) with check (
-    exists (
+    public.can_use_features()
+    and exists (
       select 1 from public.matches m
       join public.teams t on t.id in (m.team_a_id, m.team_b_id)
       where m.id = match_id and t.captain_id = auth.uid()
     )
   );
 
--- 比赛队员数据：公开可读（个人数据排行自动聚合），管理员/参赛队队长增删改
+-- 比赛队员数据：公开可读（个人数据排行自动聚合），管理员/参赛队队长增删改（账号需审核通过）
 drop policy if exists match_player_stats_select on public.match_player_stats;
 create policy match_player_stats_select on public.match_player_stats
   for select using (true);
 drop policy if exists match_player_stats_write on public.match_player_stats;
 create policy match_player_stats_write on public.match_player_stats
   for all using (
-    public.is_admin()
-    or exists (
-      select 1 from public.matches m
-      join public.teams t on t.id in (m.team_a_id, m.team_b_id)
-      where m.id = match_id and t.captain_id = auth.uid()
+    public.can_use_features()
+    and (
+      public.is_admin()
+      or exists (
+        select 1 from public.matches m
+        join public.teams t on t.id in (m.team_a_id, m.team_b_id)
+        where m.id = match_id and t.captain_id = auth.uid()
+      )
     )
   ) with check (
-    public.is_admin()
-    or exists (
-      select 1 from public.matches m
-      join public.teams t on t.id in (m.team_a_id, m.team_b_id)
-      where m.id = match_id and t.captain_id = auth.uid()
+    public.can_use_features()
+    and (
+      public.is_admin()
+      or exists (
+        select 1 from public.matches m
+        join public.teams t on t.id in (m.team_a_id, m.team_b_id)
+        where m.id = match_id and t.captain_id = auth.uid()
+      )
     )
   );
 
@@ -895,6 +909,41 @@ create table if not exists public.bet_records (
 create index if not exists bet_records_user_idx on public.bet_records (user_id);
 create index if not exists bet_records_poll_idx on public.bet_records (poll_id);
 
+-- 功能使用资格：管理员或账号已通过审核（供竞猜/约战/比分/队员数据等写操作统一拦截待审核账号，防绕过前端）
+create or replace function public.can_use_features()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select public.is_admin()
+    or exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.account_status = 'approved'
+    );
+$$;
+
+-- 删除竞猜 RPC：先退还该竞猜所有未结算投注的积分，再删除竞猜（投注记录级联删除），避免用户积分白扣
+create or replace function public.delete_bet_poll(p_poll_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_poll public.bet_polls%rowtype;
+  v_rec record;
+begin
+  if not public.is_admin() then raise exception '仅管理员可删除竞猜'; end if;
+  select * into v_poll from public.bet_polls where id = p_poll_id;
+  if v_poll.id is null then raise exception '竞猜项不存在'; end if;
+  for v_rec in
+    select * from public.bet_records where poll_id = p_poll_id and status = 'pending'
+  loop
+    update public.bet_accounts
+    set points = points + v_rec.stake, updated_at = now()
+    where user_id = v_rec.user_id;
+  end loop;
+  delete from public.bet_polls where id = p_poll_id;
+end;
+$$;
+
 -- 投注 RPC：原子扣减积分并写入投注记录（security definer，绕过 RLS）
 create or replace function public.place_bet(p_poll_id uuid, p_option_id text, p_stake int)
 returns void
@@ -908,6 +957,7 @@ declare
   v_acc public.bet_accounts%rowtype;
 begin
   if v_user is null then raise exception '请先登录'; end if;
+  if not public.can_use_features() then raise exception '账号需审核通过后才能参与竞猜'; end if;
   if p_stake < 1 then raise exception '投注积分至少为 1'; end if;
   select * into v_poll from public.bet_polls where id = p_poll_id;
   if v_poll.id is null then raise exception '竞猜项不存在'; end if;
@@ -943,6 +993,8 @@ as $$
 declare
   v_poll public.bet_polls%rowtype;
   v_rec record;
+  v_match public.matches%rowtype;
+  v_win_opt jsonb;
 begin
   select * into v_poll from public.bet_polls where id = p_poll_id;
   if v_poll.id is null then raise exception '竞猜项不存在'; end if;
@@ -950,6 +1002,22 @@ begin
   if not exists (
     select 1 from jsonb_array_elements(v_poll.options) o where o ->> 'id' = p_winning_option_id
   ) then raise exception '中奖选项不存在'; end if;
+  -- 比赛胜者竞猜：校验与实际赛果一致（关联比赛已被删除的孤儿竞猜放行，由管理员兜底）
+  if v_poll.kind = 'match_winner' and v_poll.match_id is not null then
+    select * into v_match from public.matches where id = v_poll.match_id;
+    if v_match.id is not null and v_match.status = 'scheduled' then
+      raise exception '比赛尚未结束，请先录入比分';
+    end if;
+    if v_match.id is not null and v_match.status = 'completed' and v_match.winner_id is not null then
+      select o into v_win_opt
+      from jsonb_array_elements(v_poll.options) o
+      where o ->> 'id' = p_winning_option_id
+      limit 1;
+      if (v_win_opt ->> 'team_id')::uuid is distinct from v_match.winner_id then
+        raise exception '所选胜者与实际比赛结果不符，请核对后结算';
+      end if;
+    end if;
+  end if;
   update public.bet_polls
   set status = 'settled', winning_option_id = p_winning_option_id
   where id = p_poll_id;
@@ -992,6 +1060,7 @@ grant select on public.bet_polls, public.bet_accounts, public.bet_records to aut
 grant insert, update, delete on public.bet_polls to authenticated;
 grant execute on function public.place_bet(uuid, text, int) to authenticated;
 grant execute on function public.settle_bet(uuid, text) to authenticated;
+grant execute on function public.delete_bet_poll(uuid) to authenticated;
 
 -- ============================================================
 -- 13. 比赛胜者竞猜自动生成（可重复执行）
@@ -1124,6 +1193,57 @@ create trigger trg_match_auto_bet
 after insert on public.matches
 for each row
 execute function public.auto_create_match_bet();
+
+-- 3.5) 删除比赛联动：删除关联的比赛胜者竞猜前先退还未结算投注积分，避免积分白扣与孤儿竞猜残留
+create or replace function public.cleanup_match_bets()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_poll public.bet_polls%rowtype;
+  v_rec record;
+begin
+  for v_poll in
+    select * from public.bet_polls where match_id = old.id and kind = 'match_winner'
+  loop
+    for v_rec in
+      select * from public.bet_records where poll_id = v_poll.id and status = 'pending'
+    loop
+      update public.bet_accounts
+      set points = points + v_rec.stake, updated_at = now()
+      where user_id = v_rec.user_id;
+    end loop;
+    delete from public.bet_polls where id = v_poll.id;
+  end loop;
+  return old;
+end;
+$$;
+
+drop trigger if exists trg_cleanup_match_bets on public.matches;
+create trigger trg_cleanup_match_bets
+before delete on public.matches
+for each row
+execute function public.cleanup_match_bets();
+
+-- 3.6) 比赛完成/取消联动：自动将关联的比赛胜者竞猜截止（closed），防止赛果已出仍可投注；结算由管理员手动完成
+create or replace function public.close_match_bets()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  update public.bet_polls
+  set status = 'closed'
+  where match_id = new.id and kind = 'match_winner' and status = 'open';
+  return new;
+end;
+$$;
+
+drop trigger if exists trg_close_match_bets on public.matches;
+create trigger trg_close_match_bets
+after update on public.matches
+for each row
+when (old.status = 'scheduled' and new.status in ('completed', 'cancelled'))
+execute function public.close_match_bets();
 
 -- 4) 回填：为已存在但尚未生成竞猜的待赛对阵补生成（可重复执行）
 insert into public.bet_polls (event_id, title, kind, options, match_id)

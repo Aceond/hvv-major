@@ -263,7 +263,7 @@ async function confirmSettle() {
 async function remove(poll: BetPoll) {
   try {
     await ElMessageBox.confirm(
-      `确认删除「${poll.title}」吗？该竞猜的全部投注记录将一并删除，且无法恢复。`,
+      `确认删除「${poll.title}」吗？未结算的投注将自动退回积分，已结算投注不受影响；操作无法恢复。`,
       '删除竞猜',
       { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' },
     )

@@ -309,7 +309,7 @@ export async function updatePoll(id: string, patch: Partial<BetPoll>) {
   if (error) throw new Error(error.message)
 }
 
-/** 删除竞猜项（其投注记录级联删除） */
+/** 删除竞猜项（真实环境走 delete_bet_poll RPC：先退还未结算投注积分，再删除，避免用户积分白扣） */
 export async function deletePoll(id: string) {
   if (!isSupabaseConfigured || !supabase) {
     const i = mockPolls.findIndex((x) => x.id === id)
@@ -319,7 +319,7 @@ export async function deletePoll(id: string) {
     }
     return
   }
-  const { error } = await supabase.from('bet_polls').delete().eq('id', id)
+  const { error } = await supabase.rpc('delete_bet_poll', { p_poll_id: id })
   if (error) throw new Error(error.message)
 }
 
