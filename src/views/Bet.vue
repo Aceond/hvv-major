@@ -45,6 +45,30 @@ const recordByPoll = computed(() => {
 const openPolls = computed(() => polls.value.filter((p) => p.status === 'open'))
 const settledPolls = computed(() => polls.value.filter((p) => p.status === 'settled'))
 
+/** 比赛胜者竞猜（进行中），按轮次分组（无比赛关联的手动发布归入 round 0「其他」） */
+const matchWinnerRounds = computed(() => {
+  const map = new Map<number, BetPoll[]>()
+  for (const p of openPolls.value) {
+    if (p.kind !== 'match_winner') continue
+    const r = matchOf(p)?.round_number ?? 0
+    const list = map.get(r) ?? []
+    list.push(p)
+    map.set(r, list)
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([round, polls]) => ({ round, polls }))
+})
+
+/** 进行中的非比赛胜者竞猜（组别冠军 / 阶段晋级 / 自定义） */
+const nonMatchPolls = computed(() => openPolls.value.filter((p) => p.kind !== 'match_winner'))
+
+/** 比赛胜者卡片：点击队伍行投注该队（已投注则忽略） */
+function betMatchOption(poll: BetPoll, opt: BetPoll['options'][number] | undefined) {
+  if (!opt || recordByPoll.get(poll.id)) return
+  doBet(poll, opt)
+}
+
 /** 组别冠军竞猜的投注选择（poll_id -> option_id）：下拉选择预测的冠军队伍 */
 const champChoice = ref<Record<string, string>>({})
 
@@ -214,7 +238,52 @@ onMounted(async () => {
         <el-card class="card">
           <template #header><span class="card-title">进行中的竞猜</span></template>
           <el-empty v-if="openPolls.length === 0" description="该赛事暂无进行中的竞猜" :image-size="60" />
-          <div v-for="poll in openPolls" :key="poll.id" class="poll-block">
+
+          <!-- 比赛胜者竞猜：按轮次紧凑对阵图，点击队伍行投注该队 -->
+          <div v-if="matchWinnerRounds.length" class="match-winner-block">
+            <div v-for="g in matchWinnerRounds" :key="g.round" class="mw-round">
+              <div class="mw-round-head">
+                <span class="mw-round-name">{{ g.round === 0 ? '其他' : `第 ${g.round} 轮` }}</span>
+                <span class="mw-round-count">{{ g.polls.length }} 场</span>
+              </div>
+              <div class="mw-grid">
+                <div
+                  v-for="poll in g.polls"
+                  :key="poll.id"
+                  class="mw-card"
+                  :class="{ bet: !!recordByPoll.get(poll.id) }"
+                >
+                  <div class="mw-meta">
+                    <span v-if="matchOf(poll)?.stage_name">{{ matchOf(poll)?.stage_name }}</span>
+                    <span v-if="matchOf(poll)?.group_name">{{ matchOf(poll)?.group_name }}</span>
+                    <span v-if="matchOf(poll)?.scheduled_at">{{ formatDateTime(matchOf(poll)?.scheduled_at) }}</span>
+                  </div>
+                  <div
+                    class="mw-team"
+                    :class="{ my: recordByPoll.get(poll.id)?.option_id === poll.options[0]?.id }"
+                    @click="betMatchOption(poll, poll.options[0])"
+                  >
+                    <span class="mw-team-name">{{ matchOf(poll)?.team_a_name || poll.options[0]?.label || '-' }}</span>
+                    <span class="mw-odds">@{{ poll.options[0]?.odds ?? '-' }}</span>
+                  </div>
+                  <div
+                    class="mw-team"
+                    :class="{ my: recordByPoll.get(poll.id)?.option_id === poll.options[1]?.id }"
+                    @click="betMatchOption(poll, poll.options[1])"
+                  >
+                    <span class="mw-team-name">{{ matchOf(poll)?.team_b_name || poll.options[1]?.label || '-' }}</span>
+                    <span class="mw-odds">@{{ poll.options[1]?.odds ?? '-' }}</span>
+                  </div>
+                  <div v-if="recordByPoll.get(poll.id)" class="mw-mybet">
+                    已投注：{{ recordByPoll.get(poll.id)?.option_label }}（{{ recordByPoll.get(poll.id)?.stake }} 分）
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 组别冠军 / 阶段晋级 / 自定义竞猜 -->
+          <div v-for="poll in nonMatchPolls" :key="poll.id" class="poll-block">
             <div class="poll-head">
               <span class="poll-title">{{ poll.title }}</span>
               <el-tag size="small" type="warning" effect="plain">{{ kindLabel(poll.kind) }}</el-tag>
@@ -248,51 +317,6 @@ onMounted(async () => {
               </div>
               <div v-if="recordByPoll.get(poll.id)" class="my-bet">
                 我的投注：{{ recordByPoll.get(poll.id)?.option_label }}（{{ recordByPoll.get(poll.id)?.stake }} 分 @{{ recordByPoll.get(poll.id)?.odds }}）
-              </div>
-            </template>
-
-            <!-- 比赛胜者：对阵一行（参考赛程页格式，附比赛信息） -->
-            <template v-else-if="poll.kind === 'match_winner'">
-              <div class="match-bet">
-                <div class="match-line">
-                  <div class="side">
-                    <span class="side-team">{{ matchOf(poll)?.team_a_name || poll.options[0]?.label || '-' }}</span>
-                    <el-tag size="small" type="danger" effect="plain">@{{ poll.options[0]?.odds ?? '-' }}</el-tag>
-                    <el-button
-                      size="small"
-                      type="primary"
-                      :loading="betting"
-                      :disabled="!!recordByPoll.get(poll.id)"
-                      @click="poll.options[0] && doBet(poll, poll.options[0])"
-                    >
-                      {{ recordByPoll.get(poll.id) ? '已投注' : '投注' }}
-                    </el-button>
-                  </div>
-                  <div class="middle">
-                    <span class="vs">VS</span>
-                    <div v-if="matchOf(poll)" class="match-meta">
-                      <span v-if="matchOf(poll)?.stage_name">{{ matchOf(poll)?.stage_name }}</span>
-                      <span v-if="matchOf(poll)?.group_name">{{ matchOf(poll)?.group_name }}</span>
-                      <span v-if="matchOf(poll)?.scheduled_at">{{ formatDateTime(matchOf(poll)?.scheduled_at) }}</span>
-                    </div>
-                  </div>
-                  <div class="side">
-                    <span class="side-team">{{ matchOf(poll)?.team_b_name || poll.options[1]?.label || '-' }}</span>
-                    <el-tag size="small" type="danger" effect="plain">@{{ poll.options[1]?.odds ?? '-' }}</el-tag>
-                    <el-button
-                      size="small"
-                      type="primary"
-                      :loading="betting"
-                      :disabled="!!recordByPoll.get(poll.id)"
-                      @click="poll.options[1] && doBet(poll, poll.options[1])"
-                    >
-                      {{ recordByPoll.get(poll.id) ? '已投注' : '投注' }}
-                    </el-button>
-                  </div>
-                </div>
-                <div v-if="recordByPoll.get(poll.id)" class="my-bet">
-                  我的投注：{{ recordByPoll.get(poll.id)?.option_label }}（{{ recordByPoll.get(poll.id)?.stake }} 分 @{{ recordByPoll.get(poll.id)?.odds }}）
-                </div>
               </div>
             </template>
 
@@ -528,6 +552,114 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* 比赛胜者竞猜：按轮次紧凑对阵图 */
+.match-winner-block {
+  margin-bottom: 6px;
+}
+
+.mw-round {
+  margin-bottom: 14px;
+}
+
+.mw-round-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.mw-round-name {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--cs2-text);
+}
+
+.mw-round-count {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
+}
+
+.mw-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 10px;
+}
+
+.mw-card {
+  padding: 10px 12px;
+  background: var(--cs2-panel);
+  border: 1px solid var(--cs2-border);
+  border-radius: 10px;
+}
+
+.mw-card.bet {
+  border-color: rgba(255, 176, 32, 0.5);
+}
+
+.mw-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  font-size: 11px;
+  color: var(--cs2-text-muted);
+  margin-bottom: 8px;
+}
+
+.mw-team {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--cs2-panel-2);
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.mw-team + .mw-team {
+  margin-top: 6px;
+}
+
+.mw-team:hover {
+  background: rgba(255, 176, 32, 0.12);
+}
+
+.mw-team.my {
+  outline: 1px solid #67c23a;
+  background: rgba(103, 194, 58, 0.08);
+}
+
+.mw-card.bet .mw-team {
+  cursor: not-allowed;
+}
+
+.mw-card.bet .mw-team:hover {
+  background: var(--cs2-panel-2);
+}
+
+.mw-team-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--cs2-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mw-odds {
+  font-size: 13px;
+  font-weight: 700;
+  color: #f56c6c;
+  flex-shrink: 0;
+}
+
+.mw-mybet {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--cs2-accent);
 }
 
 .match-line {
