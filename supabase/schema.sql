@@ -1021,6 +1021,47 @@ as $$
   where status = 'completed' and (team_a_id = p_team or team_b_id = p_team);
 $$;
 
+-- 2.5) 队伍综合强度（0~1）：胜率 50% + 净胜局 30% + 对手平均胜率 20%
+--      用于比赛胜者竞猜赔率，兼顾对手强弱与净胜分，避免只看胜率（与前端 bet.ts teamStrengthMap 一致）
+create or replace function public.team_strength(p_team uuid)
+returns numeric
+language plpgsql stable security definer set search_path = public
+as $$
+declare
+  v_win_rate numeric := 0;
+  v_net numeric := 0;
+  v_net_rate numeric := 0;
+  v_opp_rate numeric := 0;
+begin
+  select
+    case when count(*) = 0 then 0
+      else count(*) filter (
+        where (team_a_id = p_team and team_a_score > team_b_score)
+           or (team_b_id = p_team and team_b_score > team_a_score)
+      )::numeric / count(*)::numeric
+    end,
+    case when count(*) = 0 then 0
+      else avg(
+        case when team_a_id = p_team then team_a_score - team_b_score
+             else team_b_score - team_a_score end
+      )::numeric
+    end
+  into v_win_rate, v_net
+  from public.matches
+  where status = 'completed' and (team_a_id = p_team or team_b_id = p_team);
+  -- 场均净胜局映射到 0~1：场均净胜 6 局即满格（BO3 约 2:0，BO1 约 13:7）
+  v_net_rate := greatest(0, least(1, 0.5 + v_net / 12));
+  -- 对手平均胜率（对手强弱）
+  select coalesce(avg(public.team_win_rate(x.opp)), 0) into v_opp_rate
+  from (
+    select case when team_a_id = p_team then team_b_id else team_a_id end as opp
+    from public.matches
+    where status = 'completed' and (team_a_id = p_team or team_b_id = p_team)
+  ) x;
+  return round(0.5 * v_win_rate + 0.3 * v_net_rate + 0.2 * v_opp_rate, 4);
+end;
+$$;
+
 -- 3) 触发器：插入待赛对阵后自动生成竞猜（幂等，同场比赛不重复）
 create or replace function public.auto_create_match_bet()
 returns trigger
@@ -1046,8 +1087,8 @@ begin
   if v_event is null then
     return new;
   end if;
-  v_a_rate := public.team_win_rate(new.team_a_id);
-  v_b_rate := public.team_win_rate(new.team_b_id);
+  v_a_rate := public.team_strength(new.team_a_id);
+  v_b_rate := public.team_strength(new.team_b_id);
   v_a_odds := least(2, greatest(1.2, (greatest(v_a_rate, 0.001) + v_b_rate) / greatest(v_a_rate, 0.001)));
   v_b_odds := least(2, greatest(1.2, (greatest(v_b_rate, 0.001) + v_a_rate) / greatest(v_b_rate, 0.001)));
   select name into v_ta_name from public.teams where id = new.team_a_id;
@@ -1095,13 +1136,13 @@ select
       'id', gen_random_uuid()::text,
       'label', ta.name || ' 胜',
       'team_id', m.team_a_id,
-      'odds', round(least(2, greatest(1.2, (greatest(public.team_win_rate(m.team_a_id), 0.001) + public.team_win_rate(m.team_b_id)) / greatest(public.team_win_rate(m.team_a_id), 0.001))), 2)
+      'odds', round(least(2, greatest(1.2, (greatest(public.team_strength(m.team_a_id), 0.001) + public.team_strength(m.team_b_id)) / greatest(public.team_strength(m.team_a_id), 0.001))), 2)
     ),
     jsonb_build_object(
       'id', gen_random_uuid()::text,
       'label', tb.name || ' 胜',
       'team_id', m.team_b_id,
-      'odds', round(least(2, greatest(1.2, (greatest(public.team_win_rate(m.team_b_id), 0.001) + public.team_win_rate(m.team_a_id)) / greatest(public.team_win_rate(m.team_b_id), 0.001))), 2)
+      'odds', round(least(2, greatest(1.2, (greatest(public.team_strength(m.team_b_id), 0.001) + public.team_strength(m.team_a_id)) / greatest(public.team_strength(m.team_b_id), 0.001))), 2)
     )
   ),
   m.id

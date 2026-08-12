@@ -2,7 +2,6 @@
 // 真实环境：bet_polls / bet_accounts / bet_records 三表 + place_bet / settle_bet 两个 RPC（见 schema.sql 第 12 节）
 // 未配置 Supabase（演示模式）时读写内存 mock。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
-import { getTeamWinStats } from './stats'
 
 export type BetKind = 'group_champion' | 'match_winner' | 'stage_advance' | 'custom'
 export type BetPollStatus = 'open' | 'closed' | 'settled'
@@ -106,19 +105,93 @@ const mockPolls: BetPoll[] = [
 ]
 const mockRecords: BetRecord[] = []
 
-/** 按双方胜率生成比赛胜者赔率（系统自动；胜率高者赔率低） */
+/** 已完成比赛行（赔率/强度计算用） */
+interface CompletedRow {
+  team_a_id: string | null
+  team_b_id: string | null
+  team_a_score: number
+  team_b_score: number
+}
+
+async function loadCompletedMatches(): Promise<CompletedRow[]> {
+  if (!isSupabaseConfigured || !supabase) {
+    return mockMatches.filter((m) => m.status === 'completed')
+  }
+  const { data } = await supabase
+    .from('matches')
+    .select('team_a_id, team_b_id, team_a_score, team_b_score')
+    .eq('status', 'completed')
+  return ((data as CompletedRow[] | null) ?? []).filter(
+    (m) => m.team_a_id && m.team_b_id && m.team_a_id !== m.team_b_id,
+  )
+}
+
+/**
+ * 队伍综合强度（0~1）：胜率 50% + 净胜局 30% + 对手平均胜率 20%
+ * 与数据库 team_strength 函数保持一致（schema.sql 第 13 节），
+ * 兼顾对手强弱与净胜分，避免只看胜率。
+ */
+function teamStrengthMap(rows: CompletedRow[]): Map<string, number> {
+  const agg = new Map<string, { played: number; wins: number; net: number }>()
+  for (const m of rows) {
+    if (!m.team_a_id || !m.team_b_id || m.team_a_id === m.team_b_id) continue
+    const touch = (tid: string, win: boolean, diff: number) => {
+      const s = agg.get(tid) ?? { played: 0, wins: 0, net: 0 }
+      s.played++
+      if (win) s.wins++
+      s.net += diff
+      agg.set(tid, s)
+    }
+    touch(m.team_a_id, m.team_a_score > m.team_b_score, m.team_a_score - m.team_b_score)
+    touch(m.team_b_id, m.team_b_score > m.team_a_score, m.team_b_score - m.team_a_score)
+  }
+  const winRate = (tid: string) => {
+    const s = agg.get(tid)
+    return s && s.played > 0 ? s.wins / s.played : 0
+  }
+  const netRate = (tid: string) => {
+    const s = agg.get(tid)
+    if (!s || s.played === 0) return 0
+    return Math.max(0, Math.min(1, 0.5 + s.net / s.played / 12))
+  }
+  // 第二遍：对手平均胜率
+  const oppSum = new Map<string, { total: number; count: number }>()
+  for (const m of rows) {
+    if (!m.team_a_id || !m.team_b_id) continue
+    const touchOpp = (tid: string, opp: string) => {
+      const o = oppSum.get(tid) ?? { total: 0, count: 0 }
+      o.total += winRate(opp)
+      o.count++
+      oppSum.set(tid, o)
+    }
+    touchOpp(m.team_a_id, m.team_b_id)
+    touchOpp(m.team_b_id, m.team_a_id)
+  }
+  const oppRate = (tid: string) => {
+    const o = oppSum.get(tid)
+    return o && o.count > 0 ? o.total / o.count : 0
+  }
+  const out = new Map<string, number>()
+  for (const tid of agg.keys()) {
+    out.set(tid, Math.round((0.5 * winRate(tid) + 0.3 * netRate(tid) + 0.2 * oppRate(tid)) * 10000) / 10000)
+  }
+  return out
+}
+
+/** 按双方综合强度生成比赛胜者赔率（系统自动；强度高者赔率低），范围 1.2~2 */
 export async function computeMatchOdds(
   teamAId: string,
   teamBId: string,
 ): Promise<{ a: number; b: number }> {
-  const winStats = await getTeamWinStats()
-  const pa = (winStats[teamAId]?.win_rate ?? 0) / 100
-  const pb = (winStats[teamBId]?.win_rate ?? 0) / 100
+  const rows = await loadCompletedMatches()
+  const strengths = teamStrengthMap(rows)
+  const sa = strengths.get(teamAId) ?? 0
+  const sb = strengths.get(teamBId) ?? 0
   const r = (self: number, other: number) => {
     const s = Math.max(self, 0.001)
     return Math.min(2, Math.round(Math.max(1.2, (s + other) / s) * 100) / 100)
   }
-  return { a: r(pa, pb), b: r(pb, pa) }
+  return { a: r(sa, sb), b: r(sb, sa) }
 }
 
 /** 我的积分账户（未创建时返回初始 200） */
