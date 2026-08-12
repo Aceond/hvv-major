@@ -1112,3 +1112,208 @@ join public.teams tb on tb.id = m.team_b_id
 where m.status = 'scheduled'
   and not exists (select 1 from public.bet_polls bp where bp.match_id = m.id)
 on conflict (match_id) where match_id is not null do nothing;
+
+-- ============================================================
+-- 14. 论坛系统（可重复执行）
+--     版块 + 帖子 + 回帖；发帖/回帖仅限审核通过账号；管理员可置顶/加精/隐藏删除；
+--     点赞/收藏走 RPC 保证计数原子性。帖子为纯文字。
+-- ============================================================
+
+-- 发帖资格：账号已通过审核（account_status='approved'）或管理员
+create or replace function public.can_post_forum()
+returns boolean
+language sql stable security definer set search_path = public
+as $$
+  select public.is_admin()
+    or exists (
+      select 1 from public.profiles p
+      where p.id = auth.uid() and p.account_status = 'approved'
+    );
+$$;
+
+-- 版块
+create table if not exists public.forum_sections (
+  id uuid primary key default gen_random_uuid(),
+  name text not null,
+  description text,
+  sort_order int not null default 0,
+  post_count int not null default 0,
+  created_at timestamptz not null default now()
+);
+
+-- 帖子
+create table if not exists public.forum_posts (
+  id uuid primary key default gen_random_uuid(),
+  section_id uuid not null references public.forum_sections (id) on delete cascade,
+  author_id uuid not null references public.profiles (id) on delete cascade,
+  title text not null,
+  content text not null,
+  status text not null default 'visible'
+    check (status in ('visible', 'hidden')),
+  pinned boolean not null default false,   -- 置顶（管理员）
+  featured boolean not null default false, -- 加精（管理员）
+  like_count int not null default 0,
+  comment_count int not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists forum_posts_section_idx on public.forum_posts (section_id, created_at desc);
+create index if not exists forum_posts_pinned_idx on public.forum_posts (pinned desc, created_at desc);
+
+-- 回帖
+create table if not exists public.forum_comments (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.forum_posts (id) on delete cascade,
+  author_id uuid not null references public.profiles (id) on delete cascade,
+  content text not null,
+  status text not null default 'visible'
+    check (status in ('visible', 'hidden')),
+  created_at timestamptz not null default now()
+);
+create index if not exists forum_comments_post_idx on public.forum_comments (post_id, created_at);
+
+-- 点赞（一人一帖一次）
+create table if not exists public.forum_likes (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.forum_posts (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (post_id, user_id)
+);
+
+-- 收藏
+create table if not exists public.forum_favorites (
+  id uuid primary key default gen_random_uuid(),
+  post_id uuid not null references public.forum_posts (id) on delete cascade,
+  user_id uuid not null references public.profiles (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  unique (post_id, user_id)
+);
+
+-- 点赞 RPC：插入点赞并原子更新计数（重复点赞自动忽略）
+create or replace function public.forum_like(p_post_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if auth.uid() is null then raise exception '请先登录'; end if;
+  insert into public.forum_likes (post_id, user_id) values (p_post_id, auth.uid())
+  on conflict (post_id, user_id) do nothing;
+  update public.forum_posts set like_count = (
+    select count(*) from public.forum_likes where post_id = p_post_id
+  ) where id = p_post_id;
+end;
+$$;
+
+-- 取消点赞 RPC：删除点赞并原子更新计数
+create or replace function public.forum_unlike(p_post_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  delete from public.forum_likes where post_id = p_post_id and user_id = auth.uid();
+  update public.forum_posts set like_count = (
+    select count(*) from public.forum_likes where post_id = p_post_id
+  ) where id = p_post_id;
+end;
+$$;
+
+-- 收藏 / 取消收藏 RPC
+create or replace function public.forum_favorite(p_post_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if auth.uid() is null then raise exception '请先登录'; end if;
+  insert into public.forum_favorites (post_id, user_id) values (p_post_id, auth.uid())
+  on conflict (post_id, user_id) do nothing;
+end;
+$$;
+
+create or replace function public.forum_unfavorite(p_post_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  delete from public.forum_favorites where post_id = p_post_id and user_id = auth.uid();
+end;
+$$;
+
+-- 行级安全
+alter table public.forum_sections enable row level security;
+alter table public.forum_posts enable row level security;
+alter table public.forum_comments enable row level security;
+alter table public.forum_likes enable row level security;
+alter table public.forum_favorites enable row level security;
+
+-- 版块：公开可读，管理员管理
+drop policy if exists forum_sections_select on public.forum_sections;
+create policy forum_sections_select on public.forum_sections
+  for select using (true);
+drop policy if exists forum_sections_admin_all on public.forum_sections;
+create policy forum_sections_admin_all on public.forum_sections
+  for all using (public.is_admin()) with check (public.is_admin());
+
+-- 帖子：公开读可见帖；发帖需审核通过；管理员管理（置顶/加精/隐藏）
+drop policy if exists forum_posts_select on public.forum_posts;
+create policy forum_posts_select on public.forum_posts
+  for select using (status = 'visible' or public.is_admin());
+drop policy if exists forum_posts_insert on public.forum_posts;
+create policy forum_posts_insert on public.forum_posts
+  for insert with check (public.can_post_forum());
+drop policy if exists forum_posts_admin_all on public.forum_posts;
+create policy forum_posts_admin_all on public.forum_posts
+  for update using (public.is_admin()) with check (public.is_admin());
+drop policy if exists forum_posts_admin_delete on public.forum_posts;
+create policy forum_posts_admin_delete on public.forum_posts
+  for delete using (public.is_admin());
+
+-- 回帖：公开读可见回帖；回帖需审核通过；管理员可隐藏
+drop policy if exists forum_comments_select on public.forum_comments;
+create policy forum_comments_select on public.forum_comments
+  for select using (status = 'visible' or public.is_admin());
+drop policy if exists forum_comments_insert on public.forum_comments;
+create policy forum_comments_insert on public.forum_comments
+  for insert with check (public.can_post_forum());
+drop policy if exists forum_comments_admin_all on public.forum_comments;
+create policy forum_comments_admin_all on public.forum_comments
+  for update using (public.is_admin()) with check (public.is_admin());
+drop policy if exists forum_comments_admin_delete on public.forum_comments;
+create policy forum_comments_admin_delete on public.forum_comments
+  for delete using (public.is_admin());
+
+-- 点赞 / 收藏：本人可查自己记录；本人可增删；管理员全量
+drop policy if exists forum_likes_select on public.forum_likes;
+create policy forum_likes_select on public.forum_likes
+  for select using (auth.uid() = user_id or public.is_admin());
+drop policy if exists forum_likes_write on public.forum_likes;
+create policy forum_likes_write on public.forum_likes
+  for all using (auth.uid() = user_id or public.is_admin())
+  with check (auth.uid() = user_id or public.is_admin());
+drop policy if exists forum_favorites_select on public.forum_favorites;
+create policy forum_favorites_select on public.forum_favorites
+  for select using (auth.uid() = user_id or public.is_admin());
+drop policy if exists forum_favorites_write on public.forum_favorites;
+create policy forum_favorites_write on public.forum_favorites
+  for all using (auth.uid() = user_id or public.is_admin())
+  with check (auth.uid() = user_id or public.is_admin());
+
+-- 权限授予：论坛公开可读（游客也能浏览），发帖回帖走 RLS（需审核通过）
+grant select on public.forum_sections, public.forum_posts, public.forum_comments to anon, authenticated;
+grant insert on public.forum_posts, public.forum_comments to authenticated;
+grant select, insert, delete on public.forum_likes, public.forum_favorites to authenticated;
+grant execute on function public.forum_like(uuid) to authenticated;
+grant execute on function public.forum_unlike(uuid) to authenticated;
+grant execute on function public.forum_favorite(uuid) to authenticated;
+grant execute on function public.forum_unfavorite(uuid) to authenticated;
+
+-- 默认版块（幂等：已存在则跳过）
+insert into public.forum_sections (name, description, sort_order)
+select '赛事讨论', '赛程、比赛结果、赛事资讯讨论', 1
+where not exists (select 1 from public.forum_sections where name = '赛事讨论');
+insert into public.forum_sections (name, description, sort_order)
+select '战队交流', '战队招募、组队、队员交流', 2
+where not exists (select 1 from public.forum_sections where name = '战队交流');
+insert into public.forum_sections (name, description, sort_order)
+select '闲聊灌水', '日常闲聊、灌水区', 3
+where not exists (select 1 from public.forum_sections where name = '闲聊灌水');

@@ -82,6 +82,7 @@ async function signOut() {
         >
           竞猜
         </el-menu-item>
+        <el-menu-item index="/forum">论坛</el-menu-item>
       </el-menu>
 
       <div class="user-area">
@@ -174,6 +175,7 @@ async function signOut() {
         >
           竞猜
         </el-menu-item>
+        <el-menu-item index="/forum">论坛</el-menu-item>
         <el-menu-item v-if="auth.reviewBlocked" index="/review-status">账号审核状态</el-menu-item>
         <el-menu-item
           v-if="auth.isLoggedIn && !auth.isGuest && !auth.reviewBlocked"
