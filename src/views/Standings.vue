@@ -1,11 +1,14 @@
 <script setup lang="ts">
 import { onMounted, onUnmounted, ref } from 'vue'
-import type { Group, Stage, StandingsRow } from '@/api/types'
+import type { EventItem, Group, Stage, StandingsRow } from '@/api/types'
 import { STAGE_STATUS_LABEL } from '@/api/types'
 import { getStandings, listGroups, listStages, stageDisplayName, subscribeStandings } from '@/api/match'
+import { listEvents } from '@/api/event'
 
+const events = ref<EventItem[]>([])
 const stages = ref<Stage[]>([])
 const groups = ref<Group[]>([])
+const currentEventId = ref<string>('')
 const currentStage = ref<string>('')
 const currentGroup = ref<string>('')
 const rows = ref<StandingsRow[]>([])
@@ -13,8 +16,15 @@ const loading = ref(false)
 let unsubscribe: (() => void) | null = null
 
 onMounted(async () => {
-  stages.value = await listStages()
+  events.value = await listEvents()
+  // 当前赛事：进行中 > 报名中 > 最新一届（与赛程页一致）
+  const active =
+    events.value.find((e) => e.status === 'running') ??
+    events.value.find((e) => e.status === 'signup') ??
+    events.value[0]
+  currentEventId.value = active?.id ?? ''
   groups.value = await listGroups()
+  stages.value = await listStages(currentEventId.value || undefined)
   if (stages.value.length > 0) currentStage.value = stages.value[0].id
   await load()
   unsubscribe = subscribeStandings(load)
@@ -22,7 +32,19 @@ onMounted(async () => {
 
 onUnmounted(() => unsubscribe?.())
 
+async function onEventChange() {
+  currentStage.value = ''
+  currentGroup.value = ''
+  stages.value = await listStages(currentEventId.value || undefined)
+  if (stages.value.length > 0) currentStage.value = stages.value[0].id
+  await load()
+}
+
 async function load() {
+  if (!currentStage.value) {
+    rows.value = []
+    return
+  }
   loading.value = true
   try {
     rows.value = await getStandings(currentStage.value, currentGroup.value || undefined)
@@ -35,6 +57,22 @@ async function load() {
 <template>
   <div class="page-container">
     <h2 class="title">积分榜</h2>
+
+    <div class="event-bar">
+      <el-select
+        v-model="currentEventId"
+        class="event-select"
+        placeholder="选择赛事"
+        @change="onEventChange"
+      >
+        <el-option
+          v-for="e in events"
+          :key="e.id"
+          :label="`${e.name}${e.edition ? `（第 ${e.edition} 届）` : ''}`"
+          :value="e.id"
+        />
+      </el-select>
+    </div>
 
     <el-tabs v-model="currentStage" @tab-change="load">
       <el-tab-pane
@@ -88,6 +126,14 @@ async function load() {
 <style scoped>
 .title {
   margin: 0 0 16px;
+}
+
+.event-bar {
+  margin-bottom: 16px;
+}
+
+.event-select {
+  width: 220px;
 }
 
 .group-filter {
