@@ -48,7 +48,11 @@ async function load() {
   loading.value = true
   try {
     sections.value = await listForumSections()
-    if (!sections.value.some((s) => s.id === currentSection.value)) {
+    // 「全部」用空字符串表示，是合法选择；仅当选中了不存在的版块时才回退到第一个版块
+    if (
+      currentSection.value !== '' &&
+      !sections.value.some((s) => s.id === currentSection.value)
+    ) {
       currentSection.value = sections.value[0]?.id ?? ''
     }
     posts.value = await listForumPosts({
