@@ -1,18 +1,17 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useAuthStore } from '@/stores/auth'
-import type { EventItem, Group, PlayerStatRow } from '@/api/types'
+import type { EventItem, Group, PlayerStatRow, Team } from '@/api/types'
 import { listEvents } from '@/api/event'
 import { listGroups } from '@/api/match'
+import { listMyTeams } from '@/api/registration'
 import { getPlayerStatsByEvent } from '@/api/stats'
 
-const auth = useAuthStore()
-
-// ---------------- 战绩五维图 ----------------
+// ---------------- 战队五维图 ----------------
 const events = ref<EventItem[]>([])
 const groups = ref<Group[]>([])
+const myTeams = ref<Team[]>([])
 const radarEventId = ref('')
-const radarRange = ref('all') // all=全部选手；否则为组别 id（平均值的对比范围）
+const radarRange = ref('all') // all=全部队伍；否则为组别 id（队伍平均的对比范围）
 const eventStats = ref<PlayerStatRow[]>([])
 const radarLoading = ref(false)
 
@@ -50,33 +49,50 @@ const radarRows = computed(() => {
   return eventStats.value.filter((r) => (r.stage_group_id ?? r.group_id) === radarRange.value)
 })
 
-/** 当前登录选手在该赛事的统计行（每名选手一行） */
-const myRadarRow = computed(
-  () => eventStats.value.find((r) => r.player_id === auth.profile?.id) ?? null,
+/** 我所在的战队（当前赛事下；同一赛事正式队员一人一队，取第一支匹配的战队） */
+const myTeam = computed(
+  () => myTeams.value.find((t) => t.event_id === radarEventId.value) ?? null,
 )
+
+/** 我队队员的统计行（该赛事下 team_id 等于我队的所有选手行） */
+const myTeamRows = computed(() => {
+  const team = myTeam.value
+  if (!team) return []
+  return eventStats.value.filter((r) => r.team_id === team.id)
+})
 
 const radarRangeName = computed(() =>
   radarRange.value === 'all'
-    ? '全部选手'
+    ? '全部队伍'
     : (groups.value.find((g) => g.id === radarRange.value)?.name ?? '未分组'),
 )
 
-/** 我的数据所属组别（按数据/比赛组别判定，与平均值口径一致） */
-const myGroupName = computed(() => {
-  if (!myRadarRow.value) return ''
-  const gid = myRadarRow.value.stage_group_id ?? myRadarRow.value.group_id
-  return groups.value.find((g) => g.id === gid)?.name ?? ''
+/** 范围内按战队分组（剔除未入队），用于计算「所有队伍平均的平均值」 */
+const teamAvgRows = computed(() => {
+  const byTeam = new Map<string, PlayerStatRow[]>()
+  for (const r of radarRows.value) {
+    if (!r.team_id) continue
+    const list = byTeam.get(r.team_id)
+    if (list) list.push(r)
+    else byTeam.set(r.team_id, [r])
+  }
+  return [...byTeam.values()]
 })
 
-/** 五维数据：我的值 / 范围内平均 / 归一化比例（同一维用同一 max，保证两线同尺度） */
+/** 五维数据：我队平均 / 范围内各队平均再平均 / 归一化比例（同一维用同一 max，保证两线同尺度） */
 const radarData = computed(() => {
-  const rows = radarRows.value
-  const mine = myRadarRow.value
   return RADAR_DIMS.map((d) => {
-    const vals = rows.map((r) => dimValue(r, d.key))
-    const mineV = mine ? dimValue(mine, d.key) : 0
-    const avgV = vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : 0
-    const maxV = Math.max(...vals, mineV, 0.0001)
+    // 我队内平均
+    const myVals = myTeamRows.value.map((r) => dimValue(r, d.key))
+    const mineV = myVals.length ? myVals.reduce((a, b) => a + b, 0) / myVals.length : 0
+    // 每队先算队内平均，再对所有队伍的平均值求平均
+    const teamAvgs: number[] = []
+    for (const rows of teamAvgRows.value) {
+      const vals = rows.map((r) => dimValue(r, d.key))
+      teamAvgs.push(vals.reduce((a, b) => a + b, 0) / vals.length)
+    }
+    const avgV = teamAvgs.length ? teamAvgs.reduce((a, b) => a + b, 0) / teamAvgs.length : 0
+    const maxV = Math.max(mineV, avgV, 0.0001)
     return {
       key: d.key,
       label: d.label,
@@ -152,9 +168,10 @@ function cmpCls(mine: number, avg: number) {
 }
 
 onMounted(async () => {
-  const [evts, grps] = await Promise.all([listEvents(), listGroups()])
+  const [evts, grps, myT] = await Promise.all([listEvents(), listGroups(), listMyTeams()])
   events.value = evts
   groups.value = grps
+  myTeams.value = myT
   if (evts[0]) {
     radarEventId.value = evts[0].id
     await loadRadar()
@@ -166,7 +183,7 @@ onMounted(async () => {
   <el-card class="card">
     <template #header>
       <div class="radar-header">
-        <span class="card-title">战绩五维图</span>
+        <span class="card-title">战队五维图</span>
         <div class="radar-filters">
           <el-select
             v-model="radarEventId"
@@ -191,13 +208,13 @@ onMounted(async () => {
     </template>
 
     <div v-loading="radarLoading" class="radar-wrap">
-      <template v-if="myRadarRow && radarData.length">
+      <template v-if="myTeam && myTeamRows.length && radarData.length">
         <div class="radar-body">
           <svg
             :viewBox="`0 0 ${RADAR_SIZE} ${RADAR_SIZE}`"
             class="radar-svg"
             role="img"
-            aria-label="个人战绩五维图"
+            aria-label="战队五维图"
           >
             <polygon v-for="lvl in [1, 2, 3]" :key="lvl" :points="gridPoints(lvl / 3)" class="grid" />
             <line
@@ -240,15 +257,15 @@ onMounted(async () => {
           </svg>
           <div class="radar-side">
             <div class="radar-legend">
-              <span class="legend-item"><i class="swatch mine"></i>我的{{ myGroupName ? `（${myGroupName}）` : '' }}</span>
-              <span class="legend-item"><i class="swatch avg"></i>平均（{{ radarRangeName }}）</span>
+              <span class="legend-item"><i class="swatch mine"></i>我的战队{{ myTeam ? `（${myTeam.name}）` : '' }}</span>
+              <span class="legend-item"><i class="swatch avg"></i>队伍平均（{{ radarRangeName }}）</span>
             </div>
             <el-table :data="radarData" size="small" border class="radar-table">
               <el-table-column prop="label" label="维度" width="96" />
-              <el-table-column label="我的" width="96">
+              <el-table-column label="我队" width="96">
                 <template #default="{ row }">{{ fmtNum(row.mine) }}</template>
               </el-table-column>
-              <el-table-column label="平均" width="96">
+              <el-table-column label="队伍平均" width="96">
                 <template #default="{ row }">{{ fmtNum(row.avg) }}</template>
               </el-table-column>
               <el-table-column label="对比">
@@ -264,11 +281,20 @@ onMounted(async () => {
         </div>
       </template>
       <el-empty
-        v-else-if="radarEventId"
-        description="该赛事暂无你的个人统计数据（个人注册审核通过后自动生成，或由管理员在数据录入中维护）"
+        v-else-if="!radarEventId"
+        description="暂无赛事，请先在后台发布赛事"
         :image-size="60"
       />
-      <el-empty v-else description="暂无赛事，请先在后台发布赛事" :image-size="60" />
+      <el-empty
+        v-else-if="!myTeam"
+        description="该赛事下你尚未加入战队，暂无法对比战队平均"
+        :image-size="60"
+      />
+      <el-empty
+        v-else
+        description="该赛事暂无你战队的队员统计数据（队员个人注册审核通过后自动生成，或由管理员在数据录入中维护）"
+        :image-size="60"
+      />
     </div>
   </el-card>
 </template>
