@@ -327,6 +327,35 @@ export async function myForumMarks(): Promise<{ liked: Set<string>; favored: Set
   return { liked, favored }
 }
 
+/** 当前用户收藏的帖子列表（按收藏时间倒序） */
+export async function listFavoritedPosts(): Promise<ForumPost[]> {
+  if (!isSupabaseConfigured || !supabase) return []
+  const uid = await currentUserId()
+  if (!uid) return []
+  const { data: favs } = await supabase
+    .from('forum_favorites')
+    .select('post_id, created_at')
+    .eq('user_id', uid)
+    .order('created_at', { ascending: false })
+  const rows = (favs as Array<{ post_id: string; created_at: string }> | null) ?? []
+  if (rows.length === 0) return []
+  const ids = rows.map((f) => f.post_id)
+  const { data } = await supabase
+    .from('forum_posts')
+    .select('*, author:profiles!forum_posts_author_id_fkey(username, nickname), section:forum_sections!forum_posts_section_id_fkey(name)')
+    .in('id', ids)
+  const byId = new Map<string, ForumPost>()
+  for (const p of (data as ForumPost[]) ?? []) {
+    byId.set(p.id, {
+      ...p,
+      section_name: (p as unknown as { section?: { name: string } | null }).section?.name ?? null,
+      author: p.author ?? null,
+    })
+  }
+  // 按收藏时间倒序返回（跳过已被删除的帖子）
+  return rows.map((f) => byId.get(f.post_id)).filter((p): p is ForumPost => !!p)
+}
+
 /** 数据库错误消息转友好提示 */
 function friendlyError(msg: string): string {
   const m = msg.toLowerCase()

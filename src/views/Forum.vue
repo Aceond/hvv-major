@@ -7,6 +7,7 @@ import { formatDateTime } from '@/utils/format'
 import {
   createForumPost,
   deletePostAdmin,
+  listFavoritedPosts,
   listForumPosts,
   listForumSections,
   myForumMarks,
@@ -23,6 +24,7 @@ const posts = ref<ForumPost[]>([])
 const loading = ref(false)
 const currentSection = ref('')
 const keyword = ref('')
+const viewMode = ref<'list' | 'favorites'>('list')
 
 // 我是否已点赞 / 收藏（用于列表展示，不涉及操作则仅作备用）
 const likedSet = ref<Set<string>>(new Set())
@@ -55,10 +57,14 @@ async function load() {
     ) {
       currentSection.value = sections.value[0]?.id ?? ''
     }
-    posts.value = await listForumPosts({
-      sectionId: currentSection.value || undefined,
-      keyword: keyword.value || undefined,
-    })
+    if (viewMode.value === 'favorites') {
+      posts.value = await listFavoritedPosts()
+    } else {
+      posts.value = await listForumPosts({
+        sectionId: currentSection.value || undefined,
+        keyword: keyword.value || undefined,
+      })
+    }
     const marks = await myForumMarks()
     likedSet.value = marks.liked
     favoredSet.value = marks.favored
@@ -68,11 +74,25 @@ async function load() {
 }
 
 async function onSectionChange() {
+  viewMode.value = 'list'
   await load()
 }
 
 async function onSearch() {
   await load()
+}
+
+function toggleFavorites() {
+  if (viewMode.value === 'favorites') {
+    viewMode.value = 'list'
+  } else {
+    if (!auth.isLoggedIn) {
+      ElMessage.warning('请先登录后查看收藏')
+      return
+    }
+    viewMode.value = 'favorites'
+  }
+  load()
 }
 
 function openPost(p: ForumPost) {
@@ -181,11 +201,19 @@ onMounted(load)
         </el-radio-button>
       </el-radio-group>
       <div class="toolbar-right">
+        <el-button
+          :type="viewMode === 'favorites' ? 'primary' : ''"
+          plain
+          @click="toggleFavorites"
+        >
+          {{ viewMode === 'favorites' ? '返回列表' : '我的收藏' }}
+        </el-button>
         <el-input
           v-model="keyword"
           placeholder="搜索帖子标题 / 内容"
           clearable
           class="search-input"
+          :disabled="viewMode === 'favorites'"
           @keyup.enter="onSearch"
           @clear="onSearch"
         />
@@ -202,7 +230,10 @@ onMounted(load)
     />
 
     <div v-loading="loading" class="post-list">
-      <el-empty v-if="!loading && posts.length === 0" description="该版块暂无帖子，来发第一帖吧" />
+      <el-empty
+        v-if="!loading && posts.length === 0"
+        :description="viewMode === 'favorites' ? '还没有收藏的帖子' : '该版块暂无帖子，来发第一帖吧'"
+      />
       <div v-for="p in posts" :key="p.id" class="post-item" @click="openPost(p)">
         <div class="post-main">
           <div class="post-tags">
