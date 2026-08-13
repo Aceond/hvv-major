@@ -41,9 +41,9 @@ const canPostHint = computed(() => {
   return ''
 })
 
-/** 帖子作者显示名（昵称优先，其次用户名） */
+/** 帖子作者显示名（注册账号用户名） */
 function authorName(p: ForumPost): string {
-  return p.author?.nickname || p.author?.username || '匿名'
+  return p.author?.username || '匿名'
 }
 
 async function load() {

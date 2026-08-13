@@ -35,7 +35,7 @@ const commentText = ref('')
 const postId = computed(() => String(route.params.id ?? ''))
 
 function authorName(a?: { username: string | null; nickname: string | null } | null): string {
-  return a?.nickname || a?.username || '匿名'
+  return a?.username || '匿名'
 }
 
 async function load() {
