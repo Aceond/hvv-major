@@ -60,6 +60,14 @@ function statusLabel(s: string) {
   return s === 'approved' ? '已通过' : s === 'rejected' ? '已拒绝' : '待审核'
 }
 
+function memberName(m: TeamMember): string {
+  return m.nickname || m.pw_username || '未知选手'
+}
+
+function memberInitial(m: TeamMember): string {
+  return memberName(m).slice(0, 1)
+}
+
 async function load() {
   if (!auth.isLoggedIn) return
   loading.value = true
@@ -122,7 +130,7 @@ onMounted(async () => {
 
 <template>
   <div class="page-container">
-    <h2 class="title">我的战队</h2>
+    <h2 class="page-title">我的战队</h2>
 
     <el-alert
       v-if="!auth.isLoggedIn"
@@ -186,23 +194,46 @@ onMounted(async () => {
           </div>
 
           <template v-if="filteredTeams.length > 0">
-            <div v-for="t in filteredTeams" :key="t.id" class="team-block">
-              <div class="team-head">
-                <span class="team-name">{{ t.name }}</span>
-                <el-tag size="small" :type="myRoleIn(t) === '队长' ? 'danger' : 'info'" effect="plain">
-                  {{ myRoleIn(t) }}
-                </el-tag>
-                <el-tag size="small" :type="statusType(t.status)" effect="plain">
-                  {{ statusLabel(t.status) }}
-                </el-tag>
-                <el-tag size="small" effect="plain">{{ eventName(t.event_id) }}</el-tag>
-                <el-tag size="small" type="info" effect="plain">{{ groupName(t.group_id) }}</el-tag>
-                <span v-if="t.tag" class="team-tag">ID：{{ t.tag }}</span>
-                <span class="team-time">报名：{{ formatDateTime(t.created_at) }}</span>
+            <div v-for="t in filteredTeams" :key="t.id" class="team-card">
+              <div class="team-card-head">
+                <div class="team-identity">
+                  <span class="team-name">{{ t.name }}</span>
+                  <span v-if="t.tag" class="team-tag">#{{ t.tag }}</span>
+                </div>
+                <div class="team-badges">
+                  <el-tag size="small" :type="myRoleIn(t) === '队长' ? 'danger' : 'info'" effect="plain">
+                    {{ myRoleIn(t) }}
+                  </el-tag>
+                  <el-tag size="small" :type="statusType(t.status)" effect="plain">
+                    {{ statusLabel(t.status) }}
+                  </el-tag>
+                </div>
               </div>
+
+              <div class="team-meta">
+                <span class="meta-item">
+                  <span class="meta-label">赛事</span>
+                  <span class="meta-value">{{ eventName(t.event_id) }}</span>
+                </span>
+                <span class="meta-item">
+                  <span class="meta-label">组别</span>
+                  <span class="meta-value">{{ groupName(t.group_id) }}</span>
+                </span>
+                <span class="meta-item">
+                  <span class="meta-label">报名</span>
+                  <span class="meta-value">{{ formatDateTime(t.created_at) }}</span>
+                </span>
+              </div>
+
               <div class="roster">
-                <span v-for="m in rosters[t.id]" :key="m.id" class="roster-item">
-                  {{ m.nickname || m.pw_username || '未知选手' }}
+                <span
+                  v-for="m in rosters[t.id]"
+                  :key="m.id"
+                  class="roster-item"
+                  :class="{ captain: m.is_captain }"
+                >
+                  <span class="avatar">{{ memberInitial(m) }}</span>
+                  <span class="roster-name">{{ memberName(m) }}</span>
                   <el-tag v-if="m.is_captain" size="small" type="danger" effect="plain">队长</el-tag>
                   <el-tag v-else-if="m.status === 'benched'" size="small" type="info" effect="plain">替补</el-tag>
                 </span>
@@ -217,6 +248,7 @@ onMounted(async () => {
 
         <!-- 无战队：报名表单（逻辑与「战队报名」一致） -->
         <template v-else>
+          <div class="sec-title form-title">战队报名</div>
           <el-alert
             type="info"
             :closable="false"
@@ -256,10 +288,6 @@ onMounted(async () => {
 </template>
 
 <style scoped>
-.title {
-  margin: 0 0 16px;
-}
-
 .tip {
   margin-bottom: 16px;
 }
@@ -268,15 +296,11 @@ onMounted(async () => {
   margin-bottom: 24px;
 }
 
-.register-card {
-  max-width: 680px;
-}
-
 .filters-bar {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-bottom: 12px;
+  margin-bottom: 16px;
   flex-wrap: wrap;
 }
 
@@ -285,59 +309,171 @@ onMounted(async () => {
   color: var(--cs2-text-muted);
 }
 
-.team-block {
-  padding: 12px 0;
-  border-bottom: 1px solid var(--cs2-border);
+/* ---- 战队卡（斜切角战术风） ---- */
+.team-card {
+  position: relative;
+  padding: 20px 22px 18px;
+  margin-bottom: 16px;
+  background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
+  border: 1px solid var(--cs2-border);
+  clip-path: polygon(0 0, calc(100% - 12px) 0, 100% 12px, 100% 100%, 0 100%);
+  transition: border-color 0.25s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.team-block:last-child {
-  border-bottom: none;
+.team-card:last-child {
+  margin-bottom: 0;
 }
 
-.team-head {
+.team-card:hover {
+  border-color: var(--cs2-accent);
+}
+
+.team-card-head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
   flex-wrap: wrap;
-  gap: 8px;
-  margin-bottom: 8px;
+}
+
+.team-identity {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .team-name {
-  font-weight: 700;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
   color: var(--cs2-text);
-  margin-right: 4px;
 }
 
 .team-tag {
   font-size: 12px;
-  color: var(--cs2-text-muted);
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--cs2-accent);
+  opacity: 0.85;
 }
 
-.team-time {
-  font-size: 12px;
+.team-badges {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.team-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 22px;
+  margin: 12px 0 14px;
+}
+
+.meta-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.meta-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 1px;
   color: var(--cs2-text-muted);
-  margin-left: auto;
+  opacity: 0.75;
+}
+
+.meta-value {
+  color: var(--cs2-text);
 }
 
 .roster {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 8px;
 }
 
 .roster-item {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  font-size: 12px;
-  color: var(--cs2-text-regular, #c6ccd8);
-  padding: 2px 10px;
-  border-radius: 12px;
+  gap: 8px;
+  padding: 5px 12px 5px 6px;
   background: var(--cs2-panel-2);
+  border: 1px solid var(--cs2-border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--cs2-text);
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.roster-item:hover {
+  border-color: var(--cs2-border-strong);
+  transform: translateY(-1px);
+}
+
+.avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: var(--cs2-accent-soft);
+  color: var(--cs2-accent);
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.roster-item.captain {
+  border-color: rgba(255, 176, 32, 0.35);
+}
+
+.roster-item.captain .avatar {
+  background: var(--cs2-accent);
+  color: #1a1400;
+}
+
+.roster-name {
+  font-weight: 500;
 }
 
 .roster-empty {
-  font-size: 12px;
+  font-size: 13px;
   color: var(--cs2-text-muted);
+}
+
+.form-title {
+  margin-bottom: 12px;
+}
+
+.form {
+  max-width: 560px;
+}
+
+/* ---- 移动端 ---- */
+@media (max-width: 768px) {
+  .team-card {
+    padding: 16px 16px 14px;
+  }
+
+  .team-card-head {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .team-name {
+    font-size: 18px;
+  }
+
+  .team-meta {
+    gap: 6px 16px;
+  }
+
+  .form {
+    max-width: 100%;
+  }
 }
 </style>
