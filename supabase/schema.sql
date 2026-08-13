@@ -773,16 +773,6 @@ alter table public.stages add column if not exists event_id uuid references publ
 -- 赛程阶段关联组别（兼容旧库：每个组别的赛程单独管理，跨组/决赛阶段为空）
 alter table public.stages add column if not exists group_id uuid references public.groups (id);
 
--- 回填历史阶段的赛事归属：event_id 为空的阶段 → 进行中的赛事，无进行中则最新一届（幂等，可重复执行）
-update public.stages
-set event_id = (
-  select e.id
-  from public.events e
-  order by case when e.status = 'running' then 0 else 1 end, e.edition desc nulls last
-  limit 1
-)
-where event_id is null;
-
 -- events：公开可读（前台赛事入口），仅管理员写
 drop policy if exists events_select on public.events;
 create policy events_select on public.events
