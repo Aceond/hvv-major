@@ -264,14 +264,8 @@ export async function createForumComment(postId: string, content: string): Promi
     .select('*, author:profiles!forum_comments_author_id_fkey(username, nickname)')
     .single()
   if (error) throw new Error(friendlyError(error.message))
-  // 同步帖子回帖计数
-  const post = await getForumPost(postId)
-  if (post) {
-    await supabase
-      .from('forum_posts')
-      .update({ comment_count: (post.comment_count ?? 0) + 1, updated_at: new Date().toISOString() })
-      .eq('id', postId)
-  }
+  // 回帖计数由数据库触发器维护（trg_sync_comment_count），普通用户对 forum_posts 无 update 权限，
+  // 前端不再手动 +1，避免被 RLS 静默拦截导致计数恒为 0
   return data as ForumComment
 }
 

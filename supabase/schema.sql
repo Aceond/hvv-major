@@ -1338,6 +1338,32 @@ create table if not exists public.forum_comments (
 );
 create index if not exists forum_comments_post_idx on public.forum_comments (post_id, created_at);
 
+-- 回帖计数联动：新增/删除回帖时自动维护 forum_posts.comment_count（只计可见回帖），
+-- 普通用户对 forum_posts 无 update 权限，计数不能由前端维护，统一走触发器
+create or replace function public.sync_forum_comment_count()
+returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_post uuid;
+begin
+  v_post := coalesce(new.post_id, old.post_id);
+  if v_post is null then return null; end if;
+  update public.forum_posts
+  set comment_count = (
+    select count(*) from public.forum_comments fc
+    where fc.post_id = v_post and fc.status = 'visible'
+  ), updated_at = now()
+  where id = v_post;
+  return null;
+end;
+$$;
+drop trigger if exists trg_sync_comment_count on public.forum_comments;
+create trigger trg_sync_comment_count
+after insert or delete on public.forum_comments
+for each row
+execute function public.sync_forum_comment_count();
+
 -- 点赞（一人一帖一次）
 create table if not exists public.forum_likes (
   id uuid primary key default gen_random_uuid(),
