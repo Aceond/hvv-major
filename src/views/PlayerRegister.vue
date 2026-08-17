@@ -19,6 +19,7 @@ const form = reactive({
   pwUsername: '',
   displayName: '',
   highestRank: '',
+  highestRating: null as number | null,
   employmentStatus: 'employed' as EmploymentStatus,
   location: '',
   employeeNo: '',
@@ -165,6 +166,7 @@ async function submit() {
         employeeNo: form.employmentStatus === 'employed' ? form.employeeNo : null,
       },
       form.highestRank,
+      form.highestRating,
     )
     if (!app) {
       ElMessage.error('提交失败，请稍后重试')
@@ -192,6 +194,7 @@ onMounted(async () => {
     form.pwUsername = app.pw_username
     form.displayName = app.display_name ?? ''
     form.highestRank = app.highest_rank ?? ''
+    form.highestRating = app.highest_rating ?? null
     form.employmentStatus = app.employment_status ?? 'employed'
     form.location = app.location ?? ''
     form.employeeNo = app.employee_no ?? ''
@@ -310,6 +313,19 @@ onMounted(async () => {
             <el-option v-for="r in CS2_RANKS" :key="r" :label="r" :value="r" />
           </el-select>
           <div class="form-tip">自选的段位仅供管理员审核时参考，最终以管理员核验战绩截图后确认的为准</div>
+        </el-form-item>
+        <el-form-item label="最高Rating">
+          <el-input-number
+            v-model="form.highestRating"
+            :min="0"
+            :max="10"
+            :precision="2"
+            :step="0.1"
+            controls-position="right"
+            placeholder="最高段位时的最高 Rating"
+            style="width: 100%"
+          />
+          <div class="form-tip">填写达到最高段位时战绩中的最高 Rating（如 1.85），选填，供管理员审核参考</div>
         </el-form-item>
         <el-form-item label="赛季截图">
           <div class="upload-wrap">

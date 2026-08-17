@@ -53,6 +53,8 @@ alter table public.profiles add column if not exists account_status text not nul
 alter table public.profiles add column if not exists email text;
 -- 近 3 赛季最高段位（管理员审核选手注册时查看战绩截图后手动选择，记录在选手信息表）
 alter table public.profiles add column if not exists highest_rank text;
+-- 最高段位时的最高 Rating（选手注册自选、管理员审核时确认）
+alter table public.profiles add column if not exists highest_rating numeric;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -114,6 +116,8 @@ alter table public.player_applications add column if not exists location text;
 alter table public.player_applications add column if not exists employee_no text;
 -- 近 3 赛季最高段位（管理员审核时选择，随申请一并记录）
 alter table public.player_applications add column if not exists highest_rank text;
+-- 最高段位时的最高 Rating（选手注册自选、管理员审核时确认）
+alter table public.player_applications add column if not exists highest_rating numeric;
 
 -- ============================================================
 -- 2. 组别（传奇组 / 大师组 / 挑战组，三个组别相互独立）
@@ -800,7 +804,7 @@ grant select on public.groups, public.teams, public.team_members,
   public.site_config, public.events
   to anon, authenticated;
 -- profiles 列级授权：匿名用户仅能读公开展示列（不含 email/username，防隐私泄露）；已登录用户保留完整列（后台审核需邮箱）
-grant select (id, username, nickname, pw_username, highest_rank, role) on public.profiles to anon;
+grant select (id, username, nickname, pw_username, highest_rank, highest_rating, role) on public.profiles to anon;
 grant select on public.profiles to authenticated;
 -- 审核通过时回填选手资料（pw_username/nickname/角色）需要 profiles 的 UPDATE 权限，否则选手池为空
 grant update on public.profiles to authenticated;

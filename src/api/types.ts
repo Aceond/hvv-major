@@ -51,6 +51,7 @@ export interface Profile {
   pw_username: string | null // 完美 ID：完美对战平台的用户名（后台按用户名记录）
   role: Role
   highest_rank?: string | null // 近 3 赛季最高段位（管理员审核时查看战绩截图后选择）
+  highest_rating?: number | null // 最高段位时的最高 Rating（选手注册自选、管理员审核时确认）
   created_at: string
 }
 
@@ -60,6 +61,7 @@ export interface PlayerItem {
   nickname: string | null
   pw_username: string | null
   highest_rank?: string | null // 近 3 赛季最高段位
+  highest_rating?: number | null // 最高段位时的最高 Rating
   in_team: boolean // 是否已加入某支战队
   team_id: string | null // 所属战队（未入队为 null）
 }
@@ -77,6 +79,7 @@ export interface PlayerApplication {
   location: string | null // 驻地（在职时必填）
   employee_no: string | null // 工号（在职时必填）
   highest_rank?: string | null // 近 3 赛季最高段位（管理员审核时选择）
+  highest_rating?: number | null // 最高段位时的最高 Rating（选手注册自选、管理员审核时确认）
   status: ApplicationStatus
   review_note: string | null
   created_at: string

@@ -14,6 +14,8 @@ const filter = ref<'all' | ApplicationStatus>('all')
 const currentEvent = ref('') // 赛事筛选：'' = 全部
 /** 待审核行管理员选定的近 3 赛季最高段位（key = 申请 id） */
 const rankDraft = ref<Record<string, string>>({})
+/** 待审核行管理员确认的最高段位 Rating（key = 申请 id） */
+const ratingDraft = ref<Record<string, number | null>>({})
 
 const filteredRows = computed(() =>
   rows.value.filter((a) =>
@@ -37,9 +39,14 @@ async function load() {
   try {
     rows.value = await listPlayerApplications(currentEvent.value || undefined)
     events.value = await listEvents()
-    // 重置段位草稿（以已记录段位回显）
+    // 重置段位/rating 草稿（以已记录值回显）
     rankDraft.value = Object.fromEntries(
       rows.value.filter((a) => a.status === 'pending' && a.highest_rank).map((a) => [a.id, a.highest_rank as string]),
+    )
+    ratingDraft.value = Object.fromEntries(
+      rows.value
+        .filter((a) => a.status === 'pending' && a.highest_rating != null)
+        .map((a) => [a.id, a.highest_rating as number]),
     )
   } finally {
     loading.value = false
@@ -54,9 +61,15 @@ async function decide(app: PlayerApplication, status: ApplicationStatus) {
   const action = status === 'approved' ? '通过' : '拒绝'
   const label = `${app.display_name || '未填写姓名'}（${app.pw_username}）`
   const rank = rankDraft.value[app.id]
+  const rating = ratingDraft.value[app.id]
+  const confirmLines = [
+    `确认${action}「${label}」的个人注册申请吗？通过后将进入选手池。`,
+  ]
+  if (rank) confirmLines.push(`近 3 赛季最高段位：${rank}`)
+  if (rating != null && !Number.isNaN(rating)) confirmLines.push(`最高段位 Rating：${rating}`)
   try {
     await ElMessageBox.confirm(
-      `确认${action}「${label}」的个人注册申请吗？通过后将进入选手池。${rank ? `\n近 3 赛季最高段位：${rank}` : ''}`,
+      confirmLines.join('\n'),
       '审核确认',
       { type: 'warning', confirmButtonText: action, cancelButtonText: '取消' },
     )
@@ -64,7 +77,7 @@ async function decide(app: PlayerApplication, status: ApplicationStatus) {
     return
   }
   try {
-    await reviewPlayerApplication(app.id, status, rank)
+    await reviewPlayerApplication(app.id, status, rank, rating)
   } catch (e: any) {
     ElMessage.error(e.message || '审核操作失败，请检查数据库权限')
     return
@@ -160,6 +173,26 @@ onMounted(load)
           </el-select>
           <el-tag v-else-if="row.highest_rank" size="small" type="warning" effect="plain">
             {{ row.highest_rank }}
+          </el-tag>
+          <span v-else class="no-rank">未记录</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="最高Rating" min-width="140">
+        <template #default="{ row }">
+          <el-input-number
+            v-if="row.status === 'pending'"
+            v-model="ratingDraft[row.id]"
+            :min="0"
+            :max="10"
+            :precision="2"
+            :step="0.1"
+            size="small"
+            controls-position="right"
+            placeholder="最高段位 Rating"
+            style="width: 120px"
+          />
+          <el-tag v-else-if="row.highest_rating != null" size="small" type="warning" effect="plain">
+            {{ row.highest_rating }}
           </el-tag>
           <span v-else class="no-rank">未记录</span>
         </template>

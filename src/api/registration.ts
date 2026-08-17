@@ -16,7 +16,7 @@ import { listStages } from './match'
 // 演示模式下的注册申请（内存存储，页面刷新后清空；真实环境存 player_applications 表）
 const demoApplications: PlayerApplication[] = []
 
-/** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，自选近 3 赛季最高段位（可选），选择在职状态（在职需填驻地和工号），上传最近 3-5 个赛季的截图，提交后由管理员审核 */
+/** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，自选近 3 赛季最高段位与最高 Rating（可选），选择在职状态（在职需填驻地和工号），上传最近 3-5 个赛季的截图，提交后由管理员审核 */
 export async function submitPlayerApplication(
   pwUsername: string,
   displayName: string,
@@ -28,6 +28,7 @@ export async function submitPlayerApplication(
     employeeNo: string | null
   },
   rank?: string,
+  highestRating?: number | null,
 ): Promise<PlayerApplication | null> {
   if (!pwUsername.trim()) {
     throw new Error('请填写完美 ID')
@@ -45,6 +46,7 @@ export async function submitPlayerApplication(
     throw new Error('在职状态请填写工号')
   }
   const rankVal = rank?.trim() || null
+  const ratingVal = highestRating == null || Number.isNaN(highestRating) ? null : Number(highestRating)
   if (!isSupabaseConfigured || !supabase) {
     const me = mockPlayers.find((p) => p.id === 'demo-player')
     const app: PlayerApplication = {
@@ -55,6 +57,7 @@ export async function submitPlayerApplication(
       display_name: displayName.trim(),
       nickname: me?.nickname ?? null,
       highest_rank: rankVal,
+      highest_rating: ratingVal,
       screenshots,
       employment_status: employment.status,
       location: employment.status === 'employed' ? employment.location?.trim() ?? null : null,
@@ -87,6 +90,7 @@ export async function submitPlayerApplication(
       pw_username: pwUsername,
       display_name: displayName.trim(),
       highest_rank: rankVal,
+      highest_rating: ratingVal,
       screenshots,
       employment_status: employment.status,
       location: employment.status === 'employed' ? employment.location?.trim() ?? null : null,
@@ -130,9 +134,15 @@ export async function listPlayerApplications(eventId?: string): Promise<PlayerAp
   return (data as PlayerApplication[]) ?? []
 }
 
-/** 审核个人注册申请：通过后写入选手资料（完美 ID / 昵称回填，角色置为 player）进入选手池；rank 为近 3 赛季最高段位（管理员查看战绩截图后选择） */
-export async function reviewPlayerApplication(id: string, status: ApplicationStatus, rank?: string) {
+/** 审核个人注册申请：通过后写入选手资料（完美 ID / 昵称回填，角色置为 player）进入选手池；rank 为近 3 赛季最高段位、rating 为最高段位时的最高 Rating（管理员查看战绩截图后确认） */
+export async function reviewPlayerApplication(
+  id: string,
+  status: ApplicationStatus,
+  rank?: string,
+  rating?: number | null,
+) {
   const rankVal = rank?.trim() || null
+  const ratingVal = rating == null || Number.isNaN(rating) ? null : Number(rating)
   if (!isSupabaseConfigured || !supabase) {
     const app = demoApplications.find((a) => a.id === id)
     if (!app) return
@@ -142,6 +152,11 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
       app.highest_rank = rankVal
       const me = mockPlayers.find((p) => p.id === app.profile_id)
       if (me) me.highest_rank = rankVal
+    }
+    if (ratingVal != null) {
+      app.highest_rating = ratingVal
+      const me = mockPlayers.find((p) => p.id === app.profile_id)
+      if (me) me.highest_rating = ratingVal
     }
     if (status === 'approved') {
       const me = mockPlayers.find((p) => p.id === app.profile_id)
@@ -173,13 +188,14 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
   }
   const { data: { user } } = await supabase.auth.getUser()
   if (!user) return
-  // 先更新申请审核状态（核心，保证审核一定生效）；管理员选定的段位一并记录到申请上
+  // 先更新申请审核状态（核心，保证审核一定生效）；管理员选定的段位/rating 一并记录到申请上
   const reviewPatch: Record<string, unknown> = {
     status,
     reviewed_at: new Date().toISOString(),
     reviewer_id: user.id,
   }
   if (rankVal) reviewPatch.highest_rank = rankVal
+  if (ratingVal != null) reviewPatch.highest_rating = ratingVal
   const { error } = await supabase
     .from('player_applications')
     .update(reviewPatch)
@@ -206,8 +222,9 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
         nickname: app.display_name ?? app.nickname ?? app.pw_username,
       }
       if (!keepRole) patch.role = 'player'
-      // 段位同步记录到选手信息表（profiles）
+      // 段位 / rating 同步记录到选手信息表（profiles）
       if (rankVal) patch.highest_rank = rankVal
+      if (ratingVal != null) patch.highest_rating = ratingVal
       const { error: profErr } = await supabase
         .from('profiles')
         .update(patch)
@@ -221,17 +238,20 @@ export async function reviewPlayerApplication(id: string, status: ApplicationSta
       // 初始化个人数据：在其报名赛事的各阶段补全 0 值统计行，使其直接显示在「个人数据 / 个人排行」列表
       await ensurePlayerStats(app.profile_id, app.event_id)
     }
-  } else if (rankVal) {
-    // 拒绝时也记录段位到选手信息表（段位为客观信息，下次报名无需重新判定）
+  } else if (rankVal || ratingVal != null) {
+    // 拒绝时也记录段位/rating 到选手信息表（为客观信息，下次报名无需重新判定）
     const { data: appData } = await supabase
       .from('player_applications')
       .select('profile_id')
       .eq('id', id)
       .single()
     if (appData?.profile_id) {
+      const patch: Record<string, unknown> = {}
+      if (rankVal) patch.highest_rank = rankVal
+      if (ratingVal != null) patch.highest_rating = ratingVal
       await supabase
         .from('profiles')
-        .update({ highest_rank: rankVal })
+        .update(patch)
         .eq('id', appData.profile_id)
     }
   }
@@ -273,7 +293,7 @@ export async function listPlayers(keyword?: string, eventId?: string | null): Pr
   }
   let query = supabase
     .from('profiles')
-    .select('id, nickname, pw_username, highest_rank, team_members(team_id, status, event_id)')
+    .select('id, nickname, pw_username, highest_rank, highest_rating, team_members(team_id, status, event_id)')
     .in('role', ['player', 'caster']) // 选手与解说均进入选手池（解说也可作为队员被选入战队）
     .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
@@ -287,6 +307,7 @@ export async function listPlayers(keyword?: string, eventId?: string | null): Pr
       nickname: p.nickname,
       pw_username: p.pw_username,
       highest_rank: p.highest_rank ?? null,
+      highest_rating: p.highest_rating ?? null,
       in_team: active.length > 0,
       team_id: active[0]?.team_id ?? null,
     }
