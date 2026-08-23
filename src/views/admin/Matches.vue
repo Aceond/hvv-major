@@ -307,10 +307,10 @@ const AUTO_MODE_LABEL: Record<string, string> = {
   'knockoutN+M': '淘汰赛（排位前 N + 突围胜者 M）',
 }
 
-/** 当前模式是否需要突围赛相关配置（K / 突围源阶段） */
-const modeNeedsBreakout = computed(
-  () => autoForm.mode === 'playoff' || autoForm.mode === 'knockoutN+M',
-)
+/** 突围赛模式：需要 K（突围参赛数）配置 */
+const modeNeedsK = computed(() => autoForm.mode === 'playoff')
+/** 淘汰赛（N+M）模式：需要 M（突围晋级数）配置 */
+const modeNeedsM = computed(() => autoForm.mode === 'knockoutN+M')
 
 function openAutoDialog() {
   autoForm.srcStageId = stages.value[0]?.id ?? ''
@@ -796,13 +796,21 @@ onMounted(load)
           </el-select>
           <div class="form-tip">统计大小分排名，作为突围赛/淘汰赛的晋级依据</div>
         </el-form-item>
+        <!-- 突围赛模式：生成目标 = 突围赛阶段 -->
+        <el-form-item v-if="autoForm.mode === 'playoff'" label="突围赛阶段">
+          <el-select v-model="autoForm.dstStageId" style="width: 100%">
+            <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
+          </el-select>
+          <div class="form-tip">突围赛对阵将生成到该阶段</div>
+        </el-form-item>
+        <!-- 淘汰赛（排位前 N + 突围胜者 M）：取突围胜者需指定突围赛阶段 -->
         <el-form-item v-if="autoForm.mode === 'knockoutN+M'" label="突围赛阶段">
           <el-select v-model="autoForm.breakoutStageId" style="width: 100%">
             <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
           </el-select>
           <div class="form-tip">从该阶段已结束的比赛取胜者（按突围赛大小分取前 M 名）进入淘汰赛</div>
         </el-form-item>
-        <el-form-item label="目标阶段">
+        <el-form-item v-if="autoForm.mode !== 'playoff'" label="目标阶段">
           <el-select v-model="autoForm.dstStageId" style="width: 100%">
             <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
           </el-select>
@@ -821,16 +829,14 @@ onMounted(load)
           <el-input-number v-model="autoForm.directN" :min="1" :max="32" style="width: 160px" />
           <span class="mode-hint" style="margin-left: 12px">排位赛直接晋级淘汰赛的名额（突围时指第 N 名之前的名次）</span>
         </el-form-item>
-        <template v-if="modeNeedsBreakout">
-          <el-form-item label="突围参赛数 K">
-            <el-input-number v-model="autoForm.breakoutK" :min="2" :max="32" style="width: 160px" />
-            <span class="mode-hint" style="margin-left: 12px">从排位赛第 N+1 名起取 K 支打突围赛（奇数时末位轮空）</span>
-          </el-form-item>
-          <el-form-item label="突围晋级数 M">
-            <el-input-number v-model="autoForm.breakoutM" :min="1" :max="16" style="width: 160px" />
-            <span class="mode-hint" style="margin-left: 12px">突围赛产生的胜者数（生成突围赛时 = 胜者名额；生成淘汰赛时 = 取突围胜者数）</span>
-          </el-form-item>
-        </template>
+        <el-form-item v-if="modeNeedsK" label="突围参赛数 K">
+          <el-input-number v-model="autoForm.breakoutK" :min="2" :max="32" style="width: 160px" />
+          <span class="mode-hint" style="margin-left: 12px">从排位赛第 N+1 名起取 K 支打突围赛（奇数时末位轮空）</span>
+        </el-form-item>
+        <el-form-item v-if="modeNeedsM" label="突围晋级数 M">
+          <el-input-number v-model="autoForm.breakoutM" :min="1" :max="16" style="width: 160px" />
+          <span class="mode-hint" style="margin-left: 12px">从突围赛结果中取前 M 名胜者进入淘汰赛</span>
+        </el-form-item>
         <el-form-item label="生成轮次">
           <el-input-number v-model="autoForm.roundNumber" :min="1" style="width: 160px" />
           <span class="mode-hint" style="margin-left: 12px">淘汰赛：1 = 1/4 决赛，2 = 半决赛，3 = 决赛（可分批生成不同轮次）</span>
