@@ -12,6 +12,7 @@ import { listGroups, listMatches, listStages, listAllStageMatches, listMatchMaps
 import type { MatchMapInput } from '@/api/match'
 import { listEvents } from '@/api/event'
 import { listTeams } from '@/api/admin'
+import { generatePlayoffNext } from '@/api/playoff'
 import { addMatchMedia, listAllMatchMedia, removeMatchMedia } from '@/api/media'
 import { addMatchCaster, listAllMatchCasters, removeMatchCaster } from '@/api/caster'
 import { useAuthStore } from '@/stores/auth'
@@ -344,6 +345,21 @@ async function saveScore() {
     ElMessage.success('比分已保存')
     scoreDialog.value = false
     await loadMatches()
+    // 淘汰赛：管理员在前台录入比分后也自动匹配下一轮（队长录入不创建赛事对阵，由管理员兜底）
+    if (auth.isAdmin && isKnockoutStage.value) {
+      try {
+        const fmt = stages.value.find((s) => s.id === m.stage_id)?.format
+        if (fmt === 'single_elim' || fmt === 'double_elim') {
+          const res = await generatePlayoffNext(m.stage_id, fmt)
+          if (res.created > 0) {
+            ElMessage.success(`已自动匹配 ${res.created} 场对阵`)
+            await loadMatches()
+          }
+        }
+      } catch {
+        // 自动匹配失败不阻塞比分保存
+      }
+    }
   } catch (e: any) {
     ElMessage.error(e.message || '保存失败，请检查权限')
   }
