@@ -189,10 +189,14 @@ create table if not exists public.stages (
   status text not null default 'upcoming'
     check (status in ('upcoming', 'running', 'ended')),
   sort_order int not null default 0,     -- 阶段顺序
+  final_best_of int,                     -- 总决赛赛制（淘汰赛总决赛用：3=BO3 / 5=BO5，空=默认 BO3）
   start_at timestamptz,
   end_at timestamptz,
   created_at timestamptz not null default now()
 );
+
+-- 兼容：老库补充总决赛赛制配置（淘汰赛总决赛自动生成时使用），可安全重复执行
+alter table public.stages add column if not exists final_best_of int;
 
 -- ============================================================
 -- 4. 对阵（比赛）

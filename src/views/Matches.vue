@@ -66,11 +66,12 @@ interface MapRow {
   a: number
   b: number
 }
-const mapRows = reactive<MapRow[]>([
-  { mapName: '', a: 0, b: 0 },
-  { mapName: '', a: 0, b: 0 },
-  { mapName: '', a: 0, b: 0 },
-])
+const mapRows = reactive<MapRow[]>([])
+/** 重置逐图比分行数（BO1=0 / BO3=3 / BO5=5） */
+function resetMapRows(n: number) {
+  mapRows.length = 0
+  for (let i = 0; i < n; i++) mapRows.push({ mapName: '', a: 0, b: 0 })
+}
 // 服役图池（Active Duty）7 张
 const MAP_OPTIONS = [
   '荒漠迷城', '炙热沙城Ⅱ', '炼狱小镇', '核子危机', '远古遗迹', '阿努比斯', '死城之谜',
@@ -299,7 +300,8 @@ function openScoreDialog(row: Match) {
   scoreForm.map = row.map ?? ''
   scoreForm.scheduledAt = row.scheduled_at ? row.scheduled_at.slice(0, 10) : ''
   const maps = mapsOf(row)
-  for (let i = 0; i < 3; i++) {
+  resetMapRows(row.best_of > 1 ? row.best_of : 0)
+  for (let i = 0; i < mapRows.length; i++) {
     mapRows[i].mapName = maps[i]?.map_name ?? ''
     mapRows[i].a = maps[i]?.team_a_score ?? 0
     mapRows[i].b = maps[i]?.team_b_score ?? 0

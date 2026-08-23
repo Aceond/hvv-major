@@ -46,11 +46,12 @@ interface MapRow {
   a: number
   b: number
 }
-const mapRows = reactive<MapRow[]>([
-  { mapName: '', a: 0, b: 0 },
-  { mapName: '', a: 0, b: 0 },
-  { mapName: '', a: 0, b: 0 },
-])
+const mapRows = reactive<MapRow[]>([])
+/** 重置逐图比分行数（BO1=0 / BO3=3 / BO5=5） */
+function resetMapRows(n: number) {
+  mapRows.length = 0
+  for (let i = 0; i < n; i++) mapRows.push({ mapName: '', a: 0, b: 0 })
+}
 
 // 服役图池（Active Duty）7 张
 const MAP_OPTIONS = [
@@ -65,9 +66,10 @@ const stageForm = reactive<{
   format: StageFormat
   status: StageStatus
   groupId: string
+  finalBestOf: number
   startAt: string
   endAt: string
-}>({ name: '', format: 'round_robin', status: 'upcoming', groupId: '', startAt: '', endAt: '' })
+}>({ name: '', format: 'round_robin', status: 'upcoming', groupId: '', finalBestOf: 3, startAt: '', endAt: '' })
 
 // 新建对阵
 const matchDialog = ref(false)
@@ -153,7 +155,8 @@ async function openScore(row: Match) {
   scoreForm.scheduledAt = row.scheduled_at?.slice(0, 10) ?? ''
   scoreBestOf.value = row.best_of
   const maps = await listMatchMaps([row.id])
-  for (let i = 0; i < 3; i++) {
+  resetMapRows(scoreBestOf.value > 1 ? scoreBestOf.value : 0)
+  for (let i = 0; i < mapRows.length; i++) {
     mapRows[i].mapName = maps[i]?.map_name ?? ''
     mapRows[i].a = maps[i]?.team_a_score ?? 0
     mapRows[i].b = maps[i]?.team_b_score ?? 0
@@ -225,6 +228,7 @@ function openStageDialog(stage?: Stage) {
   stageForm.format = stage?.format ?? 'round_robin'
   stageForm.status = stage?.status ?? 'upcoming'
   stageForm.groupId = stage?.group_id ?? currentGroupId.value
+  stageForm.finalBestOf = stage?.final_best_of === 5 ? 5 : 3
   stageForm.startAt = stage?.start_at ?? ''
   stageForm.endAt = stage?.end_at ?? ''
   stageDialog.value = true
@@ -240,6 +244,7 @@ async function saveStage() {
     format: stageForm.format,
     status: stageForm.status,
     group_id: stageForm.groupId || null,
+    final_best_of: stageForm.finalBestOf,
     start_at: stageForm.startAt || null,
     end_at: stageForm.endAt || null,
   }
@@ -356,6 +361,19 @@ async function saveRound(row: Match, round: number | undefined) {
     ElMessage.success(`已更新为第 ${r} 轮`)
   } catch (e: any) {
     ElMessage.error(e.message || '轮次更新失败')
+  }
+}
+
+/** 行内修改对阵赛制（BO1 / BO3 / BO5），总决赛可随时在 BO3 与 BO5 间调整 */
+async function saveBestOf(row: Match, bestOf: number | undefined) {
+  const v = bestOf === 5 ? 5 : bestOf === 1 ? 1 : 3
+  if (v === row.best_of) return
+  try {
+    await updateMatch(row.id, { best_of: v })
+    row.best_of = v
+    ElMessage.success(`赛制已更新为 BO${v}`)
+  } catch (e: any) {
+    ElMessage.error(e.message || '赛制更新失败')
   }
 }
 
@@ -788,8 +806,19 @@ onMounted(load)
               </div>
             </template>
           </el-table-column>
-          <el-table-column label="赛制" width="70">
-            <template #default="{ row }">BO{{ row.best_of }}</template>
+          <el-table-column label="赛制" width="92">
+            <template #default="{ row }">
+              <el-select
+                :model-value="row.best_of"
+                size="small"
+                style="width: 76px"
+                @change="(v: number | string | boolean | undefined) => saveBestOf(row, Number(v))"
+              >
+                <el-option :value="1" label="BO1" />
+                <el-option :value="3" label="BO3" />
+                <el-option :value="5" label="BO5" />
+              </el-select>
+            </template>
           </el-table-column>
           <el-table-column label="轮次" width="110">
             <template #default="{ row }">
@@ -898,6 +927,16 @@ onMounted(load)
             <el-option v-for="(label, value) in STAGE_FORMAT_LABEL" :key="value" :label="label" :value="value" />
           </el-select>
         </el-form-item>
+        <el-form-item
+          v-if="stageForm.format === 'single_elim' || stageForm.format === 'double_elim'"
+          label="总决赛赛制"
+        >
+          <el-select v-model="stageForm.finalBestOf" style="width: 100%">
+            <el-option :value="3" label="BO3" />
+            <el-option :value="5" label="BO5" />
+          </el-select>
+          <div class="form-tip">自动匹配总决赛时按此赛制生成；之后也可在对阵列表直接调整</div>
+        </el-form-item>
         <el-form-item label="状态">
           <el-select v-model="stageForm.status" style="width: 100%">
             <el-option label="未开始" value="upcoming" />
@@ -968,7 +1007,9 @@ onMounted(load)
           <el-radio-group v-model="matchForm.bestOf">
             <el-radio :value="1">BO1</el-radio>
             <el-radio :value="3">BO3</el-radio>
+            <el-radio :value="5">BO5</el-radio>
           </el-radio-group>
+          <span class="mode-hint" style="margin-left: 12px">总决赛建议 BO3 / BO5</span>
         </el-form-item>
         <el-form-item label="轮次">
           <el-input-number v-model="matchForm.roundNumber" :min="1" style="width: 160px" />

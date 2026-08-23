@@ -306,7 +306,7 @@ export const mockStages: Stage[] = [
   { id: 'stage-1', event_id: 'event-11', group_id: 'g1', name: '传奇组 · 小组循环赛', format: 'round_robin', status: 'running', sort_order: 1, start_at: '2026-08-01 10:00', end_at: '2026-08-07 22:00' },
   { id: 'stage-2', event_id: 'event-11', group_id: null, name: '总决赛 · 单败淘汰', format: 'single_elim', status: 'upcoming', sort_order: 2, start_at: '2026-08-15 13:00', end_at: '2026-08-16 20:00' },
   { id: 'stage-3', event_id: 'event-11', group_id: 'g2', name: '大师组 · 瑞士轮', format: 'swiss', status: 'running', sort_order: 3, start_at: '2026-08-10 10:00', end_at: '2026-08-12 22:00' },
-  { id: 'stage-4', event_id: 'event-11', group_id: 'g3', name: '挑战组 · 双败淘汰', format: 'double_elim', status: 'running', sort_order: 4, start_at: '2026-08-15 10:00', end_at: '2026-08-17 22:00' },
+  { id: 'stage-4', event_id: 'event-11', group_id: 'g3', name: '挑战组 · 双败淘汰', format: 'double_elim', status: 'running', sort_order: 4, final_best_of: 5, start_at: '2026-08-15 10:00', end_at: '2026-08-17 22:00' },
 ]
 
 // ---------------- 对阵（组内循环赛 + 跨组淘汰赛） ----------------

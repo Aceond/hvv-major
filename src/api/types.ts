@@ -125,6 +125,7 @@ export interface Stage {
   format: StageFormat
   status: StageStatus
   sort_order: number
+  final_best_of?: number | null // 总决赛赛制（淘汰赛总决赛：3=BO3 / 5=BO5，空=默认 BO3）
   start_at: string | null
   end_at: string | null
   group_name?: string | null // 联表展示：组别名称

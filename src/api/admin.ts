@@ -114,6 +114,7 @@ export async function createStage(stage: Partial<Stage>) {
       format: stage.format ?? 'round_robin',
       status: stage.status ?? 'upcoming',
       sort_order: stage.sort_order ?? mockStages.length + 1,
+      final_best_of: stage.final_best_of ?? 3,
       start_at: stage.start_at ?? null,
       end_at: stage.end_at ?? null,
     })
