@@ -356,7 +356,12 @@ const autoGroups = computed(() => {
     if (autoQualified.value.length)
       groups.push({ key: 'q', title: `排位赛直接晋级（前 ${N} 名）`, tag: '直接晋级', rows: autoQualified.value })
     if (autoBreakout.value.length)
-      groups.push({ key: 'b', title: `突围赛胜者晋级（前 ${M} 名）`, tag: '突围晋级', rows: autoBreakout.value })
+      groups.push({
+        key: 'b',
+        title: `突围赛胜者晋级（前 ${M} 名 · 按排位赛+突围赛合计大小分排序）`,
+        tag: '突围晋级',
+        rows: autoBreakout.value,
+      })
   }
   return groups
 })
@@ -376,17 +381,6 @@ function openAutoDialog() {
   autoDialog.value = true
 }
 
-/** 某阶段已结束比赛中的胜者（按比分判定，与赛程列表一致），按该阶段大小分排序 */
-function computeWinners(ms: Match[]): RankRow[] {
-  const ranks = computeRanks(ms)
-  const winnerIds = new Set(
-    ms
-      .filter((m) => m.status === 'completed' && m.team_a_score !== m.team_b_score)
-      .map((m) => (m.team_a_score > m.team_b_score ? m.team_a_id : m.team_b_id)),
-  )
-  return ranks.filter((r) => winnerIds.has(r.teamId))
-}
-
 /** 从某阶段已完成比赛统计每队大分（胜场）/ 小分（净胜局=得局-失局），按大分优先、小分其次排序 */
 function computeRanks(ms: Match[]): RankRow[] {
   const map = new Map<string, RankRow>()
@@ -403,6 +397,33 @@ function computeRanks(ms: Match[]): RankRow[] {
     touch(m.team_b_id, m.team_b_name, m.team_b_score, m.team_a_score, m.team_b_score > m.team_a_score)
   }
   return [...map.values()].sort((x, y) => y.wins - x.wins || y.net - x.net)
+}
+
+/**
+ * 突围赛胜者晋级名单（按比分判定胜者，与赛程列表一致）。
+ * 顺位规则：把每支突围胜者的「排位赛大小分」与「突围赛大小分」相加（大分=胜场合计，小分=净胜局合计），
+ * 只在突围晋级队伍之间按合计大小分排序（不改变排位赛直接晋级队伍的次序，排位赛第 N 名仍是第 N 位，
+ * 突围胜者排在 N 名之后，合计大分高者顺位靠前）。
+ */
+function breakoutAdvancers(qualRanks: RankRow[], breakoutMatches: Match[]): RankRow[] {
+  const winnerIds = new Set(
+    breakoutMatches
+      .filter((m) => m.status === 'completed' && m.team_a_score !== m.team_b_score)
+      .map((m) => (m.team_a_score > m.team_b_score ? m.team_a_id : m.team_b_id)),
+  )
+  const breakoutRanks = computeRanks(breakoutMatches)
+  return breakoutRanks
+    .filter((r) => winnerIds.has(r.teamId))
+    .map((w) => {
+      const q = qualRanks.find((x) => x.teamId === w.teamId)
+      return {
+        teamId: w.teamId,
+        teamName: w.teamName,
+        wins: (q?.wins ?? 0) + w.wins,
+        net: (q?.net ?? 0) + w.net,
+      }
+    })
+    .sort((a, b) => b.wins - a.wins || b.net - a.net)
 }
 
 /** 高低配：第 i 名 vs 倒数第 i 名（1vs8、2vs7…） */
@@ -441,7 +462,7 @@ async function previewAuto() {
     } else if (autoForm.mode === 'knockoutN') {
       autoQualified.value = ranks.slice(0, N)
     } else {
-      // 突围赛 + 排位赛生成淘汰赛：前 N 名 + 突围赛胜者 M
+      // 突围赛 + 排位赛生成淘汰赛：前 N 名 + 突围赛胜者 M（胜者按「排位赛+突围赛」合计大小分排序）
       if (!autoForm.breakoutStageId) {
         ElMessage.warning('请选择突围赛阶段')
         return
@@ -452,7 +473,7 @@ async function previewAuto() {
       }
       const pm = await listMatches(autoForm.breakoutStageId)
       autoQualified.value = ranks.slice(0, N)
-      autoBreakout.value = computeWinners(pm).slice(0, M)
+      autoBreakout.value = breakoutAdvancers(ranks, pm).slice(0, M)
     }
     if (ranks.length === 0) {
       ElMessage.warning('该阶段暂无已结束的比赛，请先录入排位赛比分')
@@ -517,9 +538,9 @@ async function generateAuto() {
       return
     }
     const pm = await listMatches(autoForm.breakoutStageId)
-    const winners = computeWinners(pm)
-    if (winners.length < M) {
-      ElMessage.warning(`突围赛需产生至少 ${M} 个胜者（当前 ${winners.length} 个）`)
+    const advancers = breakoutAdvancers(ranks, pm)
+    if (advancers.length < M) {
+      ElMessage.warning(`突围赛需产生至少 ${M} 个胜者（当前 ${advancers.length} 个）`)
       return
     }
     if (ranks.length < N) {
@@ -532,7 +553,7 @@ async function generateAuto() {
     }
     pairs = seedPairs([
       ...ranks.slice(0, N).map((r) => r.teamId),
-      ...winners.slice(0, M).map((r) => r.teamId),
+      ...advancers.slice(0, M).map((r) => r.teamId),
     ])
   }
   for (const [a, b] of pairs) {
@@ -897,7 +918,7 @@ onMounted(load)
           <el-select v-model="autoForm.breakoutStageId" style="width: 100%">
             <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
           </el-select>
-          <div class="form-tip">从该阶段已结束的比赛取胜者（按突围赛大小分取前 M 名）进入淘汰赛</div>
+          <div class="form-tip">从该阶段已结束的比赛取胜者进入淘汰赛，顺位按「排位赛+突围赛」合计大小分排序取前 M 名</div>
         </el-form-item>
         <el-form-item label="目标阶段">
           <el-select v-model="autoForm.dstStageId" style="width: 100%">
@@ -925,7 +946,7 @@ onMounted(load)
         </el-form-item>
         <el-form-item v-if="modeNeedsM" label="突围晋级数 M">
           <el-input-number v-model="autoForm.breakoutM" :min="1" :max="16" style="width: 160px" />
-          <span class="mode-hint" style="margin-left: 12px">从突围赛结果中取前 M 名胜者进入淘汰赛</span>
+          <span class="mode-hint" style="margin-left: 12px">从突围赛结果中取前 M 名胜者进入淘汰赛（顺位按排位赛+突围赛合计大小分）</span>
         </el-form-item>
         <el-form-item label="生成轮次">
           <el-input-number v-model="autoForm.roundNumber" :min="1" style="width: 160px" />
