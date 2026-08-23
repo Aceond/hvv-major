@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, reactive, ref } from 'vue'
+import { computed, onMounted, onUnmounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { VideoCamera, Link, Microphone, ArrowDown } from '@element-plus/icons-vue'
 import SwissBracket from '@/components/SwissBracket.vue'
+import KnockoutBracket from '@/components/KnockoutBracket.vue'
 import MatchPlayerStatsDialog from '@/components/MatchPlayerStatsDialog.vue'
 import type { EventItem, Group, Match, MatchCaster, MatchMap, MatchMedia, MediaKind, Stage } from '@/api/types'
 import { MATCH_STATUS_LABEL, MEDIA_KIND_LABEL, STAGE_STATUS_LABEL } from '@/api/types'
@@ -79,6 +80,22 @@ const teamsCaptainMap = ref<Record<string, string>>({})
 const currentStageName = computed(
   () => stages.value.find((s) => s.id === currentStage.value)?.name ?? '',
 )
+
+/** 当前阶段是否单败/双败淘汰赛（淘汰赛用横向对阵图；全部比赛页签下不启用） */
+const isKnockoutStage = computed(() => {
+  if (currentStage.value === 'all') return false
+  const s = stages.value.find((x) => x.id === currentStage.value)
+  return s?.format === 'single_elim' || s?.format === 'double_elim'
+})
+
+// 淘汰赛阶段切页时默认切到「对阵图」视图（横向对阵图）
+watch(currentStage, (v) => {
+  if (v === 'all') return
+  const s = stages.value.find((x) => x.id === v)
+  if (s && (s.format === 'single_elim' || s.format === 'double_elim')) {
+    viewMode.value = 'bracket'
+  }
+})
 
 function mediaOf(match: Match): MatchMedia[] {
   return mediaMap.value[match.id] ?? []
@@ -469,9 +486,15 @@ async function removeCaster(item: MatchCaster) {
       </el-radio-group>
     </div>
 
-    <!-- 对阵图（瑞士轮样式） -->
+    <!-- 对阵图（单败/双败 = 横向对阵图；其余阶段 = 瑞士轮样式） -->
+    <KnockoutBracket
+      v-if="viewMode === 'bracket' && isKnockoutStage"
+      :matches="filteredMatches"
+      :stage-name="currentStageName"
+      class="bracket"
+    />
     <SwissBracket
-      v-if="viewMode === 'bracket'"
+      v-else-if="viewMode === 'bracket'"
       :matches="filteredMatches"
       :stage-name="currentStageName"
       class="bracket"

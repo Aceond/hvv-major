@@ -142,6 +142,18 @@ export async function deleteStage(id: string) {
   await supabase.from('stages').delete().eq('id', id)
 }
 
+/** 清空阶段下的全部对阵（保留阶段本身；match_maps / 队员统计 / 竞猜关联等随对阵级联处理，可安全重复执行） */
+export async function clearStageMatches(stageId: string) {
+  if (!isSupabaseConfigured || !supabase) {
+    for (let i = mockMatches.length - 1; i >= 0; i--) {
+      if (mockMatches[i].stage_id === stageId) mockMatches.splice(i, 1)
+    }
+    return
+  }
+  const { error } = await supabase.from('matches').delete().eq('stage_id', stageId)
+  if (error) throw error
+}
+
 /** 创建对阵（可指定组别） */
 export async function createMatch(m: Partial<Match>) {
   if (!isSupabaseConfigured || !supabase) {
