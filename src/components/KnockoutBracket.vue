@@ -15,14 +15,6 @@ const COL_W = 190
 const GAP = 56
 const HEADER_H = 34
 
-/** 按比分判定胜者（与赛程列表一致，避免历史 winner_id 不一致时标错） */
-function matchWinner(m: Match): string | null {
-  if (m.status !== 'completed') return null
-  if (m.team_a_score > m.team_b_score) return m.team_a_id
-  if (m.team_b_score > m.team_a_score) return m.team_b_id
-  return null
-}
-
 /** 轮次标签：从最后一轮反推 决赛 / 半决赛 / 1/4 决赛…，兜底显示第 N 轮 */
 function roundLabel(ci: number, total: number): string {
   const depth = total - ci // 1 = 决赛
@@ -34,10 +26,22 @@ function roundLabel(ci: number, total: number): string {
   return `第 ${ci + 1} 轮`
 }
 
+/** 对阵槽位：真实对阵（已创建）或占位（后续轮次未创建，显示待定） */
+interface Slot {
+  id: string
+  real: boolean
+  teamAName: string
+  teamBName: string
+  scoreA: number
+  scoreB: number
+  status: Match['status']
+  bestOf: number
+}
+
 interface RoundCol {
-  number: number
+  index: number
   label: string
-  nodes: Array<{ match: Match; col: number; row: number }>
+  slots: Array<{ slot: Slot; row: number }>
 }
 
 interface BracketResult {
@@ -49,6 +53,8 @@ interface BracketResult {
 
 const bracket = computed<BracketResult>(() => {
   const ms = props.matches
+  if (ms.length === 0) return { rounds: [], width: 0, height: 0, links: [] }
+
   // 按轮次分组（round_number 升序）
   const byRound = new Map<number, Match[]>()
   for (const m of ms) {
@@ -61,71 +67,100 @@ const bracket = computed<BracketResult>(() => {
     list.push(m)
   }
   const roundNums = [...byRound.keys()].sort((a, b) => a - b)
-  if (roundNums.length === 0) return { rounds: [], width: 0, height: 0, links: [] }
+  const counts = roundNums.map((rn) => byRound.get(rn)!.length)
 
-  const rowOf = new Map<string, number>() // matchId -> row
-  const rounds: RoundCol[] = []
-  let maxRow = 0
-
-  for (let ci = 0; ci < roundNums.length; ci++) {
-    const list = byRound.get(roundNums[ci])!
-    const prevList = ci > 0 ? byRound.get(roundNums[ci - 1])! : []
-    const nodes: RoundCol['nodes'] = []
-    let cursor = 0
-    for (const m of list) {
-      let row: number
-      if (ci === 0) {
-        row = cursor++
-      } else {
-        // 后一轮对阵对齐其前一轮的两个胜者（取中点）；无胜者信息（未录比分）时顺延排布
-        const feeders = prevList.filter(
-          (p) => matchWinner(p) === m.team_a_id || matchWinner(p) === m.team_b_id,
-        )
-        if (feeders.length >= 2) {
-          const r1 = rowOf.get(feeders[0].id) ?? 0
-          const r2 = rowOf.get(feeders[1].id) ?? 1
-          row = (r1 + r2) / 2
-        } else {
-          row = cursor++ * 2
-        }
-      }
-      nodes.push({ match: m, col: ci, row })
-      rowOf.set(m.id, row)
-      maxRow = Math.max(maxRow, row)
-    }
-    rounds.push({ number: roundNums[ci], label: roundLabel(ci, roundNums.length), nodes })
+  // 完整赛程骨架：以最宽的轮（第 1 轮）为底，每往后一轮对半收缩，一路补齐到「决赛」1 场。
+  // 尚未创建的对阵（后续轮次没提交）以占位槽显示「待定」。
+  const slotCounts: number[] = [counts[0]]
+  for (let i = 1; i < counts.length; i++) {
+    slotCounts.push(Math.max(Math.ceil(slotCounts[i - 1] / 2), counts[i]))
+  }
+  while (slotCounts[slotCounts.length - 1] > 1) {
+    slotCounts.push(Math.ceil(slotCounts[slotCounts.length - 1] / 2))
   }
 
-  // 连线：后一轮对阵 → 前一轮两个胜者
+  // 组装槽位：真实对阵按创建顺序填入，其余为占位
+  const rounds: RoundCol[] = slotCounts.map((count, ri) => {
+    const realMatches = ri < roundNums.length ? byRound.get(roundNums[ri])! : []
+    const slots: Array<{ slot: Slot; row: number }> = []
+    for (let si = 0; si < count; si++) {
+      const m = realMatches[si] ?? null
+      slots.push({
+        slot: m
+          ? {
+              id: m.id,
+              real: true,
+              teamAName: m.team_a_name ?? '待定',
+              teamBName: m.team_b_name ?? '待定',
+              scoreA: m.team_a_score,
+              scoreB: m.team_b_score,
+              status: m.status,
+              bestOf: m.best_of,
+            }
+          : {
+              id: `ph-${ri}-${si}`,
+              real: false,
+              teamAName: '待定',
+              teamBName: '待定',
+              scoreA: 0,
+              scoreB: 0,
+              status: 'scheduled',
+              bestOf: 1,
+            },
+        row: 0,
+      })
+    }
+    return { index: ri, label: roundLabel(ri, slotCounts.length), slots }
+  })
+
+  // 行号：第 1 轮顺排，之后每轮的槽位居中于其父槽位区间（标准树形对阵图）
+  rounds[0].slots.forEach((s, i) => (s.row = i))
+  for (let ri = 1; ri < rounds.length; ri++) {
+    const prev = rounds[ri - 1]
+    const cur = rounds[ri]
+    cur.slots.forEach((s, si) => {
+      const start = Math.floor((si * prev.slots.length) / cur.slots.length)
+      const end = Math.max(start, Math.floor(((si + 1) * prev.slots.length) / cur.slots.length) - 1)
+      const rows = prev.slots.slice(start, end + 1).map((p) => p.row)
+      s.row = rows.reduce((a, b) => a + b, 0) / rows.length
+    })
+  }
+  // 最小间距修正：同轮内的槽位垂直方向不重叠
+  for (const r of rounds) {
+    r.slots.sort((a, b) => a.row - b.row)
+    for (let i = 1; i < r.slots.length; i++) {
+      if (r.slots[i].row <= r.slots[i - 1].row) r.slots[i].row = r.slots[i - 1].row + 1
+    }
+  }
+
+  // 连线：后一轮槽位 → 其父区间内前一轮槽位（肘形折线）
   const links: Array<{ id: string; d: string }> = []
-  for (let ci = 1; ci < rounds.length; ci++) {
-    const prev = rounds[ci - 1]
-    const cur = rounds[ci]
-    for (const node of cur.nodes) {
-      const feeders = prev.nodes.filter(
-        (n) => matchWinner(n.match) === node.match.team_a_id || matchWinner(n.match) === node.match.team_b_id,
-      )
-      for (const f of feeders) {
-        const x1 = f.col * (COL_W + GAP) + COL_W
-        const y1 = HEADER_H + f.row * SLOT_H + CARD_H / 2
-        const xp = node.col * (COL_W + GAP)
-        const yp = HEADER_H + node.row * SLOT_H + CARD_H / 2
+  for (let ri = 1; ri < rounds.length; ri++) {
+    const prev = rounds[ri - 1]
+    const cur = rounds[ri]
+    cur.slots.forEach((s, si) => {
+      const start = Math.floor((si * prev.slots.length) / cur.slots.length)
+      const end = Math.max(start, Math.floor(((si + 1) * prev.slots.length) / cur.slots.length) - 1)
+      for (let pi = start; pi <= end; pi++) {
+        const p = prev.slots[pi]
+        const x1 = (ri - 1) * (COL_W + GAP) + COL_W
+        const y1 = HEADER_H + p.row * SLOT_H + CARD_H / 2
+        const xp = ri * (COL_W + GAP)
+        const yp = HEADER_H + s.row * SLOT_H + CARD_H / 2
         const midX = (x1 + xp) / 2
         links.push({
-          id: `${f.match.id}-${node.match.id}`,
+          id: `l-${ri}-${si}-${pi}`,
           d: `M ${x1} ${y1} L ${midX} ${y1} L ${midX} ${yp} L ${xp} ${yp}`,
         })
       }
-    }
+    })
   }
 
+  const maxRow = Math.max(0, ...rounds.flatMap((r) => r.slots.map((s) => s.row)))
   const width = rounds.length * (COL_W + GAP) + COL_W
   const height = HEADER_H + (maxRow + 1) * SLOT_H
   return { rounds, width, height, links }
 })
-
-/** 平铺全部节点用于绝对定位渲染 */
-const allNodes = computed(() => bracket.value.rounds.flatMap((r) => r.nodes))
 
 function cardStyle(col: number, row: number) {
   return {
@@ -157,12 +192,12 @@ function cardStyle(col: number, row: number) {
       <!-- 轮次标题 -->
       <div
         v-for="(r, i) in bracket.rounds"
-        :key="`h-${r.number}`"
+        :key="`h-${r.index}`"
         class="kb-round-head"
         :style="{ left: i * (COL_W + GAP) + 'px', width: COL_W + 'px' }"
       >
         <span>{{ r.label }}</span>
-        <span class="kb-round-num">第 {{ r.number }} 轮</span>
+        <span class="kb-round-num">第 {{ i + 1 }} 轮</span>
       </div>
 
       <!-- 连线 -->
@@ -176,36 +211,39 @@ function cardStyle(col: number, row: number) {
         />
       </svg>
 
-      <!-- 对阵卡片 -->
-      <div
-        v-for="n in allNodes"
-        :key="n.match.id"
-        class="kb-card"
-        :class="{ completed: n.match.status === 'completed' }"
-        :style="cardStyle(n.col, n.row)"
-      >
-        <div class="kb-matchup">
-          <span
-            class="kb-team"
-            :class="{ win: n.match.status === 'completed' && n.match.team_a_score > n.match.team_b_score }"
-          >
-            {{ n.match.team_a_name ?? '待定' }}
-          </span>
-          <span class="kb-score">{{ n.match.team_a_score }}:{{ n.match.team_b_score }}</span>
-          <span
-            class="kb-team"
-            :class="{ win: n.match.status === 'completed' && n.match.team_b_score > n.match.team_a_score }"
-          >
-            {{ n.match.team_b_name ?? '待定' }}
-          </span>
+      <!-- 对阵卡片（含未创建轮次的占位槽） -->
+      <template v-for="(r, ri) in bracket.rounds" :key="r.index">
+        <div
+          v-for="s in r.slots"
+          :key="s.slot.id"
+          class="kb-card"
+          :class="{ completed: s.slot.real && s.slot.status === 'completed', placeholder: !s.slot.real }"
+          :style="cardStyle(ri, s.row)"
+        >
+          <div class="kb-matchup">
+            <span
+              class="kb-team"
+              :class="{ win: s.slot.real && s.slot.status === 'completed' && s.slot.scoreA > s.slot.scoreB }"
+            >
+              {{ s.slot.teamAName }}
+            </span>
+            <span class="kb-score">{{ s.slot.real ? `${s.slot.scoreA}:${s.slot.scoreB}` : '-' }}</span>
+            <span
+              class="kb-team"
+              :class="{ win: s.slot.real && s.slot.status === 'completed' && s.slot.scoreB > s.slot.scoreA }"
+            >
+              {{ s.slot.teamBName }}
+            </span>
+          </div>
+          <div class="kb-meta">
+            <span v-if="s.slot.real">BO{{ s.slot.bestOf }}</span>
+            <span v-else>等待创建</span>
+            <span v-if="s.slot.real" class="kb-status" :class="s.slot.status">
+              {{ MATCH_STATUS_LABEL[s.slot.status as Match['status']] }}
+            </span>
+          </div>
         </div>
-        <div class="kb-meta">
-          <span>BO{{ n.match.best_of }}</span>
-          <span class="kb-status" :class="n.match.status">
-            {{ MATCH_STATUS_LABEL[n.match.status as Match['status']] }}
-          </span>
-        </div>
-      </div>
+      </template>
     </div>
   </div>
 </template>
@@ -278,6 +316,12 @@ function cardStyle(col: number, row: number) {
 
 .kb-card.completed {
   border-color: rgba(103, 194, 58, 0.5);
+}
+
+/* 未创建对阵的占位槽：虚线 + 弱化，示意赛程待定 */
+.kb-card.placeholder {
+  border-style: dashed;
+  opacity: 0.55;
 }
 
 .kb-matchup {

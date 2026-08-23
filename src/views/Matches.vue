@@ -486,10 +486,10 @@ async function removeCaster(item: MatchCaster) {
       </el-radio-group>
     </div>
 
-    <!-- 对阵图（单败/双败 = 横向对阵图；其余阶段 = 瑞士轮样式） -->
+    <!-- 对阵图（单败/双败 = 横向对阵图，展示完整赛程含未创建轮次占位；其余阶段 = 瑞士轮样式） -->
     <KnockoutBracket
       v-if="viewMode === 'bracket' && isKnockoutStage"
-      :matches="filteredMatches"
+      :matches="matches"
       :stage-name="currentStageName"
       class="bracket"
     />
