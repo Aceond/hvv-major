@@ -17,6 +17,9 @@ import {
 } from '@/api/admin'
 import { listMatchMaps, stageDisplayName, submitMatchScore } from '@/api/match'
 import type { MatchMapInput } from '@/api/match'
+import { generatePlayoffNext } from '@/api/playoff'
+import { BRACKET_LABEL } from '@/lib/playoff'
+import type { BracketKind } from '@/lib/playoff'
 import { listEvents } from '@/api/event'
 import MatchPlayerStatsDialog from '@/components/MatchPlayerStatsDialog.vue'
 
@@ -72,6 +75,7 @@ const matchForm = reactive({
   stageId: '',
   groupId: '',
   roundNumber: 1,
+  bracket: 'wb' as BracketKind,
   teamA: '',
   teamB: '',
   bestOf: 1,
@@ -86,6 +90,24 @@ const currentEventName = computed(
 const currentGroupName = computed(
   () => groups.value.find((g) => g.id === currentGroupId.value)?.name ?? '',
 )
+
+/** 当前阶段赛制（对阵管理页签） */
+const currentStageFormat = computed(
+  () => stages.value.find((s) => s.id === currentStage.value)?.format ?? null,
+)
+/** 当前阶段是否淘汰赛（单败/双败）：启用自动匹配下一轮 */
+const isKnockoutFormat = computed(
+  () => currentStageFormat.value === 'single_elim' || currentStageFormat.value === 'double_elim',
+)
+/** 新建对阵弹窗里所选阶段的赛制 */
+const matchStageFormat = computed(
+  () => stages.value.find((s) => s.id === matchForm.stageId)?.format ?? '',
+)
+/** 双败赛制的赛组选项（单败固定胜者组） */
+const bracketOptions = computed(() => {
+  if (matchStageFormat.value === 'double_elim') return BRACKET_LABEL
+  return { wb: BRACKET_LABEL.wb }
+})
 
 async function load() {
   events.value = await listEvents()
@@ -171,6 +193,21 @@ async function saveScore() {
     scoreDialog.value = false
     ElMessage.success('比分已保存')
     onFilterChange()
+    // 淘汰赛：比分录入后自动匹配胜者/败者到下一轮
+    if (isKnockoutFormat.value) {
+      try {
+        const res = await generatePlayoffNext(
+          currentStage.value,
+          currentStageFormat.value as 'single_elim' | 'double_elim',
+        )
+        if (res.created > 0) {
+          ElMessage.success(`已自动匹配 ${res.created} 场对阵`)
+          await loadStagesAndMatches()
+        }
+      } catch {
+        // 自动匹配失败不阻塞比分保存
+      }
+    }
   } catch (e: any) {
     ElMessage.error(e.message || '保存失败，请检查权限')
   }
@@ -254,6 +291,26 @@ async function clearMatches() {
   }
 }
 
+/** 自动匹配下一轮：按当前已录比分把胜者/败者匹配到后续轮次（幂等，只补缺失对阵） */
+async function autoMatchNext() {
+  if (!currentStage.value || !isKnockoutFormat.value) return
+  try {
+    const res = await generatePlayoffNext(
+      currentStage.value,
+      currentStageFormat.value as 'single_elim' | 'double_elim',
+    )
+    if (res.needPowerOfTwo) {
+      ElMessage.warning('双败赛制需要第 1 轮对阵数为 2 的幂（如 2/4/8/16 场），无法自动匹配')
+      return
+    }
+    if (res.created > 0) ElMessage.success(`已自动匹配 ${res.created} 场对阵`)
+    else ElMessage.info('暂无可匹配的对阵（请先录入上一轮比分）')
+    await loadStagesAndMatches()
+  } catch (e: any) {
+    ElMessage.error(e.message || '自动匹配失败，请检查权限')
+  }
+}
+
 async function moveStage(stage: Stage, dir: -1 | 1) {
   const idx = stages.value.findIndex((s) => s.id === stage.id)
   const target = idx + dir
@@ -278,6 +335,7 @@ async function addMatch() {
     stage_id: matchForm.stageId,
     group_id: matchForm.groupId || null,
     round_number: matchForm.roundNumber,
+    bracket: matchStageFormat.value === 'double_elim' ? matchForm.bracket : 'wb',
     team_a_id: matchForm.teamA,
     team_b_id: matchForm.teamB,
     best_of: matchForm.bestOf,
@@ -679,6 +737,16 @@ onMounted(load)
         <div>
           <el-button size="small" @click="openAutoDialog">自动排阵</el-button>
           <el-button
+            v-if="isKnockoutFormat"
+            size="small"
+            type="warning"
+            plain
+            :disabled="!currentStage"
+            @click="autoMatchNext"
+          >
+            自动匹配下一轮
+          </el-button>
+          <el-button
             size="small"
             type="danger"
             plain
@@ -698,6 +766,17 @@ onMounted(load)
           <el-table-column prop="group_name" label="组别" width="90">
             <template #default="{ row }">
               <el-tag size="small" effect="plain">{{ row.group_name ?? '跨组' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="currentStageFormat === 'double_elim'" label="赛组" width="80">
+            <template #default="{ row }">
+              <el-tag
+                size="small"
+                :type="(row.bracket ?? 'wb') === 'gf' ? 'danger' : (row.bracket ?? 'wb') === 'lb' ? 'info' : 'primary'"
+                effect="plain"
+              >
+                {{ BRACKET_LABEL[(row.bracket ?? 'wb') as BracketKind] }}
+              </el-tag>
             </template>
           </el-table-column>
           <el-table-column label="对阵" min-width="260">
@@ -863,6 +942,11 @@ onMounted(load)
         <el-form-item label="所属阶段">
           <el-select v-model="matchForm.stageId" style="width: 100%">
             <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="matchStageFormat === 'double_elim'" label="所属赛组">
+          <el-select v-model="matchForm.bracket" style="width: 100%">
+            <el-option v-for="(label, value) in bracketOptions" :key="value" :label="label" :value="value" />
           </el-select>
         </el-form-item>
         <el-form-item label="组别">

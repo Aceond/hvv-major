@@ -306,6 +306,7 @@ export const mockStages: Stage[] = [
   { id: 'stage-1', event_id: 'event-11', group_id: 'g1', name: '传奇组 · 小组循环赛', format: 'round_robin', status: 'running', sort_order: 1, start_at: '2026-08-01 10:00', end_at: '2026-08-07 22:00' },
   { id: 'stage-2', event_id: 'event-11', group_id: null, name: '总决赛 · 单败淘汰', format: 'single_elim', status: 'upcoming', sort_order: 2, start_at: '2026-08-15 13:00', end_at: '2026-08-16 20:00' },
   { id: 'stage-3', event_id: 'event-11', group_id: 'g2', name: '大师组 · 瑞士轮', format: 'swiss', status: 'running', sort_order: 3, start_at: '2026-08-10 10:00', end_at: '2026-08-12 22:00' },
+  { id: 'stage-4', event_id: 'event-11', group_id: 'g3', name: '挑战组 · 双败淘汰', format: 'double_elim', status: 'running', sort_order: 4, start_at: '2026-08-15 10:00', end_at: '2026-08-17 22:00' },
 ]
 
 // ---------------- 对阵（组内循环赛 + 跨组淘汰赛） ----------------
@@ -352,6 +353,11 @@ export const mockMatches: Match[] = [
   // 演示队长战队（team-13 烈焰竞技）：已完成一场（可录入比分/队员数据） + 一场待约战
   { id: 'match-30', stage_id: 'stage-1', group_id: 'g3', round_number: 1, team_a_id: 'team-13', team_b_id: 'team-5', best_of: 1, map: 'Anubis', team_a_score: 13, team_b_score: 7, winner_id: 'team-13', status: 'completed', scheduled_at: '2026-08-06 19:00' },
   { id: 'match-31', stage_id: 'stage-1', group_id: 'g3', round_number: 2, team_a_id: 'team-13', team_b_id: 'team-8', best_of: 1, map: null, team_a_score: 0, team_b_score: 0, winner_id: null, status: 'scheduled', scheduled_at: null },
+  // ---- 双败淘汰演示（挑战组 stage-4）：只生成胜者组第 1 轮，后续轮次用「自动匹配下一轮」生成 ----
+  { id: 'match-32', stage_id: 'stage-4', group_id: 'g3', round_number: 1, bracket: 'wb', team_a_id: 'team-1', team_b_id: 'team-8', best_of: 1, map: null, team_a_score: 13, team_b_score: 10, winner_id: 'team-1', status: 'completed', scheduled_at: '2026-08-15 10:00' },
+  { id: 'match-33', stage_id: 'stage-4', group_id: 'g3', round_number: 1, bracket: 'wb', team_a_id: 'team-2', team_b_id: 'team-7', best_of: 1, map: null, team_a_score: 9, team_b_score: 13, winner_id: 'team-7', status: 'completed', scheduled_at: '2026-08-15 11:00' },
+  { id: 'match-34', stage_id: 'stage-4', group_id: 'g3', round_number: 1, bracket: 'wb', team_a_id: 'team-3', team_b_id: 'team-6', best_of: 1, map: null, team_a_score: 13, team_b_score: 7, winner_id: 'team-3', status: 'completed', scheduled_at: '2026-08-15 12:00' },
+  { id: 'match-35', stage_id: 'stage-4', group_id: 'g3', round_number: 1, bracket: 'wb', team_a_id: 'team-4', team_b_id: 'team-5', best_of: 1, map: null, team_a_score: 11, team_b_score: 13, winner_id: 'team-5', status: 'completed', scheduled_at: '2026-08-15 13:00' },
 ]
 
 // 逐图比分（BO3 明细，对应 match_maps 表）

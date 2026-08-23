@@ -4,6 +4,7 @@ import { ElMessage, ElMessageBox, ElNotification } from 'element-plus'
 import { VideoCamera, Link, Microphone, ArrowDown } from '@element-plus/icons-vue'
 import SwissBracket from '@/components/SwissBracket.vue'
 import KnockoutBracket from '@/components/KnockoutBracket.vue'
+import DoubleElimBracket from '@/components/DoubleElimBracket.vue'
 import MatchPlayerStatsDialog from '@/components/MatchPlayerStatsDialog.vue'
 import type { EventItem, Group, Match, MatchCaster, MatchMap, MatchMedia, MediaKind, Stage } from '@/api/types'
 import { MATCH_STATUS_LABEL, MEDIA_KIND_LABEL, STAGE_STATUS_LABEL } from '@/api/types'
@@ -86,6 +87,13 @@ const isKnockoutStage = computed(() => {
   if (currentStage.value === 'all') return false
   const s = stages.value.find((x) => x.id === currentStage.value)
   return s?.format === 'single_elim' || s?.format === 'double_elim'
+})
+
+/** 当前阶段是否双败淘汰赛（双败用胜者组/败者组/总决赛对阵图） */
+const isDoubleElim = computed(() => {
+  if (currentStage.value === 'all') return false
+  const s = stages.value.find((x) => x.id === currentStage.value)
+  return s?.format === 'double_elim'
 })
 
 // 淘汰赛阶段切页时默认切到「对阵图」视图（横向对阵图）
@@ -486,9 +494,15 @@ async function removeCaster(item: MatchCaster) {
       </el-radio-group>
     </div>
 
-    <!-- 对阵图（单败/双败 = 横向对阵图，展示完整赛程含未创建轮次占位；其余阶段 = 瑞士轮样式） -->
+    <!-- 对阵图（双败 = 胜者组/败者组/总决赛；单败 = 完整单败树；其余阶段 = 瑞士轮样式） -->
+    <DoubleElimBracket
+      v-if="viewMode === 'bracket' && isDoubleElim"
+      :matches="matches"
+      :stage-name="currentStageName"
+      class="bracket"
+    />
     <KnockoutBracket
-      v-if="viewMode === 'bracket' && isKnockoutStage"
+      v-else-if="viewMode === 'bracket' && isKnockoutStage"
       :matches="matches"
       :stage-name="currentStageName"
       class="bracket"

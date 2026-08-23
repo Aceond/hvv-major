@@ -135,6 +135,7 @@ export interface Match {
   stage_id: string
   group_id: string | null // 所属组别（淘汰赛可跨组，为 null）
   round_number: number
+  bracket?: 'wb' | 'lb' | 'gf' | null // 淘汰赛所属赛组：wb=胜者组 / lb=败者组 / gf=总决赛（单败固定 wb）
   team_a_id: string | null
   team_b_id: string | null
   best_of: number

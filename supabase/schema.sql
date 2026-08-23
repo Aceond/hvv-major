@@ -203,6 +203,7 @@ create table if not exists public.matches (
   stage_id uuid not null references public.stages (id) on delete cascade,
   group_id uuid references public.groups (id), -- 所属组别（淘汰赛跨组可空）
   round_number int not null default 1,   -- 第几轮
+  bracket text not null default 'wb',    -- 淘汰赛所属赛组：wb=胜者组 / lb=败者组 / gf=总决赛（单败固定 wb）
   team_a_id uuid references public.teams (id),
   team_b_id uuid references public.teams (id),
   best_of int not null default 1,        -- BO1 / BO3
@@ -216,6 +217,10 @@ create table if not exists public.matches (
   created_at timestamptz not null default now(),
   check (team_a_id is null or team_b_id is null or team_a_id <> team_b_id)
 );
+
+-- 兼容：老库补充淘汰赛赛组字段（wb/lb/gf），可安全重复执行
+alter table public.matches add column if not exists bracket text not null default 'wb'
+  check (bracket in ('wb', 'lb', 'gf'));
 
 -- 地图详情（BO3 逐图比分）
 create table if not exists public.match_maps (

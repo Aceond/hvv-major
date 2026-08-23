@@ -154,7 +154,7 @@ export async function clearStageMatches(stageId: string) {
   if (error) throw error
 }
 
-/** 创建对阵（可指定组别） */
+/** 创建对阵（可指定组别 / 淘汰赛赛组） */
 export async function createMatch(m: Partial<Match>) {
   if (!isSupabaseConfigured || !supabase) {
     mockMatches.push({
@@ -162,6 +162,7 @@ export async function createMatch(m: Partial<Match>) {
       stage_id: m.stage_id ?? '',
       group_id: m.group_id ?? null,
       round_number: m.round_number ?? 1,
+      bracket: m.bracket ?? 'wb',
       team_a_id: m.team_a_id ?? null,
       team_b_id: m.team_b_id ?? null,
       best_of: m.best_of ?? 1,
