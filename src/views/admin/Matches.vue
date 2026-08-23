@@ -796,13 +796,6 @@ onMounted(load)
           </el-select>
           <div class="form-tip">统计大小分排名，作为突围赛/淘汰赛的晋级依据</div>
         </el-form-item>
-        <!-- 突围赛模式：生成目标 = 突围赛阶段 -->
-        <el-form-item v-if="autoForm.mode === 'playoff'" label="突围赛阶段">
-          <el-select v-model="autoForm.dstStageId" style="width: 100%">
-            <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
-          </el-select>
-          <div class="form-tip">突围赛对阵将生成到该阶段</div>
-        </el-form-item>
         <!-- 淘汰赛（排位前 N + 突围胜者 M）：取突围胜者需指定突围赛阶段 -->
         <el-form-item v-if="autoForm.mode === 'knockoutN+M'" label="突围赛阶段">
           <el-select v-model="autoForm.breakoutStageId" style="width: 100%">
@@ -810,10 +803,11 @@ onMounted(load)
           </el-select>
           <div class="form-tip">从该阶段已结束的比赛取胜者（按突围赛大小分取前 M 名）进入淘汰赛</div>
         </el-form-item>
-        <el-form-item v-if="autoForm.mode !== 'playoff'" label="目标阶段">
+        <el-form-item label="目标阶段">
           <el-select v-model="autoForm.dstStageId" style="width: 100%">
             <el-option v-for="s in stages" :key="s.id" :label="stageDisplayName(s)" :value="s.id" />
           </el-select>
+          <div class="form-tip">{{ autoForm.mode === 'playoff' ? '突围赛对阵将生成到该阶段' : '淘汰赛对阵将生成到该阶段' }}</div>
         </el-form-item>
         <el-form-item label="生成模式">
           <el-select v-model="autoForm.mode" style="width: 100%">
