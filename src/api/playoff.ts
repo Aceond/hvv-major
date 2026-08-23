@@ -1,5 +1,9 @@
-// 淘汰赛自动匹配：管理员只需生成第 1 轮，后续轮次按比赛结果自动匹配胜者 / 败者
-// 单败：胜者晋级下一轮；双败：胜者组胜者晋级胜者组下一轮、败者掉入败者组，败者组胜者续战、再败出局，最后胜者组冠军 vs 败者组冠军打总决赛。
+// 淘汰赛自动匹配：管理员 / 队长任何入口录入比分后，自动把胜者 / 败者匹配到后续轮次
+// 单败：胜者晋级下一轮；双败：胜者组胜者晋级胜者组下一轮、败者掉入败者组，败者组胜者续战、再败出局，
+// 最后胜者组冠军 vs 败者组冠军打总决赛。
+// 生成逻辑在前端计算（演示模式直接写 mock）；真实环境通过 security definer 的 RPC
+// insert_playoff_matches 一次性批量插入，绕开 RLS 权限（队长也可触发，但只会插入真实结果推导出的对阵）。
+import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import type { Match } from './types'
 import { listMatches, listStages } from './match'
 import { createMatch } from './admin'
@@ -10,19 +14,27 @@ import {
   winnerOf,
 } from '@/lib/playoff'
 
+export interface PendingPlayoffMatch {
+  round_number: number
+  bracket: 'wb' | 'lb' | 'gf'
+  team_a_id: string
+  team_b_id: string
+  best_of: number
+}
+
 function bracketOf(m: Match): 'wb' | 'lb' | 'gf' {
   return m.bracket ?? 'wb'
 }
 
-/** 在既有对阵中查找同赛组同轮次、对阵双方一致的比赛（幂等去重，含本轮已新建的） */
-function findSame(
+/** 是否已有同赛组同轮次、对阵双方一致的比赛（幂等去重，含本轮已计算出的对阵） */
+function alreadyHas(
   pool: Match[],
   bracket: string,
   roundNumber: number,
   a: string | null,
   b: string | null,
-): Match | undefined {
-  return pool.find(
+): boolean {
+  return pool.some(
     (m) =>
       bracketOf(m) === bracket &&
       m.round_number === roundNumber &&
@@ -30,27 +42,20 @@ function findSame(
   )
 }
 
-/** 确保某场对阵存在：双方已确定且未创建时创建；创建后写入 pool 以便本轮去重 */
-async function ensureMatch(
+/** 计算一对待创建对阵（去重后写入 out 与 pool） */
+function pushPair(
   pool: Match[],
+  out: PendingPlayoffMatch[],
   stageId: string,
   bracket: 'wb' | 'lb' | 'gf',
   roundNumber: number,
   a: string | null,
   b: string | null,
   bestOf: number,
-): Promise<boolean> {
-  if (!a || !b || a === b) return false
-  if (findSame(pool, bracket, roundNumber, a, b)) return false
-  await createMatch({
-    stage_id: stageId,
-    round_number: roundNumber,
-    bracket,
-    team_a_id: a,
-    team_b_id: b,
-    best_of: bestOf || 1,
-  })
-  // 记录到 pool，避免本轮后续槽位重复创建
+) {
+  if (!a || !b || a === b) return
+  if (alreadyHas(pool, bracket, roundNumber, a, b)) return
+  out.push({ round_number: roundNumber, bracket, team_a_id: a, team_b_id: b, best_of: bestOf || 1 })
   pool.push({
     id: `__auto-${bracket}-${roundNumber}-${a}-${b}`,
     stage_id: stageId,
@@ -67,12 +72,12 @@ async function ensureMatch(
     status: 'scheduled',
     scheduled_at: null,
   } as Match)
-  return true
 }
 
-/** 单败：胜者晋级下一轮（高低配槽位 2j / 2j+1；最后一轮决赛按阶段配置的总决赛赛制） */
-async function generateSingleElim(stageId: string, ms: Match[], gfBestOf: number): Promise<number> {
+/** 单败：胜者晋级下一轮（槽位 2j / 2j+1；决赛按阶段配置的总决赛赛制） */
+function collectSingle(ms: Match[], gfBestOf: number): PendingPlayoffMatch[] {
   const pool = ms
+  const out: PendingPlayoffMatch[] = []
   const wb = ms.filter((m) => bracketOf(m) === 'wb')
   const byRound = new Map<number, Match[]>()
   for (const m of wb) {
@@ -85,10 +90,9 @@ async function generateSingleElim(stageId: string, ms: Match[], gfBestOf: number
     l.push(m)
   }
   const rns = [...byRound.keys()].sort((a, b) => a - b)
-  if (rns.length === 0) return 0
+  if (rns.length === 0) return out
   const base = rns[0]
   const counts = singleElimRoundCounts(byRound.get(base)!.length)
-  let created = 0
   for (let ri = 0; ri < counts.length - 1; ri++) {
     const cur = byRound.get(base + ri) ?? []
     const isFinalRound = ri === counts.length - 2 // 由半决赛生成决赛
@@ -96,15 +100,19 @@ async function generateSingleElim(stageId: string, ms: Match[], gfBestOf: number
       const a = winnerOf(cur[2 * j])
       const b = winnerOf(cur[2 * j + 1])
       const bestOf = isFinalRound ? gfBestOf : cur[2 * j]?.best_of ?? 1
-      if (a && b && (await ensureMatch(pool, stageId, 'wb', base + ri + 1, a, b, bestOf))) created++
+      pushPair(pool, out, cur[0].stage_id, 'wb', base + ri + 1, a, b, bestOf)
     }
   }
-  return created
+  return out
 }
 
-/** 双败：胜者组胜者晋级、败者掉败者组；败者组胜者续战；最后总决赛 */
-async function generateDoubleElim(stageId: string, ms: Match[], gfBestOf: number): Promise<number | 'needPowerOfTwo'> {
+/** 双败：胜者组 / 败者组 / 总决赛。第 1 轮场次不是 2 的幂时返回 needPowerOfTwo */
+function collectDouble(
+  ms: Match[],
+  gfBestOf: number,
+): { pairs: PendingPlayoffMatch[]; needPowerOfTwo: boolean } {
   const pool = ms
+  const out: PendingPlayoffMatch[] = []
   const wbAll = ms.filter((m) => bracketOf(m) === 'wb')
   const wbByRound = new Map<number, Match[]>()
   for (const m of wbAll) {
@@ -117,14 +125,13 @@ async function generateDoubleElim(stageId: string, ms: Match[], gfBestOf: number
     l.push(m)
   }
   const rns = [...wbByRound.keys()].sort((a, b) => a - b)
-  if (rns.length === 0) return 0
+  if (rns.length === 0) return { pairs: out, needPowerOfTwo: false }
   const base = rns[0]
   const st = doubleElimRoundCounts(wbByRound.get(base)!.length)
-  if (!st) return 'needPowerOfTwo'
+  if (!st) return { pairs: out, needPowerOfTwo: true }
+  const stageId = wbAll[0].stage_id
   const wbRound = (rn: number) => wbByRound.get(rn) ?? []
   const lbRound = (rn: number) => ms.filter((m) => bracketOf(m) === 'lb' && m.round_number === rn)
-
-  let created = 0
 
   // 胜者组晋级
   for (let ri = 0; ri < st.k - 1; ri++) {
@@ -132,20 +139,20 @@ async function generateDoubleElim(stageId: string, ms: Match[], gfBestOf: number
     for (let j = 0; j < Math.floor(st.wb[ri] / 2); j++) {
       const a = winnerOf(cur[2 * j])
       const b = winnerOf(cur[2 * j + 1])
-      if (a && b && (await ensureMatch(pool, stageId, 'wb', base + ri + 1, a, b, cur[2 * j]?.best_of ?? 1))) created++
+      pushPair(pool, out, stageId, 'wb', base + ri + 1, a, b, cur[2 * j]?.best_of ?? 1)
     }
   }
 
   // 败者组
   if (st.k >= 2) {
-    // LB1：胜者组第 1 轮败者两两配对（槽位 2j / 2j+1）
+    // LB1：胜者组第 1 轮败者两两配对
     const wb1 = wbRound(base)
     for (let j = 0; j < st.lb[0]; j++) {
       const a = loserOf(wb1[2 * j])
       const b = loserOf(wb1[2 * j + 1])
-      if (a && b && (await ensureMatch(pool, stageId, 'lb', 1, a, b, wb1[2 * j]?.best_of ?? 1))) created++
+      pushPair(pool, out, stageId, 'lb', 1, a, b, wb1[2 * j]?.best_of ?? 1)
     }
-    // 偶数轮 LB(2s)（s=1..k-1）：LB(2s-1) 胜者 vs 胜者组 WB(s+1) 败者
+    // 偶数轮 LB(2s)：LB(2s-1) 胜者 vs 胜者组 WB(s+1) 败者
     for (let s = 1; s <= st.k - 1; s++) {
       const r = 2 * s
       const prev = lbRound(r - 1)
@@ -153,36 +160,32 @@ async function generateDoubleElim(stageId: string, ms: Match[], gfBestOf: number
       for (let j = 0; j < st.lb[r - 1]; j++) {
         const a = winnerOf(prev[j])
         const b = loserOf(wbSrc[j])
-        if (a && b && (await ensureMatch(pool, stageId, 'lb', r, a, b, wbSrc[j]?.best_of ?? 1))) created++
+        pushPair(pool, out, stageId, 'lb', r, a, b, wbSrc[j]?.best_of ?? prev[j]?.best_of ?? 1)
       }
     }
-    // 奇数轮 LB(2s+1)（s=1..k-2）：LB(2s) 胜者两两配对
+    // 奇数轮 LB(2s+1)：LB(2s) 胜者两两配对
     for (let s = 1; s <= st.k - 2; s++) {
       const r = 2 * s + 1
       const prev = lbRound(2 * s)
       for (let j = 0; j < Math.floor(st.lb[r - 1]); j++) {
         const a = winnerOf(prev[2 * j])
         const b = winnerOf(prev[2 * j + 1])
-        if (a && b && (await ensureMatch(pool, stageId, 'lb', r, a, b, prev[2 * j]?.best_of ?? 1))) created++
+        pushPair(pool, out, stageId, 'lb', r, a, b, prev[2 * j]?.best_of ?? 1)
       }
     }
   }
 
-  // 总决赛：胜者组冠军 vs 败者组冠军（2 队时即同一场再战），赛制取阶段配置的总决赛赛制
+  // 总决赛：胜者组冠军 vs 败者组冠军（2 队时同一场再战），赛制取阶段配置
   if (st.k >= 2) {
     const wbFinal = wbRound(base + st.k - 1)[0]
     const lbFinal = lbRound(2 * st.k - 2)[0]
-    const a = winnerOf(wbFinal)
-    const b = winnerOf(lbFinal)
-    if (a && b && (await ensureMatch(pool, stageId, 'gf', base + st.k, a, b, gfBestOf))) created++
+    pushPair(pool, out, stageId, 'gf', base + st.k, winnerOf(wbFinal), winnerOf(lbFinal), gfBestOf)
   } else {
     const wb1 = wbRound(base)[0]
-    const a = winnerOf(wb1)
-    const b = loserOf(wb1)
-    if (a && b && (await ensureMatch(pool, stageId, 'gf', base + 1, a, b, gfBestOf))) created++
+    pushPair(pool, out, stageId, 'gf', base + 1, winnerOf(wb1), loserOf(wb1), gfBestOf)
   }
 
-  return created
+  return { pairs: out, needPowerOfTwo: false }
 }
 
 /**
@@ -197,10 +200,23 @@ export async function generatePlayoffNext(
   const ms = await listMatches(stageId)
   const stage = (await listStages()).find((s) => s.id === stageId)
   const gfBestOf = stage?.final_best_of === 5 ? 5 : 3
-  if (format === 'single_elim') {
-    return { created: await generateSingleElim(stageId, ms, gfBestOf) }
+  const res =
+    format === 'single_elim'
+      ? { pairs: collectSingle(ms, gfBestOf), needPowerOfTwo: false }
+      : collectDouble(ms, gfBestOf)
+  if (res.needPowerOfTwo) return { created: 0, needPowerOfTwo: true }
+  const pairs = res.pairs
+  if (pairs.length === 0) return { created: 0 }
+  if (!isSupabaseConfigured || !supabase) {
+    // 演示模式：直接写 mock
+    for (const p of pairs) await createMatch({ stage_id: stageId, ...p })
+    return { created: pairs.length }
   }
-  const res = await generateDoubleElim(stageId, ms, gfBestOf)
-  if (res === 'needPowerOfTwo') return { created: 0, needPowerOfTwo: true }
-  return { created: res }
+  // 真实环境：一次 RPC 批量插入（security definer，管理员或参赛队队长均可调用）
+  const { data, error } = await supabase.rpc('insert_playoff_matches', {
+    p_stage_id: stageId,
+    p_matches: pairs,
+  })
+  if (error) throw new Error(error.message)
+  return { created: (data as number) ?? 0 }
 }

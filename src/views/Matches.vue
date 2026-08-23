@@ -345,8 +345,8 @@ async function saveScore() {
     ElMessage.success('比分已保存')
     scoreDialog.value = false
     await loadMatches()
-    // 淘汰赛：管理员在前台录入比分后也自动匹配下一轮（队长录入不创建赛事对阵，由管理员兜底）
-    if (auth.isAdmin && isKnockoutStage.value) {
+    // 淘汰赛：任何入口录完比分后自动匹配下一轮（管理员 / 队长；真实环境走 RPC 批量插入）
+    if (isKnockoutStage.value) {
       try {
         const fmt = stages.value.find((s) => s.id === m.stage_id)?.format
         if (fmt === 'single_elim' || fmt === 'double_elim') {

@@ -1512,6 +1512,70 @@ grant execute on function public.forum_unlike(uuid) to authenticated;
 grant execute on function public.forum_favorite(uuid) to authenticated;
 grant execute on function public.forum_unfavorite(uuid) to authenticated;
 
+-- ============================================================
+-- 15. 淘汰赛自动匹配批量插入（可重复执行）
+--     管理员 / 队长任何入口录入比分后，前端算好下一轮对阵，经此 RPC 一次性批量插入。
+--     security definer：绕开 RLS，队长也能为「真实结果推导出」的对阵建比赛；
+--     会校验调用者为管理员或该阶段已完成比赛的参赛队队长，防止任意建赛。
+-- ============================================================
+create or replace function public.insert_playoff_matches(p_stage_id uuid, p_matches jsonb)
+returns int
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_item jsonb;
+  v_br text;
+  v_rn int;
+  v_a uuid;
+  v_b uuid;
+  v_bo int;
+  v_inserted int := 0;
+  v_fmt text;
+  v_user uuid := auth.uid();
+begin
+  if v_user is null then raise exception '请先登录'; end if;
+  if p_matches is null then return 0; end if;
+  select format into v_fmt from public.stages where id = p_stage_id;
+  if v_fmt not in ('single_elim', 'double_elim') then return 0; end if;
+  -- 权限：管理员，或该阶段任一已完成比赛的参赛队队长
+  if not (
+    public.is_admin()
+    or exists (
+      select 1 from public.matches m
+      where m.stage_id = p_stage_id and m.status = 'completed'
+        and (
+          exists (select 1 from public.teams t where t.id = m.team_a_id and t.captain_id = v_user)
+          or exists (select 1 from public.teams t where t.id = m.team_b_id and t.captain_id = v_user)
+        )
+    )
+  ) then
+    raise exception '仅管理员或参赛队队长可自动匹配下一轮';
+  end if;
+
+  for v_item in select * from jsonb_array_elements(p_matches) loop
+    v_br := coalesce(v_item->>'bracket', 'wb');
+    v_rn := coalesce((v_item->>'round_number')::int, 1);
+    v_a := (v_item->>'team_a_id')::uuid;
+    v_b := (v_item->>'team_b_id')::uuid;
+    v_bo := coalesce((v_item->>'best_of')::int, 3);
+    if v_a is null or v_b is null or v_a = v_b then continue; end if;
+    -- 幂等：同赛组同轮次且双方一致的对阵已存在则跳过
+    if not exists (
+      select 1 from public.matches
+      where stage_id = p_stage_id and bracket = v_br and round_number = v_rn
+        and ((team_a_id = v_a and team_b_id = v_b) or (team_a_id = v_b and team_b_id = v_a))
+    ) then
+      insert into public.matches (stage_id, round_number, bracket, team_a_id, team_b_id, best_of, status)
+      values (p_stage_id, v_rn, v_br, v_a, v_b, v_bo, 'scheduled');
+      v_inserted := v_inserted + 1;
+    end if;
+  end loop;
+  return v_inserted;
+end;
+$$;
+
+grant execute on function public.insert_playoff_matches(uuid, jsonb) to authenticated;
+
 -- 默认版块（幂等：已存在则跳过）
 insert into public.forum_sections (name, description, sort_order)
 select '赛事讨论', '赛程、比赛结果、赛事资讯讨论', 1
