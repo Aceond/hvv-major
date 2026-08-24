@@ -377,6 +377,18 @@ async function saveBestOf(row: Match, bestOf: number | undefined) {
   }
 }
 
+/** 行内切换对阵状态（待开赛 / 已结束 / 已取消） */
+async function saveMatchStatus(row: Match, status: Match['status']) {
+  if (status === row.status) return
+  try {
+    await updateMatch(row.id, { status })
+    row.status = status
+    ElMessage.success(`状态已更新为「${MATCH_STATUS_LABEL[status]}」`)
+  } catch (e: any) {
+    ElMessage.error(e.message || '状态更新失败')
+  }
+}
+
 // ---------------- 自动排阵（按大小分：大分=胜场，小分=净胜局） ----------------
 interface RankRow {
   teamId: string
@@ -909,11 +921,21 @@ onMounted(load)
           <el-table-column prop="map" label="地图" width="90">
             <template #default="{ row }">{{ row.map ?? '-' }}</template>
           </el-table-column>
-          <el-table-column label="状态" width="90">
+          <el-table-column label="状态" width="120">
             <template #default="{ row }">
-              <el-tag :type="row.status === 'completed' ? 'success' : 'warning'">
-                {{ MATCH_STATUS_LABEL[row.status as Match['status']] }}
-              </el-tag>
+              <el-select
+                :model-value="row.status"
+                size="small"
+                style="width: 104px"
+                @change="(val: Match['status']) => saveMatchStatus(row, val)"
+              >
+                <el-option
+                  v-for="(label, value) in MATCH_STATUS_LABEL"
+                  :key="value"
+                  :label="label"
+                  :value="value"
+                />
+              </el-select>
             </template>
           </el-table-column>
           <el-table-column label="操作" width="210">
