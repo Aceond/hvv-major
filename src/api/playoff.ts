@@ -162,14 +162,15 @@ function collectDouble(
       const b = loserOf(wb1[2 * j + 1])
       pushPair(pool, out, stageId, 'lb', 1, j, a, b, wb1[2 * j]?.best_of ?? 1)
     }
-    // 偶数轮 LB(2s)：LB(2s-1) 胜者 vs 胜者组 WB(s+1) 败者
+    // 偶数轮 LB(2s)：LB(2s-1) 胜者 vs 胜者组 WB(s+1) 败者（交叉配对，避免败者组重逢胜者组/首轮已交手的对手）
     for (let s = 1; s <= st.k - 1; s++) {
       const r = 2 * s
       const prev = lbRound(r - 1)
       const wbSrc = wbRound(base + s)
-      for (let j = 0; j < st.lb[r - 1]; j++) {
+      const n = st.lb[r - 1]
+      for (let j = 0; j < n; j++) {
         const a = winnerOf(prev[j])
-        const b = loserOf(wbSrc[j])
+        const b = loserOf(wbSrc[n - 1 - j])
         pushPair(pool, out, stageId, 'lb', r, j, a, b, wbSrc[j]?.best_of ?? prev[j]?.best_of ?? 1)
       }
     }
