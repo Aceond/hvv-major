@@ -229,9 +229,18 @@ function openStageDialog(stage?: Stage) {
   stageForm.status = stage?.status ?? 'upcoming'
   stageForm.groupId = stage?.group_id ?? currentGroupId.value
   stageForm.finalBestOf = stage?.final_best_of === 5 ? 5 : 3
-  stageForm.startAt = stage?.start_at ?? ''
-  stageForm.endAt = stage?.end_at ?? ''
+  stageForm.startAt = toDateTimeLocal(stage?.start_at)
+  stageForm.endAt = toDateTimeLocal(stage?.end_at)
   stageDialog.value = true
+}
+
+/** 将数据库时间（ISO / 带秒）统一为 el-date-picker 期望的 'YYYY-MM-DD HH:mm' 格式，避免回显解析失败 */
+function toDateTimeLocal(v?: string | null): string {
+  if (!v) return ''
+  const d = new Date(v)
+  if (isNaN(d.getTime())) return v.slice(0, 16)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
 }
 
 async function saveStage() {
@@ -248,12 +257,17 @@ async function saveStage() {
     start_at: stageForm.startAt || null,
     end_at: stageForm.endAt || null,
   }
-  if (stageEditId.value) {
-    await updateStage(stageEditId.value, payload)
-    ElMessage.success('阶段已更新')
-  } else {
-    await createStage({ ...payload, event_id: currentEventId.value || null })
-    ElMessage.success('阶段已创建')
+  try {
+    if (stageEditId.value) {
+      await updateStage(stageEditId.value, payload)
+      ElMessage.success('阶段已更新')
+    } else {
+      await createStage({ ...payload, event_id: currentEventId.value || null })
+      ElMessage.success('阶段已创建')
+    }
+  } catch (e: any) {
+    ElMessage.error(e.message || '保存失败，请检查权限')
+    return
   }
   stageDialog.value = false
   await loadStagesAndMatches()

@@ -130,7 +130,8 @@ export async function updateStage(id: string, partial: Partial<Stage>) {
     if (s) Object.assign(s, partial)
     return
   }
-  await supabase.from('stages').update(partial).eq('id', id)
+  const { error } = await supabase.from('stages').update(partial).eq('id', id)
+  if (error) throw new Error(error.message)
 }
 
 /** 删除阶段（其下对阵一并级联删除） */
@@ -235,5 +236,6 @@ export async function updateMatch(id: string, partial: Partial<Match>) {
     if (m) Object.assign(m, partial)
     return
   }
-  await supabase.from('matches').update(partial).eq('id', id)
+  const { error } = await supabase.from('matches').update(partial).eq('id', id)
+  if (error) throw new Error(error.message)
 }
