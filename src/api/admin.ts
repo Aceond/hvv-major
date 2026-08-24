@@ -15,6 +15,10 @@ import {
   updateTeamMemberRole,
 } from './registration'
 
+/** 演示模式下生成唯一 mock 对阵 id（避免同一毫秒批量创建导致 Date.now() 冲突、多条记录共用同一 id） */
+let mockMatchSeq = 0
+const mockMatchId = () => `match-${Date.now()}-${++mockMatchSeq}`
+
 export {
   listGroups,
   listMatches,
@@ -165,7 +169,7 @@ export async function createMatch(m: Partial<Match>) {
     const sortOrder =
       existing.reduce((max, x) => Math.max(max, x.sort_order ?? 0), -1) + 1
     mockMatches.push({
-      id: `match-${Date.now()}`,
+      id: mockMatchId(),
       stage_id: m.stage_id ?? '',
       group_id: m.group_id ?? null,
       round_number: m.round_number ?? 1,
