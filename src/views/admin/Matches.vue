@@ -389,6 +389,18 @@ async function saveMatchStatus(row: Match, status: Match['status']) {
   }
 }
 
+/** 行内切换阶段状态（未开始 / 进行中 / 已结束），如排位赛手动标记已结束 */
+async function saveStageStatus(row: Stage, status: StageStatus) {
+  if (status === row.status) return
+  try {
+    await updateStage(row.id, { status })
+    row.status = status
+    ElMessage.success(`阶段「${row.name}」状态已更新为「${STAGE_STATUS_LABEL[status]}」`)
+  } catch (e: any) {
+    ElMessage.error(e.message || '阶段状态更新失败')
+  }
+}
+
 // ---------------- 自动排阵（按大小分：大分=胜场，小分=净胜局） ----------------
 interface RankRow {
   teamId: string
@@ -785,14 +797,21 @@ onMounted(load)
         <el-table-column label="赛制" width="110">
           <template #default="{ row }">{{ STAGE_FORMAT_LABEL[row.format as StageFormat] }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="120">
           <template #default="{ row }">
-            <el-tag
+            <el-select
+              :model-value="row.status"
               size="small"
-              :type="row.status === 'running' ? 'success' : row.status === 'ended' ? 'info' : 'warning'"
+              style="width: 104px"
+              @change="(val: StageStatus) => saveStageStatus(row, val)"
             >
-              {{ STAGE_STATUS_LABEL[row.status as StageStatus] }}
-            </el-tag>
+              <el-option
+                v-for="(label, value) in STAGE_STATUS_LABEL"
+                :key="value"
+                :label="label"
+                :value="value"
+              />
+            </el-select>
           </template>
         </el-table-column>
         <el-table-column label="起止时间" min-width="200">
