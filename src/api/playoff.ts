@@ -17,6 +17,7 @@ import {
 export interface PendingPlayoffMatch {
   round_number: number
   bracket: 'wb' | 'lb' | 'gf'
+  sort_order: number // 同轮次内槽位，保证对阵图半区顺序
   team_a_id: string
   team_b_id: string
   best_of: number
@@ -42,26 +43,35 @@ function alreadyHas(
   )
 }
 
-/** 计算一对待创建对阵（去重后写入 out 与 pool） */
+/** 计算一对待创建对阵（去重后写入 out 与 pool；sortOrder 为该轮内槽位） */
 function pushPair(
   pool: Match[],
   out: PendingPlayoffMatch[],
   stageId: string,
   bracket: 'wb' | 'lb' | 'gf',
   roundNumber: number,
+  sortOrder: number,
   a: string | null,
   b: string | null,
   bestOf: number,
 ) {
   if (!a || !b || a === b) return
   if (alreadyHas(pool, bracket, roundNumber, a, b)) return
-  out.push({ round_number: roundNumber, bracket, team_a_id: a, team_b_id: b, best_of: bestOf || 1 })
+  out.push({
+    round_number: roundNumber,
+    bracket,
+    sort_order: sortOrder,
+    team_a_id: a,
+    team_b_id: b,
+    best_of: bestOf || 1,
+  })
   pool.push({
     id: `__auto-${bracket}-${roundNumber}-${a}-${b}`,
     stage_id: stageId,
     group_id: null,
     round_number: roundNumber,
     bracket,
+    sort_order: sortOrder,
     team_a_id: a,
     team_b_id: b,
     best_of: bestOf || 1,
@@ -100,7 +110,7 @@ function collectSingle(ms: Match[], gfBestOf: number): PendingPlayoffMatch[] {
       const a = winnerOf(cur[2 * j])
       const b = winnerOf(cur[2 * j + 1])
       const bestOf = isFinalRound ? gfBestOf : cur[2 * j]?.best_of ?? 1
-      pushPair(pool, out, cur[0].stage_id, 'wb', base + ri + 1, a, b, bestOf)
+      pushPair(pool, out, cur[0].stage_id, 'wb', base + ri + 1, j, a, b, bestOf)
     }
   }
   return out
@@ -139,7 +149,7 @@ function collectDouble(
     for (let j = 0; j < Math.floor(st.wb[ri] / 2); j++) {
       const a = winnerOf(cur[2 * j])
       const b = winnerOf(cur[2 * j + 1])
-      pushPair(pool, out, stageId, 'wb', base + ri + 1, a, b, cur[2 * j]?.best_of ?? 1)
+      pushPair(pool, out, stageId, 'wb', base + ri + 1, j, a, b, cur[2 * j]?.best_of ?? 1)
     }
   }
 
@@ -150,7 +160,7 @@ function collectDouble(
     for (let j = 0; j < st.lb[0]; j++) {
       const a = loserOf(wb1[2 * j])
       const b = loserOf(wb1[2 * j + 1])
-      pushPair(pool, out, stageId, 'lb', 1, a, b, wb1[2 * j]?.best_of ?? 1)
+      pushPair(pool, out, stageId, 'lb', 1, j, a, b, wb1[2 * j]?.best_of ?? 1)
     }
     // 偶数轮 LB(2s)：LB(2s-1) 胜者 vs 胜者组 WB(s+1) 败者
     for (let s = 1; s <= st.k - 1; s++) {
@@ -160,7 +170,7 @@ function collectDouble(
       for (let j = 0; j < st.lb[r - 1]; j++) {
         const a = winnerOf(prev[j])
         const b = loserOf(wbSrc[j])
-        pushPair(pool, out, stageId, 'lb', r, a, b, wbSrc[j]?.best_of ?? prev[j]?.best_of ?? 1)
+        pushPair(pool, out, stageId, 'lb', r, j, a, b, wbSrc[j]?.best_of ?? prev[j]?.best_of ?? 1)
       }
     }
     // 奇数轮 LB(2s+1)：LB(2s) 胜者两两配对
@@ -170,7 +180,7 @@ function collectDouble(
       for (let j = 0; j < Math.floor(st.lb[r - 1]); j++) {
         const a = winnerOf(prev[2 * j])
         const b = winnerOf(prev[2 * j + 1])
-        pushPair(pool, out, stageId, 'lb', r, a, b, prev[2 * j]?.best_of ?? 1)
+        pushPair(pool, out, stageId, 'lb', r, j, a, b, prev[2 * j]?.best_of ?? 1)
       }
     }
   }
@@ -179,10 +189,10 @@ function collectDouble(
   if (st.k >= 2) {
     const wbFinal = wbRound(base + st.k - 1)[0]
     const lbFinal = lbRound(2 * st.k - 2)[0]
-    pushPair(pool, out, stageId, 'gf', base + st.k, winnerOf(wbFinal), winnerOf(lbFinal), gfBestOf)
+    pushPair(pool, out, stageId, 'gf', base + st.k, 0, winnerOf(wbFinal), winnerOf(lbFinal), gfBestOf)
   } else {
     const wb1 = wbRound(base)[0]
-    pushPair(pool, out, stageId, 'gf', base + 1, winnerOf(wb1), loserOf(wb1), gfBestOf)
+    pushPair(pool, out, stageId, 'gf', base + 1, 0, winnerOf(wb1), loserOf(wb1), gfBestOf)
   }
 
   return { pairs: out, needPowerOfTwo: false }

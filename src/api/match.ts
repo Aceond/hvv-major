@@ -135,12 +135,16 @@ function buildDemoWeekMatches(start: string): Match[] {
   })
 }
 
-/** 赛程/对阵列表（可按阶段、组别过滤） */
+/** 赛程/对阵列表（可按阶段、组别过滤；同轮次内按 sort_order 排序，保证对阵图半区与创建顺序一致） */
 export async function listMatches(stageId?: string, groupId?: string): Promise<Match[]> {
   if (!isSupabaseConfigured || !supabase) {
     return mockMatches
       .filter((m) => !stageId || m.stage_id === stageId)
       .filter((m) => !groupId || m.group_id === groupId)
+      .sort(
+        (a, b) =>
+          a.round_number - b.round_number || (a.sort_order ?? 0) - (b.sort_order ?? 0),
+      )
       .map((m) => ({
         ...m,
         team_a_name: m.team_a_name ?? getTeamName(m.team_a_id),
@@ -155,6 +159,7 @@ export async function listMatches(stageId?: string, groupId?: string): Promise<M
       '*, stage:stages(name), group:groups(name), team_a:teams!matches_team_a_id_fkey(name), team_b:teams!matches_team_b_id_fkey(name)',
     )
     .order('round_number')
+    .order('sort_order')
   if (stageId) query = query.eq('stage_id', stageId)
   if (groupId) query = query.eq('group_id', groupId)
   const { data } = await query
@@ -204,9 +209,11 @@ export async function listAllStageMatches(
   const stageIds = stages.map((s) => s.id)
   if (stageIds.length === 0) return []
   if (!isSupabaseConfigured || !supabase) {
-    return decorate(mockMatches.filter((m) => stageIds.includes(m.stage_id))).sort(
-      (a, b) => a.round_number - b.round_number,
-    )
+    return decorate(mockMatches.filter((m) => stageIds.includes(m.stage_id)))
+      .sort(
+        (a, b) =>
+          a.round_number - b.round_number || (a.sort_order ?? 0) - (b.sort_order ?? 0),
+      )
   }
   let query = supabase
     .from('matches')
@@ -215,6 +222,7 @@ export async function listAllStageMatches(
     )
     .in('stage_id', stageIds)
     .order('round_number')
+    .order('sort_order')
   const { data } = await query
   return ((data ?? []) as any[]).map((m) => ({
     ...m,

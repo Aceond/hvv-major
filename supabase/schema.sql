@@ -208,6 +208,7 @@ create table if not exists public.matches (
   group_id uuid references public.groups (id), -- 所属组别（淘汰赛跨组可空）
   round_number int not null default 1,   -- 第几轮
   bracket text not null default 'wb',    -- 淘汰赛所属赛组：wb=胜者组 / lb=败者组 / gf=总决赛（单败固定 wb）
+  sort_order int not null default 0,     -- 同轮次内对阵顺序（槽位），保证对阵图半区与自动匹配一致
   team_a_id uuid references public.teams (id),
   team_b_id uuid references public.teams (id),
   best_of int not null default 1,        -- BO1 / BO3
@@ -225,6 +226,18 @@ create table if not exists public.matches (
 -- 兼容：老库补充淘汰赛赛组字段（wb/lb/gf），可安全重复执行
 alter table public.matches add column if not exists bracket text not null default 'wb'
   check (bracket in ('wb', 'lb', 'gf'));
+
+-- 兼容：老库补充同轮次对阵顺序字段（保证对阵图半区与自动匹配一致），可安全重复执行
+alter table public.matches add column if not exists sort_order int not null default 0;
+
+-- 老数据回填：按每轮创建顺序编号（幂等：只处理仍为 0 的行）
+update public.matches m
+set sort_order = sub.rn - 1
+from (
+  select id, row_number() over (partition by stage_id, round_number order by created_at, id) as rn
+  from public.matches
+) sub
+where m.id = sub.id and m.sort_order = 0;
 
 -- 地图详情（BO3 逐图比分）
 create table if not exists public.match_maps (
@@ -1526,6 +1539,7 @@ declare
   v_item jsonb;
   v_br text;
   v_rn int;
+  v_so int;
   v_a uuid;
   v_b uuid;
   v_bo int;
@@ -1555,6 +1569,7 @@ begin
   for v_item in select * from jsonb_array_elements(p_matches) loop
     v_br := coalesce(v_item->>'bracket', 'wb');
     v_rn := coalesce((v_item->>'round_number')::int, 1);
+    v_so := coalesce((v_item->>'sort_order')::int, 0);
     v_a := (v_item->>'team_a_id')::uuid;
     v_b := (v_item->>'team_b_id')::uuid;
     v_bo := coalesce((v_item->>'best_of')::int, 3);
@@ -1565,8 +1580,8 @@ begin
       where stage_id = p_stage_id and bracket = v_br and round_number = v_rn
         and ((team_a_id = v_a and team_b_id = v_b) or (team_a_id = v_b and team_b_id = v_a))
     ) then
-      insert into public.matches (stage_id, round_number, bracket, team_a_id, team_b_id, best_of, status)
-      values (p_stage_id, v_rn, v_br, v_a, v_b, v_bo, 'scheduled');
+      insert into public.matches (stage_id, round_number, bracket, sort_order, team_a_id, team_b_id, best_of, status)
+      values (p_stage_id, v_rn, v_br, v_so, v_a, v_b, v_bo, 'scheduled');
       v_inserted := v_inserted + 1;
     end if;
   end loop;

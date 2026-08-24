@@ -155,15 +155,21 @@ export async function clearStageMatches(stageId: string) {
   if (error) throw error
 }
 
-/** 创建对阵（可指定组别 / 淘汰赛赛组） */
+/** 创建对阵（可指定组别 / 淘汰赛赛组；同轮次内自动按创建顺序编号，保证对阵图半区与创建顺序一致） */
 export async function createMatch(m: Partial<Match>) {
   if (!isSupabaseConfigured || !supabase) {
+    const existing = mockMatches.filter(
+      (x) => x.stage_id === m.stage_id && x.round_number === (m.round_number ?? 1),
+    )
+    const sortOrder =
+      existing.reduce((max, x) => Math.max(max, x.sort_order ?? 0), -1) + 1
     mockMatches.push({
       id: `match-${Date.now()}`,
       stage_id: m.stage_id ?? '',
       group_id: m.group_id ?? null,
       round_number: m.round_number ?? 1,
       bracket: m.bracket ?? 'wb',
+      sort_order: sortOrder,
       team_a_id: m.team_a_id ?? null,
       team_b_id: m.team_b_id ?? null,
       best_of: m.best_of ?? 1,
@@ -176,7 +182,16 @@ export async function createMatch(m: Partial<Match>) {
     })
     return
   }
-  await supabase.from('matches').insert(m)
+  // 计算该阶段同轮次内下一个顺序位，保证创建顺序即对阵图槽位顺序
+  const { data: existing } = await supabase
+    .from('matches')
+    .select('sort_order')
+    .eq('stage_id', m.stage_id)
+    .eq('round_number', m.round_number ?? 1)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+  const sortOrder = ((existing?.[0]?.sort_order as number | undefined) ?? -1) + 1
+  await supabase.from('matches').insert({ ...m, sort_order: sortOrder })
 }
 
 /** 录入/更新比赛结果（真实环境走数据库函数自动判定胜者，并同步地图/时间） */
