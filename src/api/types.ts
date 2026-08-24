@@ -265,14 +265,15 @@ export interface PlayerStatRow {
   avg_clutches?: number // 场均残局
 }
 
-/** 比赛队员数据（比分录入入口按场次登记，个人数据排行据此自动聚合） */
+/** 比赛队员数据（比分录入入口按「地图」登记，个人数据排行据此自动聚合） */
 export interface MatchPlayerStat {
   id: string
   match_id: string
   player_id: string
   team_id: string
-  map_count: number // 本场地图数（BO1=1，BO3=3）
-  kills: number // 击杀（本场所有地图合计）
+  map_name: string // 所属地图（'' = 旧数据整场合计；新录入按图拆分，BO3 = 三张图三行）
+  map_count: number // 该行覆盖的地图数（按图录入时 = 1，旧场合计数据保留原值）
+  kills: number // 击杀（本行覆盖地图）
   deaths: number // 死亡
   assists: number // 助攻
   headshots: number // 爆头数
@@ -280,9 +281,9 @@ export interface MatchPlayerStat {
   multi_kills: number // 多杀
   clutches: number // 残局
   damage: number // 总伤害
-  rounds: number // 总局数
-  we: number // 本场 WE
-  rating: number // 本场 Rating
+  rounds: number // 局数
+  we: number // 本图 WE
+  rating: number // 本图 Rating
   created_at: string
   // 联表展示字段
   player_name?: string | null
@@ -292,10 +293,11 @@ export interface MatchPlayerStat {
   match_stage_id?: string | null
 }
 
-/** 比赛队员数据（录入表单行：不含 id/created_at，保存时后端按 match_id+player_id 覆盖） */
+/** 比赛队员数据（录入表单行：不含 id/created_at，保存时后端按 match_id+map_name+player_id 覆盖） */
 export interface MatchPlayerStatInput {
   player_id: string
   team_id: string
+  map_name: string
   map_count: number
   kills: number
   deaths: number

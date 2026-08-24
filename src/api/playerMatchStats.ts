@@ -1,4 +1,4 @@
-// 比赛队员数据访问层（比分录入入口按场次登记：击杀/死亡/助攻/爆头/首杀/多杀/残局/伤害/局数/WE/Rating）
+// 比赛队员数据访问层（比分录入入口按「地图」登记：击杀/死亡/助攻/爆头/首杀/多杀/残局/伤害/局数/WE/Rating）
 // 个人数据排行页据此自动聚合：场均 = 总量 / 地图数（map_count 合计），爆头率 = Σ爆头/Σ击杀，
 // ADR = Σ伤害/Σ局数，WE/Rating 场均 = Σ/场次数。
 // 未配置 Supabase（演示模式）时使用 mock 数据。
@@ -33,7 +33,7 @@ export async function listMatchPlayers(
   }))
 }
 
-/** 某场比赛已录入的队员数据（含队员昵称/完美 ID/战队名） */
+/** 某场比赛已录入的队员数据（含队员昵称/完美 ID/战队名），按地图分组返回 */
 export async function listMatchPlayerStats(matchId: string): Promise<MatchPlayerStat[]> {
   if (!isSupabaseConfigured || !supabase) {
     return mockMatchPlayerStats.filter((s) => s.match_id === matchId)
@@ -44,6 +44,7 @@ export async function listMatchPlayerStats(matchId: string): Promise<MatchPlayer
       '*, player:profiles(nickname, pw_username), team:teams(name)',
     )
     .eq('match_id', matchId)
+    .order('map_name')
   return ((data ?? []) as any[]).map((s) => ({
     ...s,
     player_name: s.player?.nickname ?? s.player?.pw_username ?? null,
@@ -52,22 +53,25 @@ export async function listMatchPlayerStats(matchId: string): Promise<MatchPlayer
   }))
 }
 
-/** 保存本场队员数据：按 match_id + player_id 覆盖（先删旧，再插入） */
+/** 保存某场比赛「某张地图」的队员数据：按 match_id + map_name + player_id 覆盖（先删旧，再插入） */
 export async function saveMatchPlayerStats(
   matchId: string,
+  mapName: string,
   rows: MatchPlayerStatInput[],
 ): Promise<boolean> {
   if (!isSupabaseConfigured || !supabase) {
     for (let i = mockMatchPlayerStats.length - 1; i >= 0; i--) {
-      if (mockMatchPlayerStats[i].match_id === matchId) mockMatchPlayerStats.splice(i, 1)
+      const s = mockMatchPlayerStats[i]
+      if (s.match_id === matchId && (s.map_name ?? '') === mapName) mockMatchPlayerStats.splice(i, 1)
     }
     for (const r of rows) {
       const teamName = mockTeams.find((t) => t.id === r.team_id)?.name ?? null
       mockMatchPlayerStats.push({
-        id: `mps-${matchId}-${r.player_id}-${Date.now()}`,
+        id: `mps-${matchId}-${mapName}-${r.player_id}-${Date.now()}`,
         match_id: matchId,
         player_id: r.player_id,
         team_id: r.team_id,
+        map_name: mapName,
         map_count: r.map_count,
         kills: r.kills, deaths: r.deaths, assists: r.assists, headshots: r.headshots,
         first_kills: r.first_kills, multi_kills: r.multi_kills, clutches: r.clutches,
@@ -79,11 +83,12 @@ export async function saveMatchPlayerStats(
     }
     return true
   }
-  // 事务性保存：删旧 → 插新（RLS 允许管理员/参赛队队长操作）
+  // 事务性保存：删该图旧数据 → 插新（RLS 允许管理员/参赛队队长操作）
   const { error: delErr } = await supabase
     .from('match_player_stats')
     .delete()
     .eq('match_id', matchId)
+    .eq('map_name', mapName)
   if (delErr) throw new Error(delErr.message)
   if (rows.length > 0) {
     const { error: insErr } = await supabase.from('match_player_stats').insert(

@@ -457,12 +457,13 @@ export const mockPlayerStats: PlayerStatRow[] = [
     } as Record<string, string>)[r.player_id] ?? null,
 }))
 
-// ---------------- 比赛队员数据（比分录入入口登记；个人数据排行自动聚合） ----------------
+// ---------------- 比赛队员数据（比分录入入口按「地图」登记；个人数据排行自动聚合） ----------------
 // d = [击杀, 死亡, 助攻, 爆头, 首杀, 多杀, 残局, 伤害, 局数]
 const mps = (
   matchId: string,
   playerId: string,
   teamId: string,
+  mapName: string,
   mapCount: number,
   d: [number, number, number, number, number, number, number, number, number],
   we: number,
@@ -472,10 +473,11 @@ const mps = (
   const p = mockPlayers.find((x) => x.id === playerId)
   const m = mockMatches.find((x) => x.id === matchId)
   return {
-    id: `${matchId}-${playerId}`,
+    id: `${matchId}-${mapName}-${playerId}`,
     match_id: matchId,
     player_id: playerId,
     team_id: teamId,
+    map_name: mapName,
     map_count: mapCount,
     kills: d[0], deaths: d[1], assists: d[2], headshots: d[3],
     first_kills: d[4], multi_kills: d[5], clutches: d[6], damage: d[7], rounds: d[8],
@@ -490,19 +492,30 @@ const mps = (
 
 export const mockMatchPlayerStats: MatchPlayerStat[] = [
   // match-1 传奇组 BO1（team-1 vs team-6）
-  mps('match-1', 'demo-admin', 'team-1', 1, [18, 12, 3, 10, 2, 3, 1, 2800, 20], 85, 1.6, 'g1'),
-  mps('match-1', 'p01', 'team-1', 1, [15, 14, 2, 7, 1, 2, 0, 2300, 20], 76, 1.35, 'g1'),
-  mps('match-1', 'p02', 'team-1', 1, [16, 13, 4, 11, 2, 2, 1, 2600, 20], 79, 1.42, 'g1'),
-  mps('match-1', 'u6', 'team-6', 1, [11, 17, 3, 5, 1, 1, 0, 2000, 20], 62, 1.02, 'g1'),
-  // match-26 总决赛 BO3（team-1 vs team-12）——与 match-1 合计 4 张地图，演示「场均 = 总量 / 地图数」
-  mps('match-26', 'demo-admin', 'team-1', 3, [55, 40, 9, 30, 12, 15, 2, 9000, 73], 82, 1.5, null),
-  mps('match-26', 'p01', 'team-1', 3, [48, 44, 11, 24, 10, 12, 1, 8200, 73], 74, 1.31, null),
-  mps('match-26', 'p02', 'team-1', 3, [52, 41, 8, 33, 11, 14, 3, 8800, 73], 81, 1.48, null),
-  mps('match-26', 'u9', 'team-12', 3, [50, 46, 10, 22, 9, 13, 2, 8400, 73], 71, 1.24, null),
-  mps('match-26', 'p16', 'team-12', 3, [44, 47, 12, 19, 8, 11, 0, 7600, 73], 66, 1.12, null),
+  mps('match-1', 'demo-admin', 'team-1', '', 1, [18, 12, 3, 10, 2, 3, 1, 2800, 20], 85, 1.6, 'g1'),
+  mps('match-1', 'p01', 'team-1', '', 1, [15, 14, 2, 7, 1, 2, 0, 2300, 20], 76, 1.35, 'g1'),
+  mps('match-1', 'p02', 'team-1', '', 1, [16, 13, 4, 11, 2, 2, 1, 2600, 20], 79, 1.42, 'g1'),
+  mps('match-1', 'u6', 'team-6', '', 1, [11, 17, 3, 5, 1, 1, 0, 2000, 20], 62, 1.02, 'g1'),
+  // match-26 总决赛 BO3（team-1 vs team-12）——按三张图分别录入（每行 map_count=1），
+  // 与 match-1 合计 4 张地图，演示「场均 = 总量 / 地图数」
+  mps('match-26', 'demo-admin', 'team-1', 'Mirage', 1, [20, 14, 3, 11, 5, 6, 1, 3200, 25], 27, 0.5, null),
+  mps('match-26', 'demo-admin', 'team-1', 'Inferno', 1, [18, 13, 3, 10, 4, 5, 1, 3000, 24], 27, 0.5, null),
+  mps('match-26', 'demo-admin', 'team-1', 'Anubis', 1, [17, 13, 3, 9, 3, 4, 0, 2800, 24], 28, 0.5, null),
+  mps('match-26', 'p01', 'team-1', 'Mirage', 1, [17, 15, 4, 8, 4, 4, 0, 2900, 25], 24, 0.44, null),
+  mps('match-26', 'p01', 'team-1', 'Inferno', 1, [16, 15, 4, 8, 3, 4, 1, 2700, 24], 25, 0.44, null),
+  mps('match-26', 'p01', 'team-1', 'Anubis', 1, [15, 14, 3, 8, 3, 4, 0, 2600, 24], 25, 0.43, null),
+  mps('match-26', 'p02', 'team-1', 'Mirage', 1, [19, 14, 3, 12, 4, 5, 1, 3100, 25], 27, 0.49, null),
+  mps('match-26', 'p02', 'team-1', 'Inferno', 1, [17, 14, 3, 11, 4, 5, 1, 2900, 24], 27, 0.5, null),
+  mps('match-26', 'p02', 'team-1', 'Anubis', 1, [16, 13, 2, 10, 3, 4, 1, 2800, 24], 27, 0.49, null),
+  mps('match-26', 'u9', 'team-12', 'Mirage', 1, [18, 16, 3, 8, 3, 5, 1, 3000, 25], 24, 0.41, null),
+  mps('match-26', 'u9', 'team-12', 'Inferno', 1, [17, 15, 4, 7, 3, 4, 1, 2800, 24], 23, 0.42, null),
+  mps('match-26', 'u9', 'team-12', 'Anubis', 1, [15, 15, 3, 7, 3, 4, 0, 2600, 24], 24, 0.41, null),
+  mps('match-26', 'p16', 'team-12', 'Mirage', 1, [16, 17, 4, 7, 3, 4, 0, 2700, 25], 22, 0.37, null),
+  mps('match-26', 'p16', 'team-12', 'Inferno', 1, [15, 16, 4, 6, 3, 4, 0, 2600, 24], 22, 0.38, null),
+  mps('match-26', 'p16', 'team-12', 'Anubis', 1, [13, 14, 4, 6, 2, 3, 0, 2300, 24], 22, 0.37, null),
   // match-30 演示队长战队 BO1（team-13 烈焰竞技 vs team-5）
-  mps('match-30', 'demo-captain', 'team-13', 1, [22, 9, 4, 13, 3, 4, 2, 3100, 20], 88, 1.71, 'g3'),
-  mps('match-30', 'p73', 'team-13', 1, [17, 12, 5, 9, 2, 3, 1, 2600, 20], 78, 1.4, 'g3'),
-  mps('match-30', 'p74', 'team-13', 1, [15, 13, 3, 8, 1, 2, 0, 2300, 20], 72, 1.28, 'g3'),
-  mps('match-30', 'u5', 'team-5', 1, [12, 17, 4, 6, 1, 1, 0, 2100, 20], 61, 1.0, 'g3'),
+  mps('match-30', 'demo-captain', 'team-13', '', 1, [22, 9, 4, 13, 3, 4, 2, 3100, 20], 88, 1.71, 'g3'),
+  mps('match-30', 'p73', 'team-13', '', 1, [17, 12, 5, 9, 2, 3, 1, 2600, 20], 78, 1.4, 'g3'),
+  mps('match-30', 'p74', 'team-13', '', 1, [15, 13, 3, 8, 1, 2, 0, 2300, 20], 72, 1.28, 'g3'),
+  mps('match-30', 'u5', 'team-5', '', 1, [12, 17, 4, 6, 1, 1, 0, 2100, 20], 61, 1.0, 'g3'),
 ]

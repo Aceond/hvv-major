@@ -431,21 +431,29 @@ create table if not exists public.match_player_stats (
   match_id uuid not null references public.matches (id) on delete cascade,
   player_id uuid not null references public.profiles (id) on delete cascade,
   team_id uuid not null references public.teams (id) on delete cascade,
-  map_count int not null default 1,              -- 本场地图数（BO1=1，BO3=3，录入时自动带出）
-  kills int not null default 0,                  -- 击杀（本场所有地图合计）
-  deaths int not null default 0,                 -- 死亡
-  assists int not null default 0,                -- 助攻
-  headshots int not null default 0,              -- 爆头数
-  first_kills int not null default 0,            -- 首杀
-  multi_kills int not null default 0,            -- 多杀
-  clutches int not null default 0,               -- 残局
-  damage int not null default 0,                 -- 总伤害
-  rounds int not null default 0,                 -- 总局数
-  we numeric(5,2) not null default 0,            -- 本场 WE
-  rating numeric(4,2) not null default 0,        -- 本场 Rating
+  map_name text not null default '',               -- 所属地图（'' = 旧数据整场合计；新录入按图拆分，BO3 = 三张图三行）
+  map_count int not null default 1,                -- 该行覆盖的地图数（按图录入时 = 1，旧场合计数据保留原值）
+  kills int not null default 0,                    -- 击杀（本行覆盖地图的击杀数）
+  deaths int not null default 0,                   -- 死亡
+  assists int not null default 0,                  -- 助攻
+  headshots int not null default 0,                -- 爆头数
+  first_kills int not null default 0,              -- 首杀
+  multi_kills int not null default 0,              -- 多杀
+  clutches int not null default 0,                 -- 残局
+  damage int not null default 0,                   -- 总伤害
+  rounds int not null default 0,                   -- 局数
+  we numeric(5,2) not null default 0,              -- 本图 WE
+  rating numeric(4,2) not null default 0,          -- 本图 Rating
   created_at timestamptz not null default now(),
-  unique (match_id, player_id)                   -- 同一场比赛每名队员一行，重复保存覆盖
+  unique (match_id, map_name, player_id)           -- 同一场比赛同一地图每名队员一行，重复保存覆盖
 );
+
+-- 兼容：老库 map_name 列 + 唯一约束升级（新库上面已建，可安全重复执行）
+alter table public.match_player_stats add column if not exists map_name text not null default '';
+alter table public.match_player_stats drop constraint if exists match_player_stats_match_id_player_id_key;
+alter table public.match_player_stats drop constraint if exists match_player_stats_match_id_map_name_player_id_key;
+alter table public.match_player_stats
+  add constraint match_player_stats_match_id_map_player_key unique (match_id, map_name, player_id);
 
 -- ============================================================
 -- 7. 辅助函数
