@@ -55,3 +55,31 @@ export function doubleElimRoundCounts(firstRoundMatches: number): DoubleElimStru
   }
   return { k, wb, lb }
 }
+
+/** 高低配：第 i 名 vs 倒数第 i 名（1vs8、2vs7…；半区为 {1,8,2,7} 与 {3,6,4,5}） */
+export function seedPairs(ids: string[]): Array<[string, string]> {
+  const n = ids.length
+  return Array.from({ length: Math.floor(n / 2) }, (_, i) => [ids[i], ids[n - 1 - i]])
+}
+
+/** 标准分区种子排列：1, N, N/2, N/2+1, N/4, …（保证 1,4,5,8 与 2,3,6,7 分属两半区）。仅支持 2 的幂，否则返回 null */
+export function bracketSeedOrder(n: number): number[] | null {
+  if (n < 2) return null
+  const k = Math.round(Math.log2(n))
+  if (Math.pow(2, k) !== n) return null
+  if (n === 2) return [1, 2]
+  const half = bracketSeedOrder(n / 2)
+  if (!half) return null
+  return [1, n, ...half.slice(1).flatMap((s) => [s, n - s + 1])]
+}
+
+/** 半区分组配对（按标准分区排列两两配对）：1v8、4v5、2v7、3v6 …（半区 {1,8,4,5} 与 {2,7,3,6}）。仅支持 2 的幂，否则返回 null */
+export function halfSplitPairs(ids: string[]): Array<[string, string]> | null {
+  const order = bracketSeedOrder(ids.length)
+  if (!order) return null
+  const pairs: Array<[string, string]> = []
+  for (let i = 0; i < order.length; i += 2) {
+    pairs.push([ids[order[i] - 1], ids[order[i + 1] - 1]])
+  }
+  return pairs
+}
