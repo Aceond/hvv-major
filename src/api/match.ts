@@ -11,6 +11,7 @@ import {
   mockStandings,
 } from '@/mock/data'
 import type { Group, Match, MatchMap, Stage, StandingsRow } from './types'
+import { mockAutoSettlePollForMatch } from './bet'
 
 /** 组别列表（传奇组 / 大师组 / 挑战组） */
 export async function listGroups(): Promise<Group[]> {
@@ -281,6 +282,7 @@ export async function submitMatchScore(
   if (!isSupabaseConfigured || !supabase) {
     const m = mockMatches.find((x) => x.id === matchId)
     if (!m) return false
+    const oldStatus = m.status
     m.team_a_score = aScore
     m.team_b_score = bScore
     m.winner_id = aScore > bScore ? m.team_a_id : bScore > aScore ? m.team_b_id : null
@@ -302,6 +304,8 @@ export async function submitMatchScore(
         })
       })
     }
+    // scheduled → completed：自动结算对应竞猜
+    if (oldStatus === 'scheduled') mockAutoSettlePollForMatch(m)
     return true
   }
   const { error } = await supabase.rpc('upsert_match_result', {

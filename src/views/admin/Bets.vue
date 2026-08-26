@@ -303,6 +303,14 @@ onMounted(load)
         />
       </el-select>
       <el-button type="primary" :icon="Plus" @click="openCreate">发布竞猜</el-button>
+      <el-alert
+        type="info"
+        :closable="false"
+        show-icon
+        title="比赛胜者竞猜自动生成 &amp; 自动结算"
+        description="创建对阵（scheduled）时自动生成对应「比赛胜者」竞猜；录入比分后自动截止并按胜者自动结算，无需在此手动操作。"
+        class="auto-tip"
+      />
     </div>
 
     <el-table v-loading="loading" :data="filteredPolls" stripe>
@@ -342,12 +350,18 @@ onMounted(load)
       <el-table-column label="发布时间" min-width="130">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="240">
+      <el-table-column label="操作" width="260">
         <template #default="{ row }">
-          <el-button v-if="row.status !== 'settled'" size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button v-if="row.status === 'open'" size="small" @click="toggleClose(row)">截止</el-button>
-          <el-button v-else-if="row.status === 'closed'" size="small" @click="toggleClose(row)">重开</el-button>
-          <el-button v-if="row.status !== 'settled'" size="small" type="success" @click="openSettle(row)">
+          <el-button v-if="row.kind !== 'match_winner' && row.status !== 'settled'" size="small" @click="openEdit(row)">编辑</el-button>
+          <el-tag v-else-if="row.kind === 'match_winner' && row.status !== 'settled'" size="small" effect="plain" type="info">系统自动处理</el-tag>
+          <el-button v-if="row.kind !== 'match_winner' && row.status === 'open'" size="small" @click="toggleClose(row)">截止</el-button>
+          <el-button v-else-if="row.kind !== 'match_winner' && row.status === 'closed'" size="small" @click="toggleClose(row)">重开</el-button>
+          <el-button
+            v-if="row.kind !== 'match_winner' && row.status !== 'settled'"
+            size="small"
+            type="success"
+            @click="openSettle(row)"
+          >
             结算
           </el-button>
           <el-button size="small" type="danger" link @click="remove(row)">删除</el-button>
@@ -373,8 +387,20 @@ onMounted(load)
         </el-form-item>
         <el-form-item label="竞猜类型">
           <el-select v-model="form.kind" style="width: 100%" @change="onKindChange">
-            <el-option v-for="(label, k) in BET_KIND_LABEL" :key="k" :label="label" :value="k" />
+            <el-option
+              v-for="(label, k) in BET_KIND_LABEL"
+              :key="k"
+              :label="label"
+              :value="k"
+              :disabled="k === 'match_winner'"
+            />
           </el-select>
+          <div v-if="form.kind === 'match_winner'" class="hint-text">
+            比赛胜者竞猜由系统自动生成：创建对阵（scheduled）时自动发布、比赛录入比分后自动截止/自动结算，无需手动发布。
+          </div>
+          <div class="hint-text">
+            提示：比赛胜者竞猜会在创建对阵时自动生成、录入比分后自动截止并结算；此处仅可发布组别冠军 / 阶段晋级 / 自定义竞猜。
+          </div>
         </el-form-item>
 
         <!-- 组别冠军 -->
@@ -546,6 +572,17 @@ onMounted(load)
   gap: 12px;
   margin-bottom: 16px;
   flex-wrap: wrap;
+}
+
+.auto-tip {
+  flex: 1;
+  min-width: 320px;
+}
+
+.hint-text {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--cs2-text-muted);
 }
 
 .options-list {

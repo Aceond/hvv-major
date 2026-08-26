@@ -4,6 +4,7 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { mockMatches, mockMembers, mockStages, mockTeams } from '@/mock/data'
 import type { AccountItem, ApplicationStatus, Match, Stage, Team, TeamStatus } from './types'
 import { listGroups, listMatches, listStages } from './match'
+import { mockAutoCreatePollForMatch } from './bet'
 import {
   addTeamMember,
   createTeamByAdmin,
@@ -168,8 +169,9 @@ export async function createMatch(m: Partial<Match>) {
     )
     const sortOrder =
       existing.reduce((max, x) => Math.max(max, x.sort_order ?? 0), -1) + 1
-    mockMatches.push({
-      id: mockMatchId(),
+    const id = mockMatchId()
+    const matchRow: Match = {
+      id,
       stage_id: m.stage_id ?? '',
       group_id: m.group_id ?? null,
       round_number: m.round_number ?? 1,
@@ -184,7 +186,9 @@ export async function createMatch(m: Partial<Match>) {
       winner_id: null,
       status: 'scheduled',
       scheduled_at: m.scheduled_at ?? null,
-    })
+    }
+    mockMatches.push(matchRow)
+    mockAutoCreatePollForMatch(matchRow)
     return
   }
   // 计算该阶段同轮次内下一个顺序位，保证创建顺序即对阵图槽位顺序

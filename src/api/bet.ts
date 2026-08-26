@@ -55,6 +55,153 @@ export const BET_STATUS_LABEL: Record<BetPollStatus, string> = {
 const newId = () => `bet-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 const newOptionId = () => `o-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`
 
+// ---------------- 自动生成 / 自动结算工具（仅 mock 模式用，真实模式由 DB 触发器完成） ----------------
+// 注意：mockMatches / mockStages 已在文件顶部 import
+import { mockTeams } from '@/mock/data'
+
+/** 获取某赛事所有已完成比赛（演示模式赔率/强度计算用） */
+function mockCompletedMatches(eventId?: string) {
+  return mockMatches.filter((m) => {
+    if (m.status !== 'completed') return false
+    if (!eventId) return true
+    return mockStages.find((s) => s.id === m.stage_id)?.event_id === eventId
+  })
+}
+
+/** 演示模式：队伍综合强度（与 teamStrengthMap 逻辑一致） */
+function mockTeamStrength(teamId: string, eventId?: string): number {
+  const rows: CompletedRow[] = mockCompletedMatches(eventId)
+  const agg = new Map<string, { played: number; wins: number; net: number }>()
+  for (const m of rows) {
+    if (!m.team_a_id || !m.team_b_id || m.team_a_id === m.team_b_id) continue
+    const touch = (tid: string, win: boolean, diff: number) => {
+      const s = agg.get(tid) ?? { played: 0, wins: 0, net: 0 }
+      s.played++
+      if (win) s.wins++
+      s.net += diff
+      agg.set(tid, s)
+    }
+    touch(m.team_a_id, m.team_a_score > m.team_b_score, m.team_a_score - m.team_b_score)
+    touch(m.team_b_id, m.team_b_score > m.team_a_score, m.team_b_score - m.team_a_score)
+  }
+  const winRate = (tid: string) => {
+    const s = agg.get(tid)
+    return s && s.played > 0 ? s.wins / s.played : 0
+  }
+  const netRate = (tid: string) => {
+    const s = agg.get(tid)
+    if (!s || s.played === 0) return 0
+    return Math.max(0, Math.min(1, 0.5 + s.net / s.played / 12))
+  }
+  const oppSum = new Map<string, { total: number; count: number }>()
+  for (const m of rows) {
+    if (!m.team_a_id || !m.team_b_id) continue
+    const touchOpp = (tid: string, opp: string) => {
+      const o = oppSum.get(tid) ?? { total: 0, count: 0 }
+      o.total += winRate(opp)
+      o.count++
+      oppSum.set(tid, o)
+    }
+    touchOpp(m.team_a_id, m.team_b_id)
+    touchOpp(m.team_b_id, m.team_a_id)
+  }
+  const oppRate = (tid: string) => {
+    const o = oppSum.get(tid)
+    return o && o.count > 0 ? o.total / o.count : 0
+  }
+  const sa = winRate(teamId), sb = netRate(teamId), sc = oppRate(teamId)
+  return Math.round((0.5 * sa + 0.3 * sb + 0.2 * sc) * 10000) / 10000
+}
+
+/** 演示模式：根据双方强度算赔率（范围 1.2~2） */
+function mockOdds(aId: string, bId: string, eventId?: string) {
+  const sa = mockTeamStrength(aId, eventId)
+  const sb = mockTeamStrength(bId, eventId)
+  const r = (self: number, other: number) => {
+    const s = Math.max(self, 0.001)
+    return Math.min(2, Math.round(Math.max(1.2, (s + other) / s) * 100) / 100)
+  }
+  return { a: r(sa, sb), b: r(sb, sa) }
+}
+
+/**
+ * 演示模式：创建 match → 自动生成 match_winner 竞猜（幂等，同 match 已生成则跳过）
+ * 真实模式走 DB 触发器 trg_match_auto_bet
+ */
+export function mockAutoCreatePollForMatch(m: {
+  id: string
+  stage_id: string
+  team_a_id: string | null
+  team_b_id: string | null
+  status: string
+}) {
+  if (isSupabaseConfigured || supabase) return
+  if (!m.team_a_id || !m.team_b_id || m.status !== 'scheduled') return
+  if (mockPolls.some((p) => p.match_id === m.id)) return
+  const st = mockStages.find((s) => s.id === m.stage_id)
+  if (!st) return
+  const ta = mockTeams.find((t) => t.id === m.team_a_id)
+  const tb = mockTeams.find((t) => t.id === m.team_b_id)
+  if (!ta || !tb) return
+  const { a: ao, b: bo } = mockOdds(m.team_a_id, m.team_b_id, st.event_id ?? undefined)
+  const o1 = newOptionId(), o2 = newOptionId()
+  mockPolls.push({
+    id: newId(),
+    event_id: st.event_id ?? '',
+    title: `比赛胜者：${ta.name} vs ${tb.name}`,
+    kind: 'match_winner',
+    options: [
+      { id: o1, label: `${ta.name} 胜`, team_id: m.team_a_id, odds: ao },
+      { id: o2, label: `${tb.name} 胜`, team_id: m.team_b_id, odds: bo },
+    ],
+    status: 'open',
+    winning_option_id: null,
+    match_id: m.id,
+    created_at: new Date().toISOString(),
+  })
+}
+
+/**
+ * 演示模式：比赛录入比分并置为 completed 后，自动结算 match_winner 竞猜
+ *   - completed 且 winner_id 确定 → 自动 settle（发奖）
+ *   - cancelled / winner_id 为空 → 仅截止（closed）
+ * 真实模式走 DB 触发器 trg_close_or_settle_match_bets
+ */
+export function mockAutoSettlePollForMatch(m: {
+  id: string
+  status: string
+  winner_id: string | null
+}) {
+  if (isSupabaseConfigured || supabase) return
+  const polls = mockPolls.filter((p) => p.match_id === m.id && p.kind === 'match_winner' && p.status !== 'settled')
+  if (polls.length === 0) return
+  for (const poll of polls) {
+    if (m.status === 'completed' && m.winner_id) {
+      const win = poll.options.find((o) => o.team_id === m.winner_id)
+      if (win) {
+        // 自动结算（复用 settlePoll mock 逻辑）
+        poll.status = 'settled'
+        poll.winning_option_id = win.id
+        for (const r of mockRecords) {
+          if (r.poll_id !== poll.id || r.status !== 'pending') continue
+          if (r.option_id === win.id) {
+            r.status = 'won'
+            mockAccounts.set(
+              r.user_id,
+              (mockAccounts.get(r.user_id) ?? 200) + Math.round(r.stake * r.odds),
+            )
+          } else {
+            r.status = 'lost'
+          }
+        }
+        continue
+      }
+    }
+    // 未找到对应胜者（cancelled / winner_id 空 / options 中无 team）：只截止
+    poll.status = 'closed'
+  }
+}
+
 // ---------------- 演示模式 mock ----------------
 const mockAccounts = new Map<string, number>()
 const mockPolls: BetPoll[] = [

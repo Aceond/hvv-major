@@ -1264,25 +1264,121 @@ before delete on public.matches
 for each row
 execute function public.cleanup_match_bets();
 
--- 3.6) 比赛完成/取消联动：自动将关联的比赛胜者竞猜截止（closed），防止赛果已出仍可投注；结算由管理员手动完成
-create or replace function public.close_match_bets()
+-- 3.6) 结算内核函数：无权限校验，直接按给定 winning_option_id 结算
+--     供 settle_bet RPC（管理员/外部调用，有权限校验）和 触发器（比赛结束自动结算）复用。
+create or replace function public._settle_bet_internal(
+  p_poll_id uuid,
+  p_winning_option_id text
+) returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_poll public.bet_polls%rowtype;
+  v_rec record;
+begin
+  select * into v_poll from public.bet_polls where id = p_poll_id;
+  if v_poll.id is null then return; end if;
+  if v_poll.status = 'settled' then return; end if;
+  if not exists (
+    select 1 from jsonb_array_elements(v_poll.options) o where o ->> 'id' = p_winning_option_id
+  ) then return; end if;
+  update public.bet_polls
+  set status = 'settled', winning_option_id = p_winning_option_id
+  where id = p_poll_id;
+  for v_rec in
+    select * from public.bet_records where poll_id = p_poll_id and status = 'pending'
+  loop
+    if v_rec.option_id = p_winning_option_id then
+      update public.bet_records set status = 'won' where id = v_rec.id;
+      update public.bet_accounts
+      set points = points + round(v_rec.stake * v_rec.odds), updated_at = now()
+      where user_id = v_rec.user_id;
+    else
+      update public.bet_records set status = 'lost' where id = v_rec.id;
+    end if;
+  end loop;
+end;
+$$;
+
+-- 3.7) 比赛完成/取消联动：
+--    - 比赛 completed：根据 winner_id 在 options 中找到对应 option_id，自动结算
+--    - 比赛 cancelled：截止（closed）不结算，保留现有投注（管理员可手动删除或重开）
+create or replace function public.close_or_settle_match_bets()
 returns trigger
 language plpgsql security definer set search_path = public
 as $$
+declare
+  v_poll public.bet_polls%rowtype;
+  v_win_opt jsonb;
 begin
-  update public.bet_polls
-  set status = 'closed'
-  where match_id = new.id and kind = 'match_winner' and status = 'open';
+  for v_poll in
+    select * from public.bet_polls
+    where match_id = new.id and kind = 'match_winner' and status <> 'settled'
+  loop
+    if new.status = 'completed' and new.winner_id is not null then
+      -- 找 options 中 team_id = new.winner_id 的那一项，找不到则 fallback 为 closed
+      select o into v_win_opt
+      from jsonb_array_elements(v_poll.options) o
+      where (o ->> 'team_id')::uuid = new.winner_id
+      limit 1;
+      if v_win_opt is not null then
+        perform public._settle_bet_internal(v_poll.id, v_win_opt ->> 'id');
+        continue;
+      end if;
+    end if;
+    -- cancelled / 找不到对应队的 completed：仅截止，不结算
+    update public.bet_polls set status = 'closed' where id = v_poll.id;
+  end loop;
   return new;
 end;
 $$;
 
 drop trigger if exists trg_close_match_bets on public.matches;
-create trigger trg_close_match_bets
+drop trigger if exists trg_close_or_settle_match_bets on public.matches;
+create trigger trg_close_or_settle_match_bets
 after update on public.matches
 for each row
 when (old.status = 'scheduled' and new.status in ('completed', 'cancelled'))
-execute function public.close_match_bets();
+execute function public.close_or_settle_match_bets();
+
+-- 3.8) 将旧 settle_bet RPC 改为调用 _settle_bet_internal 内核，保留权限校验与赛果校验（兼容旧前端手动结算入口）
+create or replace function public.settle_bet(p_poll_id uuid, p_winning_option_id text)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_poll public.bet_polls%rowtype;
+  v_match public.matches%rowtype;
+  v_win_opt jsonb;
+begin
+  if not public.is_admin() then
+    raise exception '仅管理员可手动结算竞猜';
+  end if;
+  select * into v_poll from public.bet_polls where id = p_poll_id;
+  if v_poll.id is null then raise exception '竞猜项不存在'; end if;
+  if v_poll.status = 'settled' then raise exception '该竞猜已结算'; end if;
+  if not exists (
+    select 1 from jsonb_array_elements(v_poll.options) o where o ->> 'id' = p_winning_option_id
+  ) then raise exception '中奖选项不存在'; end if;
+  -- 比赛胜者竞猜：校验与实际赛果一致
+  if v_poll.kind = 'match_winner' and v_poll.match_id is not null then
+    select * into v_match from public.matches where id = v_poll.match_id;
+    if v_match.id is not null and v_match.status = 'scheduled' then
+      raise exception '比赛尚未结束，请先录入比分';
+    end if;
+    if v_match.id is not null and v_match.status = 'completed' and v_match.winner_id is not null then
+      select o into v_win_opt
+      from jsonb_array_elements(v_poll.options) o
+      where o ->> 'id' = p_winning_option_id
+      limit 1;
+      if (v_win_opt ->> 'team_id')::uuid is distinct from v_match.winner_id then
+        raise exception '所选胜者与实际比赛结果不符，请核对后结算';
+      end if;
+    end if;
+  end if;
+  perform public._settle_bet_internal(p_poll_id, p_winning_option_id);
+end;
+$$;
 
 -- 4) 回填：为已存在但尚未生成竞猜的待赛对阵补生成（可重复执行）
 insert into public.bet_polls (event_id, title, kind, options, match_id)
