@@ -239,15 +239,33 @@ from (
 ) sub
 where m.id = sub.id and m.sort_order = 0;
 
--- 地图详情（BO3 逐图比分）
+-- 地图详情（BO3 逐图比分；map_count=1,2,3... 表示本场第几张图）
 create table if not exists public.match_maps (
   id uuid primary key default gen_random_uuid(),
   match_id uuid not null references public.matches (id) on delete cascade,
+  map_count int not null default 1,
   map_name text not null,                -- Mirage / Inferno / Anubis ...
   team_a_score int not null default 0,
   team_b_score int not null default 0,
   winner_id uuid references public.teams (id)
 );
+
+-- 唯一性：同一场比赛的每张图序号固定（1/2/3），重复提交不叠加，避免 double click 造成 BO3 变 6 局
+alter table public.match_maps
+  add column if not exists map_count int not null default 1;
+-- 回填已有数据的 map_count（老数据无 map_count，按 match_id 分组建序：先按创建时间再按 pk）
+update public.match_maps mm
+set map_count = sub.rn
+from (
+  select id, row_number() over (partition by match_id order by created_at is not null desc, created_at, id) as rn
+  from public.match_maps
+  where true
+) sub
+where mm.id = sub.id;
+alter table public.match_maps
+  drop constraint if exists match_maps_match_id_map_count_key;
+alter table public.match_maps
+  add constraint match_maps_match_id_map_count_key unique (match_id, map_count);
 
 -- 比赛媒体链接（每场比赛的直播 / 录像等，管理员登记，观众可查看）
 create table if not exists public.match_media (
@@ -467,25 +485,46 @@ as $$
   );
 $$;
 
--- 录入/更新比赛结果：自动判定胜者并置为 completed（管理员或参赛队伍队长）
+-- 录入/更新比赛结果：自动判定胜者并置为 completed（管理员或参赛队伍队长）。
+-- 可选 p_maps jsonb：[{map_count:int, map_name:text, team_a_score:int, team_b_score:int}]。
+-- 若传入 p_maps（数组长度 >= 1），在同一事务内先删该 match_id 旧逐图记录，再按 map_count 写入新记录，
+-- 配合 (match_id, map_count) 唯一约束，重复提交不会追加出 6 局。
 create or replace function public.upsert_match_result(
   p_match_id uuid,
   p_team_a_score int,
-  p_team_b_score int
+  p_team_b_score int,
+  p_maps jsonb default null
 ) returns void
 language plpgsql security definer set search_path = public
 as $$
 declare
   v_winner uuid;
   v_match public.matches%rowtype;
+  v_item jsonb;
+  v_mc int;
+  v_mn text;
+  v_ts int;
+  v_bs int;
+  v_w uuid;
 begin
   select * into v_match from public.matches where id = p_match_id;
   if v_match.id is null then
     raise exception 'match not found';
   end if;
 
-  -- 权限：仅管理员或参赛队伍队长可录入比分（账号需审核通过）
-  if not public.can_use_features() and not exists (
+  -- 权限：管理员，或参赛队队长（账号需审核通过；若既非管理员也非队长则拦）
+  if not public.is_admin() and not exists (
+    select 1 from public.teams t
+    where (t.id = v_match.team_a_id or t.id = v_match.team_b_id)
+      and t.captain_id = auth.uid()
+  ) and not public.can_use_features() then
+    raise exception 'permission denied: only admin or team captain';
+  end if;
+  -- 上面非管理员路径更严格的兜底：非 admin 必须是队长且账号通过审核
+  if not public.is_admin() and not public.can_use_features() then
+    raise exception 'permission denied: account not approved';
+  end if;
+  if not public.is_admin() and not exists (
     select 1 from public.teams t
     where (t.id = v_match.team_a_id or t.id = v_match.team_b_id)
       and t.captain_id = auth.uid()
@@ -505,6 +544,29 @@ begin
       winner_id = v_winner,
       status = 'completed'
   where id = p_match_id;
+
+  -- 逐图比分：有 p_maps 就原子删插（避免 double click 导致 BO3 变 6 局）
+  if p_maps is not null and jsonb_array_length(p_maps) > 0 then
+    delete from public.match_maps where match_id = p_match_id;
+    for v_item in select * from jsonb_array_elements(p_maps) loop
+      v_mc := coalesce((v_item->>'map_count')::int, 1);
+      v_mn := coalesce(v_item->>'map_name', '');
+      v_ts := coalesce((v_item->>'team_a_score')::int, 0);
+      v_bs := coalesce((v_item->>'team_b_score')::int, 0);
+      v_w := case
+        when v_ts > v_bs then v_match.team_a_id
+        when v_bs > v_ts then v_match.team_b_id
+        else null
+      end;
+      insert into public.match_maps (match_id, map_count, map_name, team_a_score, team_b_score, winner_id)
+      values (p_match_id, v_mc, v_mn, v_ts, v_bs, v_w)
+      on conflict (match_id, map_count) do update
+        set map_name   = excluded.map_name,
+            team_a_score = excluded.team_a_score,
+            team_b_score = excluded.team_b_score,
+            winner_id    = excluded.winner_id;
+    end loop;
+  end if;
 end;
 $$;
 

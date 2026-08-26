@@ -35,6 +35,7 @@ const loading = ref(false)
 
 // 比分录入
 const scoreDialog = ref(false)
+const scoreSaving = ref(false)
 const scoreForm = reactive({ matchId: '', aScore: 0, bScore: 0, map: '', scheduledAt: '' })
 
 // 本场队员数据录入
@@ -165,6 +166,7 @@ async function openScore(row: Match) {
 }
 
 async function saveScore() {
+  if (scoreSaving.value) return
   if (scoreForm.aScore === scoreForm.bScore) {
     ElMessage.warning('比分不能相同，请区分胜负')
     return
@@ -173,7 +175,7 @@ async function saveScore() {
     scoreBestOf.value > 1
       ? mapRows
           .filter((r) => r.mapName)
-          .map((r) => ({ map_name: r.mapName, team_a_score: r.a, team_b_score: r.b }))
+          .map((r, idx) => ({ map_count: idx + 1, map_name: r.mapName, team_a_score: r.a, team_b_score: r.b }))
       : []
   if (scoreBestOf.value > 1 && maps.length === 0) {
     ElMessage.warning('请填写至少一张地图的逐图比分')
@@ -187,6 +189,7 @@ async function saveScore() {
       return
     }
   }
+  scoreSaving.value = true
   try {
     await submitMatchScore(scoreForm.matchId, scoreForm.aScore, scoreForm.bScore, {
       map: scoreBestOf.value > 1 ? null : scoreForm.map || null,
@@ -213,6 +216,8 @@ async function saveScore() {
     }
   } catch (e: any) {
     ElMessage.error(e.message || '保存失败，请检查权限')
+  } finally {
+    scoreSaving.value = false
   }
 }
 
@@ -1035,7 +1040,7 @@ onMounted(load)
       </el-form>
       <template #footer>
         <el-button @click="scoreDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveScore">保存</el-button>
+        <el-button type="primary" :loading="scoreSaving" :disabled="scoreSaving" @click="saveScore">保存</el-button>
       </template>
     </el-dialog>
 

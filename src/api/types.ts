@@ -158,6 +158,7 @@ export interface Match {
 export interface MatchMap {
   id: string
   match_id: string
+  map_count: number   // 1=第一张图,2=第二张图,3=第三张图...（与match_id 联合唯一，防 double click 追加）
   map_name: string
   team_a_score: number
   team_b_score: number

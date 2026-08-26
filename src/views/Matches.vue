@@ -57,6 +57,7 @@ const casterInput = ref('')
 // 比分录入对话框（管理员或参赛队队长）
 const scoreDialog = ref(false)
 const scoreMatch = ref<Match | null>(null)
+const scoreSaving = ref(false)
 
 // 本场队员数据录入对话框（管理员或参赛队队长；比分入口）
 const playerStatsDialog = ref(false)
@@ -312,6 +313,7 @@ function openScoreDialog(row: Match) {
 
 /** 保存比分：总比分 +（BO3）逐图比分，校验总比分与逐图胜场一致 */
 async function saveScore() {
+  if (scoreSaving.value) return
   const m = scoreMatch.value
   if (!m) return
   if (scoreForm.aScore === scoreForm.bScore) {
@@ -322,7 +324,7 @@ async function saveScore() {
     m.best_of > 1
       ? mapRows
           .filter((r) => r.mapName)
-          .map((r) => ({ map_name: r.mapName, team_a_score: r.a, team_b_score: r.b }))
+          .map((r, idx) => ({ map_count: idx + 1, map_name: r.mapName, team_a_score: r.a, team_b_score: r.b }))
       : []
   if (m.best_of > 1 && maps.length === 0) {
     ElMessage.warning('请填写至少一张地图的逐图比分')
@@ -336,6 +338,7 @@ async function saveScore() {
       return
     }
   }
+  scoreSaving.value = true
   try {
     await submitMatchScore(m.id, scoreForm.aScore, scoreForm.bScore, {
       map: m.best_of > 1 ? null : scoreForm.map || null,
@@ -362,6 +365,8 @@ async function saveScore() {
     }
   } catch (e: any) {
     ElMessage.error(e.message || '保存失败，请检查权限')
+  } finally {
+    scoreSaving.value = false
   }
 }
 
@@ -895,7 +900,7 @@ async function removeCaster(item: MatchCaster) {
       </el-form>
       <template #footer>
         <el-button @click="scoreDialog = false">取消</el-button>
-        <el-button type="primary" @click="saveScore">保存</el-button>
+        <el-button type="primary" :loading="scoreSaving" :disabled="scoreSaving" @click="saveScore">保存</el-button>
       </template>
     </el-dialog>
 

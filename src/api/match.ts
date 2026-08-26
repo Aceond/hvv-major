@@ -263,6 +263,7 @@ export async function listMatchMaps(matchIds: string[]): Promise<MatchMap[]> {
 
 /** 录入的逐图比分输入（BO3 每张图） */
 export interface MatchMapInput {
+  map_count: number   // 1=第一张图,2=第二张图,3=第三张图...
   map_name: string
   team_a_score: number
   team_b_score: number
@@ -270,8 +271,7 @@ export interface MatchMapInput {
 
 /**
  * 提交比赛结果（管理员或参赛队队长）：总比分自动判定胜者并置为已结束；
- * BO3 可附带逐图比分（match_maps，先删后插）。
- * 真实环境走 upsert_match_result RPC（security definer，函数内校验身份）。
+ * BO3 可附带逐图比分：真实模式下通过 upsert_match_result RPC 一次性事务写入（比分+逐图一起，避免 double click 造成重复追加）。
  */
 export async function submitMatchScore(
   matchId: string,
@@ -290,13 +290,15 @@ export async function submitMatchScore(
     if (opts?.map !== undefined) m.map = opts.map || null
     if (opts?.scheduledAt !== undefined) m.scheduled_at = opts.scheduledAt || null
     if (opts?.maps && opts.maps.length) {
+      // mock 原子替换：先按 match_id 清空所有旧 map，再写入新 map（保证不重复追加为 6 局）
       for (let i = mockMatchMaps.length - 1; i >= 0; i--) {
         if (mockMatchMaps[i].match_id === matchId) mockMatchMaps.splice(i, 1)
       }
-      opts.maps.forEach((mp, i) => {
+      opts.maps.forEach((mp) => {
         mockMatchMaps.push({
-          id: `mm-${matchId}-${Date.now()}-${i}`,
+          id: `mm-${matchId}-${mp.map_count}-${Date.now()}`,
           match_id: matchId,
+          map_count: mp.map_count,
           map_name: mp.map_name,
           team_a_score: mp.team_a_score,
           team_b_score: mp.team_b_score,
@@ -308,26 +310,22 @@ export async function submitMatchScore(
     if (oldStatus === 'scheduled') mockAutoSettlePollForMatch(m)
     return true
   }
+  // 真实模式：比分 + 逐图比分 一并通过 upsert_match_result RPC 原子写入（RPC 第4参数 p_maps jsonb，缺省传 null）
+  const mapsJson = opts?.maps && opts.maps.length ? opts.maps : null
   const { error } = await supabase.rpc('upsert_match_result', {
     p_match_id: matchId,
     p_team_a_score: aScore,
     p_team_b_score: bScore,
+    p_maps: mapsJson,
   })
   if (error) throw new Error(error.message)
+  // 逐图以外的杂项（单张图 map、scheduled_at，不含逐图）继续单独 patch（不影响去重）
   const patch: Record<string, unknown> = {}
   if (opts?.map !== undefined) patch.map = opts.map || null
   if (opts?.scheduledAt !== undefined) patch.scheduled_at = opts.scheduledAt || null
   if (Object.keys(patch).length > 0) {
     const { error: e2 } = await supabase.from('matches').update(patch).eq('id', matchId)
     if (e2) throw new Error(e2.message)
-  }
-  if (opts?.maps && opts.maps.length) {
-    const { error: e3 } = await supabase.from('match_maps').delete().eq('match_id', matchId)
-    if (e3) throw new Error(e3.message)
-    const { error: e4 } = await supabase
-      .from('match_maps')
-      .insert(opts.maps.map((mp) => ({ match_id: matchId, ...mp })))
-    if (e4) throw new Error(e4.message)
   }
   return true
 }
