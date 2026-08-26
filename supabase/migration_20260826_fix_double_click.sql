@@ -5,13 +5,14 @@ alter table public.match_maps
   add column if not exists map_count int not null default 1;
 
 -- 回填已有数据：重复提交的 6 局按 match_id 分组建序 1..6
+-- 注意：match_maps 没有 created_at 列，按主键 id 稳定排序
 update public.match_maps mm
 set map_count = sub.rn
 from (
   select id,
          row_number() over (
            partition by match_id
-           order by (created_at is not null) desc, created_at asc, id asc
+           order by id asc
          ) as rn
   from public.match_maps
   where true
@@ -58,14 +59,14 @@ where d.id = t.id;
 
 -- ============================================================
 -- 3) 清完再强制把剩下的 map_count 重排为 1,2,3…（避免跳号/同号）
--- ============================================================
+-- 注意：match_maps 没有 created_at，按 map_count + id 稳定排序
 update public.match_maps mm
 set map_count = sub.rn
 from (
   select id,
          row_number() over (
            partition by match_id
-           order by map_count asc, (created_at is not null) desc, created_at asc, id asc
+           order by map_count asc, id asc
          ) as rn
   from public.match_maps
   where true

@@ -253,11 +253,11 @@ create table if not exists public.match_maps (
 -- 唯一性：同一场比赛的每张图序号固定（1/2/3），重复提交不叠加，避免 double click 造成 BO3 变 6 局
 alter table public.match_maps
   add column if not exists map_count int not null default 1;
--- 回填已有数据的 map_count（老数据无 map_count，按 match_id 分组建序：先按创建时间再按 pk）
+-- 回填已有数据的 map_count（老数据无 map_count，按 match_id 分组建序：按主键 id，match_maps 没有 created_at 列）
 update public.match_maps mm
 set map_count = sub.rn
 from (
-  select id, row_number() over (partition by match_id order by created_at is not null desc, created_at, id) as rn
+  select id, row_number() over (partition by match_id order by id) as rn
   from public.match_maps
   where true
 ) sub
