@@ -538,9 +538,15 @@ begin
            mps.rounds,
            mps.we,
            mps.rating,
-           -- 本图胜负：match_maps.winner_id（逐图比分）；旧整场合计行/无比分时回退比赛 winner_id
+           -- 本图胜负：match_maps.winner_id（逐图比分）→ 该图比分兜底（winner_id 缺失的历史数据）→ 回退比赛 winner_id
            coalesce((
-             select mm.winner_id from public.match_maps mm
+             select case
+               when mm.winner_id is not null then mm.winner_id
+               when mm.team_a_score > mm.team_b_score then m.team_a_id
+               when mm.team_b_score > mm.team_a_score then m.team_b_id
+               else null
+             end
+             from public.match_maps mm
              where mm.match_id = mps.match_id
                and mm.map_name = mps.map_name
              limit 1

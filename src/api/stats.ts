@@ -346,23 +346,41 @@ function groupIdOf(r: Pick<RawStatRow, 'match'>): string | null {
   return r.match?.group_id ?? r.match?.stage?.group_id ?? null
 }
 
-/** 逐图胜负查找：key = `${matchId}|${mapName}` → 该图胜方队伍 id（无比分/未开赛为 null）
- *  用于按「图」统计胜率（BO3 2:1 时 = 2 胜 1 负，而不是整场 1 胜）。 */
-async function loadMapWinnerLookup(matchIds: string[]): Promise<Map<string, string | null>> {
-  const out = new Map<string, string | null>()
+/** 逐图比分信息：胜者优先用 winner_id；winner_id 缺失（历史数据）时按比分判定 */
+interface MapWinnerInfo {
+  winner_id: string | null
+  team_a_score: number
+  team_b_score: number
+}
+
+/** 逐图胜负查找：key = `${matchId}|${mapName}` → 该图比分与胜方（无比分/未开赛为 null）
+ *  用于按「图」统计胜率（BO3 2:1 时 = 2 胜 1 负，而不是整场 1 胜）。
+ *  注意：旧数据 match_maps.winner_id 可能为 null，这里额外带出双方比分，由调用方按比分兜底判定胜负。 */
+async function loadMapWinnerLookup(matchIds: string[]): Promise<Map<string, MapWinnerInfo>> {
+  const out = new Map<string, MapWinnerInfo>()
   if (!matchIds.length) return out
   if (!isSupabaseConfigured || !supabase) {
     for (const mm of mockMatchMaps) {
-      if (matchIds.includes(mm.match_id)) out.set(`${mm.match_id}|${mm.map_name}`, mm.winner_id)
+      if (matchIds.includes(mm.match_id)) {
+        out.set(`${mm.match_id}|${mm.map_name}`, {
+          winner_id: mm.winner_id ?? null,
+          team_a_score: mm.team_a_score,
+          team_b_score: mm.team_b_score,
+        })
+      }
     }
     return out
   }
   const { data } = await supabase
     .from('match_maps')
-    .select('match_id, map_name, winner_id')
+    .select('match_id, map_name, winner_id, team_a_score, team_b_score')
     .in('match_id', matchIds)
   for (const mm of (data ?? []) as any[]) {
-    out.set(`${mm.match_id}|${mm.map_name}`, mm.winner_id ?? null)
+    out.set(`${mm.match_id}|${mm.map_name}`, {
+      winner_id: mm.winner_id ?? null,
+      team_a_score: Number(mm.team_a_score) || 0,
+      team_b_score: Number(mm.team_b_score) || 0,
+    })
   }
   return out
 }
@@ -548,11 +566,22 @@ export async function getPlayerStatsAggregated(
     raw = raw.filter((r) => (!groupId || groupIdOf(r) === groupId) && (!stageId || r.match?.stage_id === stageId))
   }
   // 逐图胜负：为每行附加「本图是否获胜」——胜率按图统计（BO3 2:1 = 66.67%）
+  // 判定优先级：match_maps.winner_id → 该图比分（winner_id 缺失的历史数据）→ 整场胜负（无比分回退）
   const mapWinner = await loadMapWinnerLookup([...new Set(raw.map((r) => r.match_id))])
   raw = raw.map((r) => {
     let __mapWon: boolean | null = null
     if (r.map_name) {
-      const mapWinnerId = mapWinner.get(`${r.match_id}|${r.map_name}`) ?? null
+      const info = mapWinner.get(`${r.match_id}|${r.map_name}`)
+      let mapWinnerId: string | null = null
+      if (info) {
+        if (info.winner_id) {
+          mapWinnerId = info.winner_id
+        } else if (info.team_a_score > info.team_b_score) {
+          mapWinnerId = r.match?.team_a_id ?? null // 无 winner_id 时按比分兜底
+        } else if (info.team_b_score > info.team_a_score) {
+          mapWinnerId = r.match?.team_b_id ?? null
+        }
+      }
       if (mapWinnerId) __mapWon = mapWinnerId === r.team_id
       else if (r.match?.winner_id) __mapWon = r.match.winner_id === r.team_id // 该图无比分 → 回退比赛胜负
     } else if (r.match?.winner_id) {
