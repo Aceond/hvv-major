@@ -251,14 +251,24 @@ export async function getStandings(stageId?: string, groupId?: string): Promise<
   )
 }
 
-/** 逐图比分（BO3 明细）：按比赛 ID 批量查询 match_maps */
+/** 逐图比分（BO3 明细）：按比赛 ID 批量查询 match_maps，结果按 (match_id, map_count) 升序保证顺序稳定 */
 export async function listMatchMaps(matchIds: string[]): Promise<MatchMap[]> {
   if (matchIds.length === 0) return []
   if (!isSupabaseConfigured || !supabase) {
-    return mockMatchMaps.filter((m) => matchIds.includes(m.match_id))
+    return mockMatchMaps
+      .filter((m) => matchIds.includes(m.match_id))
+      .sort((a, b) => a.match_id.localeCompare(b.match_id) || a.map_count - b.map_count)
   }
-  const { data } = await supabase.from('match_maps').select('*').in('match_id', matchIds)
-  return (data as MatchMap[]) ?? []
+  const { data } = await supabase
+    .from('match_maps')
+    .select('*')
+    .in('match_id', matchIds)
+    .order('match_id', { ascending: true })
+    .order('map_count', { ascending: true })
+  const arr = (data as MatchMap[]) ?? []
+  // 客户端兜底排序（supabase order 有时对 in(...) 多列组合不稳）
+  arr.sort((a, b) => a.match_id.localeCompare(b.match_id) || a.map_count - b.map_count)
+  return arr
 }
 
 /** 录入的逐图比分输入（BO3 每张图） */

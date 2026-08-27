@@ -155,7 +155,7 @@ async function openScore(row: Match) {
   scoreForm.map = row.map ?? ''
   scoreForm.scheduledAt = row.scheduled_at?.slice(0, 10) ?? ''
   scoreBestOf.value = row.best_of
-  const maps = await listMatchMaps([row.id])
+  const maps = (await listMatchMaps([row.id])).sort((a, b) => a.map_count - b.map_count)
   resetMapRows(scoreBestOf.value > 1 ? scoreBestOf.value : 0)
   for (let i = 0; i < mapRows.length; i++) {
     mapRows[i].mapName = maps[i]?.map_name ?? ''

@@ -257,7 +257,7 @@ async function loadMaps() {
 }
 
 function mapsOf(match: Match): MatchMap[] {
-  return mapsMap.value[match.id] ?? []
+  return (mapsMap.value[match.id] ?? []).slice().sort((a, b) => a.map_count - b.map_count)
 }
 
 /** 是否有逐图比分数据（至少一张图录入了实际比分），有才显示 BO3 下拉 */
