@@ -161,13 +161,28 @@ async function load(matchId: string) {
   }
 }
 
-/** 保存：逐张地图分别覆盖保存；自动跳过「未参赛」队员（rounds=0 且无任何击杀/死亡/助攻/首杀/多杀/残局/ADR/WE/Rating），避免全 0 行干扰汇总 */
+/** 保存：逐张地图分别覆盖保存；自动跳过「未参赛」队员（使用逐图比分默认 rounds 且所有统计均为 0 的队员），避免全 0 行干扰汇总 */
 async function save() {
   const m = props.match
   if (!m) return
   saving.value = true
   try {
-    for (const key of Object.keys(byMap.value)) {
+    // 先为本场每图计算一次 rounds 自动默认值（逐图比分的胜+负），用来判断「队员是否手动改过 rounds」
+    const mapsData = await listMatchMaps([m.id])
+    const autoRoundsByIndex: number[] = []
+    const autoRoundsByName: Record<string, number> = {}
+    const mapsScored = mapsData
+      .filter((mp) => mp.match_id === m.id)
+      .sort((a, b) => (a.map_count || 0) - (b.map_count || 0))
+    for (const mp of mapsScored) {
+      const r = (Number(mp.team_a_score) || 0) + (Number(mp.team_b_score) || 0)
+      autoRoundsByIndex.push(r)
+      if (mp.map_name) autoRoundsByName[mp.map_name] = r
+    }
+    const keys = maps.value.map((x) => x.key)
+
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
       const rowsRaw = byMap.value[key].map((r) => {
         // 保存前最终反算：headshots/damage 按新口径重算一次（用户改了 kills 或 rounds 也跟着变）
         const k = Number(r.kills) || 0
@@ -178,9 +193,13 @@ async function save() {
         const damage = Math.round(adr * rnd)
         return { ...r, headshot_rate_pct: hsRate, adr, headshots, damage } as PlayerRow
       })
-      // 只保存「实际参加了本图」的队员：rounds>0 或任意统计有值（避免替补未上场/本场没打的队员自动落 0 行）
+      const autoRounds = autoRoundsByName[key] ?? autoRoundsByIndex[i] ?? 0
+      // 只保存「实际参加了本图」的队员：
+      //   1) 任意统计列（K/D/A/首杀/多杀/残局/ADR/爆头率/WE/Rating）有非 0 值
+      //   或 2) rounds 与逐图比分自动推算的默认值不一致（比如替补只打了 4 局，管理员手动把 rounds 改成 4 且其它为 0）
       const rows = rowsRaw.filter((r) => {
         const rnd = Number(r.rounds) || 0
+        const hsRate = Number(r.headshot_rate_pct) || 0
         const anyStat =
           (Number(r.kills) || 0) +
           (Number(r.deaths) || 0) +
@@ -188,10 +207,12 @@ async function save() {
           (Number(r.first_kills) || 0) +
           (Number(r.multi_kills) || 0) +
           (Number(r.clutches) || 0) +
+          hsRate +
           (Number(r.adr) || 0) +
           (Number(r.we) || 0) +
           (Number(r.rating) || 0)
-        return rnd > 0 || anyStat > 0
+        const roundsTouched = autoRounds > 0 ? rnd !== autoRounds : rnd > 0
+        return anyStat > 0 || roundsTouched
       })
       await saveMatchPlayerStats(
         m.id,
@@ -211,7 +232,7 @@ async function save() {
         })),
       )
     }
-    ElMessage.success('本场队员数据已保存（未参赛的 0 行已自动跳过；后台自动重算爆头率/ADR）')
+    ElMessage.success('本场队员数据已保存（未参赛的 0 行已自动跳过/删除；后台自动重算爆头率/ADR）')
     visible.value = false
     emit('saved')
   } catch (e: any) {
