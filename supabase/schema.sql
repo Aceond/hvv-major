@@ -511,24 +511,78 @@ language plpgsql security definer set search_path = public
 as $$
 begin
   -- 1) player_stats：按 (player, stage, group) 汇总自动 upsert
-  with base as (
+  --   口径（与前端 Rankings 聚合 aggregatePlayerRows 严格对齐）：
+  --     matches/win_rate：逐行判断「本图有效参赛」= K/D/A/首杀/多杀/残局/爆头率/ADR/WE/Rating 任一非 0；
+  --       match 级别只要一张图有效参赛即算"打了这场比赛"；胜场 = 有效参赛且 match.winner_id = team_id
+  --     we/rating_pro = Σ 行值 ÷ Σmap_count（图均），与 avg_kills/avg_deaths 等"场均"按图数一致
+  --     hs_rate = Σ round(kills * headshot_rate_pct) / Σkills    （百分比 0~100）
+  --     adr     = Σ round(adr * rounds) / Σrounds
+  with all_rows as (
     select mps.player_id,
            mps.team_id,
            m.stage_id,
            m.group_id,
-           count(distinct mps.match_id) as matches,
-           sum(mps.kills) as kills,
-           sum(mps.deaths) as deaths,
-           sum(mps.assists) as assists,
-           round(coalesce(sum(round(mps.kills * nullif(mps.headshot_rate_pct, 0))), 0)) as wghs_num,  -- Σ kills * hs%（整数，用户口径）
-           sum(mps.kills) as wghs_den,
-           sum(round(mps.adr * mps.rounds)) as wadr_num,   -- Σ ADR * 局数
-           sum(mps.rounds) as wadr_den
+           mps.match_id,
+           m.winner_id,
+           mps.map_count,
+           mps.kills,
+           mps.deaths,
+           mps.assists,
+           mps.headshot_rate_pct,
+           mps.adr,
+           mps.first_kills,
+           mps.multi_kills,
+           mps.clutches,
+           mps.rounds,
+           mps.we,
+           mps.rating,
+           (mps.kills + mps.deaths + mps.assists +
+            mps.headshot_rate_pct + coalesce(abs(mps.adr), 0) +
+            mps.first_kills + mps.multi_kills + mps.clutches +
+            coalesce(abs(mps.we), 0) + coalesce(abs(mps.rating), 0)) as row_stat_sum
     from public.match_player_stats mps
     join public.matches m on m.id = mps.match_id and m.status = 'completed'
     where (p_stage_id is null or m.stage_id = p_stage_id)
       and (p_group_id is null or m.group_id = p_group_id)
-    group by mps.player_id, mps.team_id, m.stage_id, m.group_id
+  ),
+  match_level as (
+    select player_id, team_id, stage_id, group_id, match_id,
+           bool_or(row_stat_sum > 0) as played,
+           bool_or(row_stat_sum > 0 and winner_id is not null and winner_id = team_id) as won
+    from all_rows
+    group by player_id, team_id, stage_id, group_id, match_id
+  ),
+  per_match_agg as (
+    select player_id, team_id, stage_id, group_id,
+           count(*) filter (where played) as matches,
+           count(*) filter (where won) as wins
+    from match_level
+    group by player_id, team_id, stage_id, group_id
+  ),
+  base as (
+    select r.player_id,
+           r.team_id,
+           r.stage_id,
+           r.group_id,
+           coalesce(pm.matches, 0) as matches,
+           coalesce(pm.wins, 0) as wins,
+           sum(r.kills) as kills,
+           sum(r.deaths) as deaths,
+           sum(r.assists) as assists,
+           sum(r.map_count) as maps,
+           round(coalesce(sum(round(r.kills * nullif(r.headshot_rate_pct, 0)::numeric)), 0)) as wghs_num,
+           sum(r.kills) as wghs_den,
+           sum(round((r.adr * r.rounds)::numeric)) as wadr_num,
+           sum(r.rounds) as wadr_den,
+           sum(r.we::numeric) as we_sum,
+           sum(r.rating::numeric) as rating_sum
+    from all_rows r
+    left join per_match_agg pm
+      on  pm.player_id = r.player_id
+      and pm.team_id is not distinct from r.team_id
+      and pm.stage_id is not distinct from r.stage_id
+      and pm.group_id is not distinct from r.group_id
+    group by r.player_id, r.team_id, r.stage_id, r.group_id, pm.matches, pm.wins
   ),
   agg as (
     select b.player_id,
@@ -541,11 +595,14 @@ begin
            b.assists as total_assists,
            round(coalesce(b.wghs_num::numeric / nullif(b.wghs_den, 0), 0), 2)::numeric(5,2) as hs_rate,
            round(coalesce(b.wadr_num::numeric / nullif(b.wadr_den, 0), 0), 2)::numeric(6,2) as adr,
-           round(coalesce(b.kills::numeric / nullif(b.deaths, 0), 0), 2)::numeric(5,2) as kd
+           round(coalesce(b.kills::numeric / nullif(b.deaths, 0), 0), 2)::numeric(5,2) as kd,
+           round(coalesce(b.wins::numeric / nullif(b.matches, 0) * 100, 0), 2)::numeric(5,2) as win_rate,
+           round(coalesce(b.we_sum / nullif(b.maps, 0), 0), 2)::numeric(5,2) as we,
+           round(coalesce(b.rating_sum / nullif(b.maps, 0), 0), 2)::numeric(4,2) as rating_pro
     from base b
   )
-  insert into public.player_stats (profile_id, team_id, stage_id, group_id, matches, total_kills, total_deaths, total_assists, hs_rate, adr, kd)
-  select a.player_id, a.team_id, a.stage_id, a.group_id, a.matches, a.total_kills, a.total_deaths, a.total_assists, a.hs_rate, a.adr, a.kd
+  insert into public.player_stats (profile_id, team_id, stage_id, group_id, matches, total_kills, total_deaths, total_assists, hs_rate, adr, kd, win_rate, we, rating_pro)
+  select a.player_id, a.team_id, a.stage_id, a.group_id, a.matches, a.total_kills, a.total_deaths, a.total_assists, a.hs_rate, a.adr, a.kd, a.win_rate, a.we, a.rating_pro
   from agg a
   on conflict (profile_id, stage_id) do update
   set team_id = excluded.team_id,
@@ -556,7 +613,10 @@ begin
       total_assists = excluded.total_assists,
       hs_rate  = excluded.hs_rate,
       adr      = excluded.adr,
-      kd       = excluded.kd;
+      kd       = excluded.kd,
+      win_rate = excluded.win_rate,
+      we       = excluded.we,
+      rating_pro = excluded.rating_pro;
 
   -- 2) team_stats：按 (team, stage, group) 聚合 team 所有队员的 kills/deaths/assists/hs_rate/kd + 场均
   --    注：team_stats 目前无「adr」列（前台/后台均不展示战队 ADR），此处只写该表现有列。

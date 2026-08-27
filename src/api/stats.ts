@@ -337,10 +337,16 @@ interface RawStatRow {
  *    若某行缺 headshot_rate_pct（0 且有 headshots），回退为「该行旧爆头数」计入加权分子。
  *  ADR 口径：Σ round(adr × rounds) ÷ Σ rounds；
  *    若某行缺 adr（0 且有 damage），回退为「该行总伤害 damage」计入加权分子。
+ *  参赛判定（用于胜率/比赛数准确计算，避免幽灵行干扰）：
+ *    某行算「该地图有效参赛」=  kills+deaths+assists+first_kills+multi_kills+clutches+hsRate+adr+we+rating > 0
+ *    某 match 算「该选手有效参赛」= 该 match 任意一行有效参赛
+ *  场均口径（与 avg_kills/avg_deaths/avg_assists 保持一致，全部按"地图数"除）：
+ *    场均 WE      = Σ we     ÷ maps
+ *    场均 Rating  = Σ rating ÷ maps
+ *    胜率         = 有效胜场 ÷ 有效参赛场
  */
 function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id'> {
   const first = list[0]
-  const matchCount = new Set(list.map((r) => r.match_id)).size
   const maps = list.reduce((a, r) => a + (Number(r.map_count) || 0), 0)
   const sum = (k: keyof RawStatRow) => list.reduce((a, r) => a + (Number(r[k]) || 0), 0)
   const kills = sum('kills')
@@ -352,6 +358,45 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
   const rounds = sum('rounds')
   const we = sum('we')
   const rating = sum('rating')
+
+  // 先逐行算「有效参赛」：K/D/A/首杀/多杀/残局/爆头率/ADR/WE/Rating 任一非 0 = 本图有效上场
+  type RowStat = RawStatRow & { __played: boolean }
+  const tagged = list.map((r) => {
+    const k = Number(r.kills) || 0
+    const hsRate = Number(r.headshot_rate_pct) || 0
+    const adr = Number(r.adr) || 0
+    const anyStat =
+      k +
+      (Number(r.deaths) || 0) +
+      (Number(r.assists) || 0) +
+      (Number(r.first_kills) || 0) +
+      (Number(r.multi_kills) || 0) +
+      (Number(r.clutches) || 0) +
+      hsRate +
+      adr +
+      (Number(r.we) || 0) +
+      (Number(r.rating) || 0)
+    return { ...r, __played: anyStat > 0 } as RowStat
+  })
+
+  // 按 match 聚合：决定哪些 match 是"该选手确实上场打了的"，以及胜场
+  const playedMatches = new Map<string, { played: boolean; won: boolean }>()
+  for (const r of tagged) {
+    const prev = playedMatches.get(r.match_id) ?? { played: false, won: false }
+    const matchWon = !!(r.match?.winner_id && r.team_id && r.match.winner_id === r.team_id)
+    playedMatches.set(r.match_id, {
+      played: prev.played || r.__played,
+      won: prev.won || (r.__played && matchWon),
+    })
+  }
+  let matchCount = 0
+  let wins = 0
+  for (const v of playedMatches.values()) {
+    if (v.played) {
+      matchCount++
+      if (v.won) wins++
+    }
+  }
 
   // 爆头率：Σ kills * headshot_rate_pct（整数） ÷ Σ kills；回退旧 headshots
   const wghsNum = list.reduce((acc, r) => {
@@ -371,13 +416,6 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
     return acc + (Number(r.damage) || 0)
   }, 0)
   const wadrDen = rounds
-
-  // 胜率：参与的每场比赛按所属队是否获胜计
-  const wins = new Set(
-    list
-      .filter((r) => r.match?.winner_id && r.match.winner_id === r.team_id)
-      .map((r) => r.match_id),
-  ).size
   const safeDiv = (a: number, b: number) => (b > 0 ? a / b : 0)
   return {
     player_name: first.player_name ?? first.pw_username ?? '-',
@@ -388,8 +426,10 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
     stage_name: null,
     group_id: first.match_group_id ?? first.match?.group_id ?? null,
     group_name: null,
-    we: r2(safeDiv(we, matchCount)),
-    rating_pro: r2(safeDiv(rating, matchCount)),
+    // 场均口径统一：÷ maps（= map_count 合计），和 avg_kills / avg_deaths / avg_assists 对齐
+    we: r2(safeDiv(we, maps)),
+    rating_pro: r2(safeDiv(rating, maps)),
+    // 胜率 ÷ 有效参赛场（只算该选手真正上场的 match；幽灵 match 不影响）
     win_rate: r2(safeDiv(wins, matchCount) * 100),
     kd: r2(safeDiv(kills, deaths)),
     matches: matchCount,
