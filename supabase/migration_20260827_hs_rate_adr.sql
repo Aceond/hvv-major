@@ -45,7 +45,8 @@ language plpgsql security definer set search_path = public
 as $$
 begin
   -- 3.1 player_stats（与前端 aggregatePlayerRows 严格对齐）
-  --   matches / win_rate：逐行"row_stat_sum>0=有效参赛"→ match 级别 played / won 汇总
+  --   matches：逐行"row_stat_sum>0=有效参赛"→ match 级别 played 汇总（按比赛数展示）
+  --   win_rate：按图口径 = 赢的图数 ÷ 有效参赛的图数（match_maps.winner_id 逐图胜负，回退比赛 winner_id；BO3 2:1 = 66.67%）
   --   we / rating_pro = Σ / 图数（与 avg_kills/avg_deaths 一致）
   with all_rows as (
     select mps.player_id,
@@ -53,7 +54,8 @@ begin
            m.stage_id,
            m.group_id,
            mps.match_id,
-           m.winner_id,
+           m.winner_id as match_winner_id,
+           mps.map_name,
            mps.map_count,
            mps.kills,
            mps.deaths,
@@ -66,6 +68,12 @@ begin
            mps.rounds,
            mps.we,
            mps.rating,
+           coalesce((
+             select mm.winner_id from public.match_maps mm
+             where mm.match_id = mps.match_id
+               and mm.map_name = mps.map_name
+             limit 1
+           ), m.winner_id) as map_winner_id,
            (mps.kills + mps.deaths + mps.assists +
             mps.headshot_rate_pct + coalesce(abs(mps.adr), 0) +
             mps.first_kills + mps.multi_kills + mps.clutches +
@@ -77,15 +85,13 @@ begin
   ),
   match_level as (
     select player_id, team_id, stage_id, group_id, match_id,
-           bool_or(row_stat_sum > 0) as played,
-           bool_or(row_stat_sum > 0 and winner_id is not null and winner_id = team_id) as won
+           bool_or(row_stat_sum > 0) as played
     from all_rows
     group by player_id, team_id, stage_id, group_id, match_id
   ),
   per_match_agg as (
     select player_id, team_id, stage_id, group_id,
-           count(*) filter (where played) as matches,
-           count(*) filter (where won) as wins
+           count(*) filter (where played) as matches
     from match_level
     group by player_id, team_id, stage_id, group_id
   ),
@@ -95,11 +101,12 @@ begin
            r.stage_id,
            r.group_id,
            coalesce(pm.matches, 0) as matches,
-           coalesce(pm.wins,    0) as wins,
            sum(r.kills) as kills,
            sum(r.deaths) as deaths,
            sum(r.assists) as assists,
            sum(r.map_count) as maps,
+           sum(r.map_count) filter (where r.row_stat_sum > 0) as played_maps,
+           sum(r.map_count) filter (where r.row_stat_sum > 0 and r.map_winner_id is not null and r.map_winner_id = r.team_id) as win_maps,
            round(coalesce(sum(round(r.kills * nullif(r.headshot_rate_pct, 0)::numeric)), 0)) as wghs_num,
            sum(r.kills) as wghs_den,
            sum(round((r.adr * r.rounds)::numeric)) as wadr_num,
@@ -112,7 +119,7 @@ begin
       and pm.team_id is not distinct from r.team_id
       and pm.stage_id is not distinct from r.stage_id
       and pm.group_id is not distinct from r.group_id
-    group by r.player_id, r.team_id, r.stage_id, r.group_id, pm.matches, pm.wins
+    group by r.player_id, r.team_id, r.stage_id, r.group_id, pm.matches
   ),
   agg as (
     select b.player_id,
@@ -126,7 +133,7 @@ begin
            round(coalesce(b.wghs_num::numeric / nullif(b.wghs_den, 0), 0), 2)::numeric(5,2) as hs_rate,
            round(coalesce(b.wadr_num::numeric / nullif(b.wadr_den, 0), 0), 2)::numeric(6,2) as adr,
            round(coalesce(b.kills::numeric / nullif(b.deaths, 0), 0), 2)::numeric(5,2) as kd,
-           round(coalesce(b.wins::numeric / nullif(b.matches, 0) * 100, 0), 2)::numeric(5,2) as win_rate,
+           round(coalesce(b.win_maps::numeric / nullif(b.played_maps, 0) * 100, 0), 2)::numeric(5,2) as win_rate,
            round(coalesce(b.we_sum / nullif(b.maps, 0), 0), 2)::numeric(5,2) as we,
            round(coalesce(b.rating_sum / nullif(b.maps, 0), 0), 2)::numeric(4,2) as rating_pro
     from base b

@@ -3,6 +3,7 @@
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import {
   groupNames,
+  mockMatchMaps,
   mockMatchPlayerStats,
   mockMatches,
   mockPlayerStats,
@@ -320,6 +321,7 @@ interface RawStatRow {
     stage?: { group_id: string | null } | null
   } | null
   map_count: number
+  map_name?: string // 所属地图（'' = 旧数据整场合计行）
   kills: number
   deaths: number
   assists: number
@@ -333,6 +335,9 @@ interface RawStatRow {
   rounds: number
   we: number
   rating: number
+  // 由 getPlayerStatsAggregated 在聚合前附加：本行所属「图」是否获胜
+  // （逐图比分 match_maps.winner_id；旧整场合计行/无比分时回退 match.winner_id；null = 无法判定）
+  __mapWon?: boolean | null
 }
 
 /** 该行比赛数据所属组别：优先 matches.group_id，回退到其 stage 的 group_id（组别可能挂在 stage 上）
@@ -341,18 +346,42 @@ function groupIdOf(r: Pick<RawStatRow, 'match'>): string | null {
   return r.match?.group_id ?? r.match?.stage?.group_id ?? null
 }
 
+/** 逐图胜负查找：key = `${matchId}|${mapName}` → 该图胜方队伍 id（无比分/未开赛为 null）
+ *  用于按「图」统计胜率（BO3 2:1 时 = 2 胜 1 负，而不是整场 1 胜）。 */
+async function loadMapWinnerLookup(matchIds: string[]): Promise<Map<string, string | null>> {
+  const out = new Map<string, string | null>()
+  if (!matchIds.length) return out
+  if (!isSupabaseConfigured || !supabase) {
+    for (const mm of mockMatchMaps) {
+      if (matchIds.includes(mm.match_id)) out.set(`${mm.match_id}|${mm.map_name}`, mm.winner_id)
+    }
+    return out
+  }
+  const { data } = await supabase
+    .from('match_maps')
+    .select('match_id, map_name, winner_id')
+    .in('match_id', matchIds)
+  for (const mm of (data ?? []) as any[]) {
+    out.set(`${mm.match_id}|${mm.map_name}`, mm.winner_id ?? null)
+  }
+  return out
+}
+
 /** 对一名选手的若干行比赛数据进行聚合
  *  爆头率口径（按赛事加权整数）：Σ round(kills × headshot_rate_pct) ÷ Σ kills；
  *    若某行缺 headshot_rate_pct（0 且有 headshots），回退为「该行旧爆头数」计入加权分子。
  *  ADR 口径：Σ round(adr × rounds) ÷ Σ rounds；
  *    若某行缺 adr（0 且有 damage），回退为「该行总伤害 damage」计入加权分子。
- *  参赛判定（用于胜率/比赛数准确计算，避免幽灵行干扰）：
+ *  参赛判定（用于比赛数/图数准确计算，避免幽灵行干扰）：
  *    某行算「该地图有效参赛」=  kills+deaths+assists+first_kills+multi_kills+clutches+hsRate+adr+we+rating > 0
  *    某 match 算「该选手有效参赛」= 该 match 任意一行有效参赛
  *  场均口径（与 avg_kills/avg_deaths/avg_assists 保持一致，全部按"地图数"除）：
  *    场均 WE      = Σ we     ÷ maps
  *    场均 Rating  = Σ rating ÷ maps
- *    胜率         = 有效胜场 ÷ 有效参赛场
+ *  胜率（按图口径，用户要求）：
+ *    = 赢的图数 ÷ 有效参赛的图数
+ *    逐图胜负来自 match_maps.winner_id；旧整场合计行 / 该图无比分时回退 match.winner_id
+ *    例：BO3 2:1 → 2/3 = 66.67%（不再按整场比赛 1 胜 = 100%）
  */
 function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id'> {
   const first = list[0]
@@ -373,7 +402,7 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
   const rating = sum('rating')
 
   // 先逐行算「有效参赛」：K/D/A/首杀/多杀/残局/爆头率/ADR/WE/Rating 任一非 0 = 本图有效上场
-  type RowStat = RawStatRow & { __played: boolean }
+  type RowStat = RawStatRow & { __played: boolean; __mapWon: boolean | null }
   const tagged = list.map((r) => {
     const k = Number(r.kills) || 0
     const hsRate = Number(r.headshot_rate_pct) || 0
@@ -389,26 +418,24 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
       adr +
       (Number(r.we) || 0) +
       (Number(r.rating) || 0)
-    return { ...r, __played: anyStat > 0 } as RowStat
+    return { ...r, __played: anyStat > 0, __mapWon: r.__mapWon ?? null } as RowStat
   })
 
-  // 按 match 聚合：决定哪些 match 是"该选手确实上场打了的"，以及胜场
-  const playedMatches = new Map<string, { played: boolean; won: boolean }>()
+  // 按 match 聚合：比赛数（matches）= 该选手有效参赛的 match 数（去重）
+  const playedMatchIds = new Set<string>()
+  for (const r of tagged) if (r.__played) playedMatchIds.add(r.match_id)
+  const matchCount = playedMatchIds.size
+
+  // 按图胜率：赢的图数 / 有效参赛的图数
+  //   新行（map_name 非空）：match_maps.winner_id 判定本图胜负（BO3 2:1 = 2 胜 1 负）
+  //   旧整场合计行 / 无比分：回退 match.winner_id 判定整场胜负
+  let winMaps = 0
+  let playedMaps = 0
   for (const r of tagged) {
-    const prev = playedMatches.get(r.match_id) ?? { played: false, won: false }
-    const matchWon = !!(r.match?.winner_id && r.team_id && r.match.winner_id === r.team_id)
-    playedMatches.set(r.match_id, {
-      played: prev.played || r.__played,
-      won: prev.won || (r.__played && matchWon),
-    })
-  }
-  let matchCount = 0
-  let wins = 0
-  for (const v of playedMatches.values()) {
-    if (v.played) {
-      matchCount++
-      if (v.won) wins++
-    }
+    if (!r.__played) continue
+    const mc = Math.max(1, Number(r.map_count) || 1)
+    playedMaps += mc
+    if (r.__mapWon) winMaps += mc
   }
 
   // 爆头率：Σ kills * headshot_rate_pct（整数） ÷ Σ kills；回退旧 headshots
@@ -444,8 +471,8 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
     // 场均口径统一：÷ maps（= map_count 合计），和 avg_kills / avg_deaths / avg_assists 对齐
     we: r2(safeDiv(we, maps)),
     rating_pro: r2(safeDiv(rating, maps)),
-    // 胜率 ÷ 有效参赛场（只算该选手真正上场的 match；幽灵 match 不影响）
-    win_rate: r2(safeDiv(wins, matchCount) * 100),
+    // 胜率 = 赢的图数 ÷ 有效参赛的图数（BO3 2:1 = 66.67%，不再按整场比赛 100%）
+    win_rate: r2(safeDiv(winMaps, playedMaps) * 100),
     kd: r2(safeDiv(kills, deaths)),
     matches: matchCount,
     maps,
@@ -509,6 +536,7 @@ export async function getPlayerStatsAggregated(
       match_id: r.match_id,
       match: r.match ?? null,
       map_count: r.map_count,
+      map_name: r.map_name ?? '',
       kills: r.kills, deaths: r.deaths, assists: r.assists,
       headshots: r.headshots,
       headshot_rate_pct: Number(r.headshot_rate_pct) || 0,
@@ -519,6 +547,19 @@ export async function getPlayerStatsAggregated(
     }))
     raw = raw.filter((r) => (!groupId || groupIdOf(r) === groupId) && (!stageId || r.match?.stage_id === stageId))
   }
+  // 逐图胜负：为每行附加「本图是否获胜」——胜率按图统计（BO3 2:1 = 66.67%）
+  const mapWinner = await loadMapWinnerLookup([...new Set(raw.map((r) => r.match_id))])
+  raw = raw.map((r) => {
+    let __mapWon: boolean | null = null
+    if (r.map_name) {
+      const mapWinnerId = mapWinner.get(`${r.match_id}|${r.map_name}`) ?? null
+      if (mapWinnerId) __mapWon = mapWinnerId === r.team_id
+      else if (r.match?.winner_id) __mapWon = r.match.winner_id === r.team_id // 该图无比分 → 回退比赛胜负
+    } else if (r.match?.winner_id) {
+      __mapWon = r.match.winner_id === r.team_id // 旧整场合计行 → 按比赛胜负
+    }
+    return { ...r, __mapWon }
+  })
   // 按选手分组
   const byPlayer = new Map<string, RawStatRow[]>()
   for (const r of raw) {

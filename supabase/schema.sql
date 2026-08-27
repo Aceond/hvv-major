@@ -512,8 +512,9 @@ as $$
 begin
   -- 1) player_stats：按 (player, stage, group) 汇总自动 upsert
   --   口径（与前端 Rankings 聚合 aggregatePlayerRows 严格对齐）：
-  --     matches/win_rate：逐行判断「本图有效参赛」= K/D/A/首杀/多杀/残局/爆头率/ADR/WE/Rating 任一非 0；
-  --       match 级别只要一张图有效参赛即算"打了这场比赛"；胜场 = 有效参赛且 match.winner_id = team_id
+  --     matches：逐行判断「本图有效参赛」= K/D/A/首杀/多杀/残局/爆头率/ADR/WE/Rating 任一非 0；
+  --       match 级别只要一张图有效参赛即算"打了这场比赛"（按比赛数展示）
+  --     win_rate：按图口径 = 赢的图数 ÷ 有效参赛的图数（逐图胜负取 match_maps.winner_id，回退比赛 winner_id；BO3 2:1 = 66.67%）
   --     we/rating_pro = Σ 行值 ÷ Σmap_count（图均），与 avg_kills/avg_deaths 等"场均"按图数一致
   --     hs_rate = Σ round(kills * headshot_rate_pct) / Σkills    （百分比 0~100）
   --     adr     = Σ round(adr * rounds) / Σrounds
@@ -523,7 +524,8 @@ begin
            m.stage_id,
            m.group_id,
            mps.match_id,
-           m.winner_id,
+           m.winner_id as match_winner_id,
+           mps.map_name,
            mps.map_count,
            mps.kills,
            mps.deaths,
@@ -536,6 +538,13 @@ begin
            mps.rounds,
            mps.we,
            mps.rating,
+           -- 本图胜负：match_maps.winner_id（逐图比分）；旧整场合计行/无比分时回退比赛 winner_id
+           coalesce((
+             select mm.winner_id from public.match_maps mm
+             where mm.match_id = mps.match_id
+               and mm.map_name = mps.map_name
+             limit 1
+           ), m.winner_id) as map_winner_id,
            (mps.kills + mps.deaths + mps.assists +
             mps.headshot_rate_pct + coalesce(abs(mps.adr), 0) +
             mps.first_kills + mps.multi_kills + mps.clutches +
@@ -547,15 +556,13 @@ begin
   ),
   match_level as (
     select player_id, team_id, stage_id, group_id, match_id,
-           bool_or(row_stat_sum > 0) as played,
-           bool_or(row_stat_sum > 0 and winner_id is not null and winner_id = team_id) as won
+           bool_or(row_stat_sum > 0) as played
     from all_rows
     group by player_id, team_id, stage_id, group_id, match_id
   ),
   per_match_agg as (
     select player_id, team_id, stage_id, group_id,
-           count(*) filter (where played) as matches,
-           count(*) filter (where won) as wins
+           count(*) filter (where played) as matches
     from match_level
     group by player_id, team_id, stage_id, group_id
   ),
@@ -565,11 +572,13 @@ begin
            r.stage_id,
            r.group_id,
            coalesce(pm.matches, 0) as matches,
-           coalesce(pm.wins, 0) as wins,
            sum(r.kills) as kills,
            sum(r.deaths) as deaths,
            sum(r.assists) as assists,
            sum(r.map_count) as maps,
+           -- 按图胜率：有效参赛图数 / 其中获胜图数（每行覆盖 map_count 张图）
+           sum(r.map_count) filter (where r.row_stat_sum > 0) as played_maps,
+           sum(r.map_count) filter (where r.row_stat_sum > 0 and r.map_winner_id is not null and r.map_winner_id = r.team_id) as win_maps,
            round(coalesce(sum(round(r.kills * nullif(r.headshot_rate_pct, 0)::numeric)), 0)) as wghs_num,
            sum(r.kills) as wghs_den,
            sum(round((r.adr * r.rounds)::numeric)) as wadr_num,
@@ -582,7 +591,7 @@ begin
       and pm.team_id is not distinct from r.team_id
       and pm.stage_id is not distinct from r.stage_id
       and pm.group_id is not distinct from r.group_id
-    group by r.player_id, r.team_id, r.stage_id, r.group_id, pm.matches, pm.wins
+    group by r.player_id, r.team_id, r.stage_id, r.group_id, pm.matches
   ),
   agg as (
     select b.player_id,
@@ -596,7 +605,8 @@ begin
            round(coalesce(b.wghs_num::numeric / nullif(b.wghs_den, 0), 0), 2)::numeric(5,2) as hs_rate,
            round(coalesce(b.wadr_num::numeric / nullif(b.wadr_den, 0), 0), 2)::numeric(6,2) as adr,
            round(coalesce(b.kills::numeric / nullif(b.deaths, 0), 0), 2)::numeric(5,2) as kd,
-           round(coalesce(b.wins::numeric / nullif(b.matches, 0) * 100, 0), 2)::numeric(5,2) as win_rate,
+           -- 胜率 = 赢的图数 ÷ 有效参赛的图数（BO3 2:1 = 66.67%）
+           round(coalesce(b.win_maps::numeric / nullif(b.played_maps, 0) * 100, 0), 2)::numeric(5,2) as win_rate,
            round(coalesce(b.we_sum / nullif(b.maps, 0), 0), 2)::numeric(5,2) as we,
            round(coalesce(b.rating_sum / nullif(b.maps, 0), 0), 2)::numeric(4,2) as rating_pro
     from base b
