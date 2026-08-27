@@ -558,7 +558,8 @@ begin
       adr      = excluded.adr,
       kd       = excluded.kd;
 
-  -- 2) team_stats：按 (team, stage, group) 聚合 team 所有队员的 kills/deaths/assists、hs_rate/adr
+  -- 2) team_stats：按 (team, stage, group) 聚合 team 所有队员的 kills/deaths/assists/hs_rate/kd + 场均
+  --    注：team_stats 目前无「adr」列（前台/后台均不展示战队 ADR），此处只写该表现有列。
   with tbase as (
     select mps.team_id,
            m.stage_id,
@@ -568,9 +569,7 @@ begin
            sum(mps.deaths) as deaths,
            sum(mps.assists) as assists,
            round(coalesce(sum(round(mps.kills * nullif(mps.headshot_rate_pct, 0))), 0)) as wghs_num,
-           sum(mps.kills) as wghs_den,
-           sum(round(mps.adr * mps.rounds)) as wadr_num,
-           sum(mps.rounds) as wadr_den
+           sum(mps.kills) as wghs_den
     from public.match_player_stats mps
     join public.matches m on m.id = mps.match_id and m.status = 'completed'
     where (p_stage_id is null or m.stage_id = p_stage_id)
@@ -582,14 +581,13 @@ begin
            b.kills as total_kills, b.deaths as total_deaths, b.assists as total_assists,
            round(coalesce(b.kills::numeric / nullif(b.deaths, 0), 0), 2)::numeric(5,2) as kd,
            round(coalesce(b.wghs_num::numeric / nullif(b.wghs_den, 0), 0), 2)::numeric(5,2) as hs_rate,
-           round(coalesce(b.wadr_num::numeric / nullif(b.wadr_den, 0), 0), 2)::numeric(5,2) as adr,
-           round(coalesce(b.kills::numeric / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_kills,
+           round(coalesce(b.kills::numeric  / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_kills,
            round(coalesce(b.deaths::numeric / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_deaths,
            round(coalesce(b.assists::numeric / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_assists
     from tbase b
   )
-  insert into public.team_stats (team_id, stage_id, group_id, matches, total_kills, total_deaths, total_assists, kd, hs_rate, adr, avg_kills, avg_deaths, avg_assists)
-  select t.team_id, t.stage_id, t.group_id, t.matches, t.total_kills, t.total_deaths, t.total_assists, t.kd, t.hs_rate, t.adr, t.avg_kills, t.avg_deaths, t.avg_assists
+  insert into public.team_stats (team_id, stage_id, group_id, matches, total_kills, total_deaths, total_assists, kd, hs_rate, avg_kills, avg_deaths, avg_assists)
+  select t.team_id, t.stage_id, t.group_id, t.matches, t.total_kills, t.total_deaths, t.total_assists, t.kd, t.hs_rate, t.avg_kills, t.avg_deaths, t.avg_assists
   from tagg t
   on conflict (team_id, stage_id) do update
   set group_id = excluded.group_id,
@@ -599,7 +597,6 @@ begin
       total_assists = excluded.total_assists,
       kd       = excluded.kd,
       hs_rate  = excluded.hs_rate,
-      adr      = excluded.adr,
       avg_kills  = excluded.avg_kills,
       avg_deaths = excluded.avg_deaths,
       avg_assists = excluded.avg_assists;
