@@ -73,7 +73,8 @@ begin
            b.kills as total_kills,
            b.deaths as total_deaths,
            b.assists as total_assists,
-           round(coalesce((b.wghs_num::numeric / nullif(b.wghs_den, 0) * 100), 0), 2)::numeric(5,2) as hs_rate,
+           -- 爆头率 = Σ(kills × 每图爆头率整数%) ÷ Σkills，输出单位是「百分比」0~100（hs_rate numeric(5,2)）
+           round(coalesce(b.wghs_num::numeric / nullif(b.wghs_den, 0), 0), 2)::numeric(5,2) as hs_rate,
            round(coalesce(b.wadr_num::numeric / nullif(b.wadr_den, 0), 0), 2)::numeric(6,2) as adr,
            round(coalesce(b.kills::numeric / nullif(b.deaths, 0), 0), 2)::numeric(5,2) as kd
     from base b
@@ -113,7 +114,8 @@ begin
     select b.team_id, b.stage_id, b.group_id, b.matches,
            b.kills as total_kills, b.deaths as total_deaths, b.assists as total_assists,
            round(coalesce(b.kills::numeric / nullif(b.deaths, 0), 0), 2)::numeric(5,2) as kd,
-           round(coalesce((b.wghs_num::numeric / nullif(b.wghs_den, 0) * 100), 0), 2)::numeric(5,2) as hs_rate,
+           -- 爆头率 = Σ(kills × 每图爆头率整数%) ÷ Σkills，单位百分比 0~100
+           round(coalesce(b.wghs_num::numeric / nullif(b.wghs_den, 0), 0), 2)::numeric(5,2) as hs_rate,
            round(coalesce(b.kills::numeric  / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_kills,
            round(coalesce(b.deaths::numeric / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_deaths,
            round(coalesce(b.assists::numeric / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_assists
