@@ -87,6 +87,8 @@ onMounted(async () => {
       <div class="hero-hud hero-hud-tl">{{ editionLabel }}</div>
       <div class="hero-hud hero-hud-tr">COUNTER-STRIKE 2</div>
 
+      <div class="hero-bgword" aria-hidden="true">CS2</div>
+
       <div class="hero-crosshair" aria-hidden="true">
         <svg viewBox="0 0 120 120" fill="none">
           <circle cx="60" cy="60" r="46" stroke="currentColor" stroke-width="1.5" />
@@ -127,6 +129,19 @@ onMounted(async () => {
         <el-button class="cta-ghost" size="large" @click="router.push({ name: 'standings' })">
           查看积分榜
         </el-button>
+      </div>
+      <div class="hero-mappool" aria-hidden="true">
+        <span class="mappool-label">MAP POOL</span>
+        <span class="mappool-dot" />
+        MIRAGE
+        <span class="mappool-dot" />
+        INFERNO
+        <span class="mappool-dot" />
+        NUKE
+        <span class="mappool-dot" />
+        DUST2
+        <span class="mappool-dot" />
+        ANUBIS
       </div>
       <div class="hero-corner hero-corner-tl" />
       <div class="hero-corner hero-corner-br" />
@@ -298,6 +313,53 @@ onMounted(async () => {
   height: 100%;
 }
 
+/* 巨型 CS2 描边水印（CS 海报风格背景字样） */
+.hero-bgword {
+  position: absolute;
+  right: 3%;
+  bottom: -26px;
+  font-size: clamp(120px, 22vw, 260px);
+  font-weight: 900;
+  letter-spacing: 10px;
+  line-height: 1;
+  color: transparent;
+  -webkit-text-stroke: 1px rgba(255, 176, 32, 0.1);
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+}
+
+/* 地图池横条（CS2 战术信息条） */
+.hero-mappool {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  color: rgba(255, 176, 32, 0.75);
+}
+
+.mappool-label {
+  padding: 3px 10px;
+  background: var(--cs2-accent-soft);
+  border: 1px solid rgba(255, 176, 32, 0.35);
+  color: var(--cs2-accent);
+  letter-spacing: 3px;
+  margin-right: 4px;
+}
+
+.mappool-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--cs2-accent);
+  opacity: 0.5;
+}
+
 @keyframes crosshair-pulse {
   0%,
   100% {
@@ -383,7 +445,8 @@ onMounted(async () => {
 
 @media (max-width: 768px) {
   .hero-hud,
-  .hero-crosshair {
+  .hero-crosshair,
+  .hero-bgword {
     display: none;
   }
 

@@ -83,6 +83,12 @@ body,
   min-height: 100vh;
 }
 
+/* 内容层放在暗角叠层之上 */
+#app {
+  position: relative;
+  z-index: 1;
+}
+
 body {
   font-family: var(--cs2-font);
   background:
@@ -94,6 +100,20 @@ body {
   background-size: 56px 56px, 56px 56px, auto, auto, auto;
   color: var(--cs2-text);
   -webkit-font-smoothing: antialiased;
+  /* 四周暗角：CS2 战术质感，聚焦中部内容 */
+  position: relative;
+}
+
+/* 暗角叠层（不遮挡交互） */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 90% at 50% 12%, transparent 55%, rgba(0, 0, 0, 0.42) 100%),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.22), transparent 22%, transparent 78%, rgba(0, 0, 0, 0.28));
 }
 
 a {
@@ -133,6 +153,19 @@ a {
   clip-path: polygon(0 0, 100% 20%, 100% 80%, 0 100%);
 }
 
+/* 页面标题右侧 HUD 角标（战术风格） */
+.page-title::after {
+  content: '// CS2';
+  margin-left: 12px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--cs2-accent);
+  opacity: 0.55;
+  align-self: flex-end;
+  transform: translateY(-3px);
+}
+
 /* 斜切角卡片 */
 .clipped-card {
   background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
@@ -166,6 +199,20 @@ a {
 html.dark .el-card {
   background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
   border-color: var(--cs2-border);
+  position: relative;
+}
+
+/* 卡片顶部金色信号线（CS2 HUD 风格） */
+html.dark .el-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--cs2-accent) 0%, rgba(255, 176, 32, 0.35) 18%, transparent 60%);
+  opacity: 0.55;
+  pointer-events: none;
 }
 
 html.dark .el-table {

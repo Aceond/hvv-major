@@ -206,6 +206,18 @@ async function signOut() {
   border-bottom: 1px solid var(--cs2-border);
 }
 
+/* 顶部金色信号线（CS2 HUD 风格） */
+.header::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--cs2-accent) 18%, var(--cs2-accent) 82%, transparent);
+  opacity: 0.6;
+}
+
 .brand {
   display: flex;
   align-items: center;
