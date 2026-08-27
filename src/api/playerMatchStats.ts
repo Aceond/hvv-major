@@ -139,12 +139,18 @@ export async function purgeMatchPlayerStatsZeroRows(matchId: string): Promise<nu
   }
   if (!isSupabaseConfigured || !supabase) {
     const before = mockMatchPlayerStats.length
-    mockMatchPlayerStats = mockMatchPlayerStats.filter((s) => {
-      if (s.match_id !== matchId) return true
-      if ((s.map_name ?? '') === '') return false
-      for (const [k, v] of Object.entries(zeroFilter)) if ((s as any)[k] !== v) return true
-      return false
-    })
+    // import 的数组引用不能重赋值 → 直接 splice 原数组，按 match 过滤后重新追加
+    const keep: typeof mockMatchPlayerStats = []
+    for (const s of mockMatchPlayerStats) {
+      if (s.match_id !== matchId) { keep.push(s); continue }
+      if ((s.map_name ?? '') === '') continue
+      let isAllZero = true
+      for (const [k, v] of Object.entries(zeroFilter)) {
+        if ((s as any)[k] !== v) { isAllZero = false; break }
+      }
+      if (!isAllZero) keep.push(s)
+    }
+    mockMatchPlayerStats.splice(0, mockMatchPlayerStats.length, ...keep)
     return before - mockMatchPlayerStats.length
   }
   // Supabase：先删空名旧行，再删全 0 行（RLS：match_* 的写入删权限已给管理员/参赛队长）
