@@ -123,3 +123,49 @@ export async function saveMatchPlayerStats(
   }
   return true
 }
+
+/** 保存完某场比赛「全部地图」后兜底清理幽灵行：
+ *  - map_name = ''（旧口径整场合计行，现在已被按图拆分替代）
+ *  - 或：所有统计列都为 0（rounds 是自动按比分填的默认值不计入「参赛」判断）
+ *  这样未上场的替补、历史空名旧行就不会再混进个人排行里算 100% 胜率了。
+ */
+export async function purgeMatchPlayerStatsZeroRows(matchId: string): Promise<number> {
+  const zeroFilter = {
+    kills: 0, deaths: 0, assists: 0,
+    headshots: 0, headshot_rate_pct: 0,
+    first_kills: 0, multi_kills: 0, clutches: 0,
+    damage: 0, adr: 0,
+    we: 0, rating: 0,
+  }
+  if (!isSupabaseConfigured || !supabase) {
+    const before = mockMatchPlayerStats.length
+    mockMatchPlayerStats = mockMatchPlayerStats.filter((s) => {
+      if (s.match_id !== matchId) return true
+      if ((s.map_name ?? '') === '') return false
+      for (const [k, v] of Object.entries(zeroFilter)) if ((s as any)[k] !== v) return true
+      return false
+    })
+    return before - mockMatchPlayerStats.length
+  }
+  // Supabase：先删空名旧行，再删全 0 行（RLS：match_* 的写入删权限已给管理员/参赛队长）
+  const { error: e1 } = await supabase
+    .from('match_player_stats')
+    .delete()
+    .eq('match_id', matchId)
+    .eq('map_name', '')
+  if (e1) throw new Error(e1.message)
+  // PostgREST 不直接支持 in (...) + 全列 or 条件的 delete，这里用 count+select 定位 id 再删
+  const cols = Object.keys(zeroFilter) as Array<keyof typeof zeroFilter>
+  let q = supabase.from('match_player_stats').select('id').eq('match_id', matchId)
+  for (const c of cols) q = q.eq(c, zeroFilter[c])
+  const { data: rows, error: selErr } = await q
+  if (selErr) throw new Error(selErr.message)
+  const ids = (rows ?? []).map((r: any) => r.id as string)
+  if (ids.length === 0) return 0
+  const { error: delErr } = await supabase
+    .from('match_player_stats')
+    .delete()
+    .in('id', ids)
+  if (delErr) throw new Error(delErr.message)
+  return ids.length
+}

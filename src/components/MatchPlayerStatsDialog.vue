@@ -12,6 +12,7 @@ import {
   listMatchPlayerStats,
   listMatchPlayers,
   saveMatchPlayerStats,
+  purgeMatchPlayerStatsZeroRows,
 } from '@/api/playerMatchStats'
 import { listMatchMaps } from '@/api/match'
 
@@ -232,7 +233,12 @@ async function save() {
         })),
       )
     }
-    ElMessage.success('本场队员数据已保存（未参赛的 0 行已自动跳过/删除；后台自动重算爆头率/ADR）')
+    const purged = await purgeMatchPlayerStatsZeroRows(m.id)
+    ElMessage.success(
+      purged > 0
+        ? `本场队员数据已保存（自动清理 ${purged} 条未参赛幽灵行/旧空名行；后台自动重算爆头率/ADR）`
+        : '本场队员数据已保存（未参赛的 0 行已自动跳过/删除；后台自动重算爆头率/ADR）',
+    )
     visible.value = false
     emit('saved')
   } catch (e: any) {
