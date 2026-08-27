@@ -6,6 +6,7 @@ import {
   mockMatchPlayerStats,
   mockMatches,
   mockPlayerStats,
+  mockStages,
   mockTeamStats,
   mockTeams,
 } from '@/mock/data'
@@ -315,6 +316,8 @@ interface RawStatRow {
     winner_id: string | null
     team_a_id: string | null
     team_b_id: string | null
+    // matches.stage_id 关联的 stage（组别可能挂在 stage 上，作为 match.group_id 的回退源）
+    stage?: { group_id: string | null } | null
   } | null
   map_count: number
   kills: number
@@ -332,6 +335,12 @@ interface RawStatRow {
   rating: number
 }
 
+/** 该行比赛数据所属组别：优先 matches.group_id，回退到其 stage 的 group_id（组别可能挂在 stage 上）
+ *  组别是「按队伍/阶段分配的」：同一位选手在挑战组打首发、在大师组打替补时，会横跨两个组别。 */
+function groupIdOf(r: Pick<RawStatRow, 'match'>): string | null {
+  return r.match?.group_id ?? r.match?.stage?.group_id ?? null
+}
+
 /** 对一名选手的若干行比赛数据进行聚合
  *  爆头率口径（按赛事加权整数）：Σ round(kills × headshot_rate_pct) ÷ Σ kills；
  *    若某行缺 headshot_rate_pct（0 且有 headshots），回退为「该行旧爆头数」计入加权分子。
@@ -347,6 +356,10 @@ interface RawStatRow {
  */
 function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id'> {
   const first = list[0]
+  // 该选手在本行聚合范围内涉及的全部组别（去重、按首次出现顺序）
+  const groupIds = Array.from(
+    new Set(list.map((r) => groupIdOf(r)).filter((x): x is string => !!x)),
+  )
   const maps = list.reduce((a, r) => a + (Number(r.map_count) || 0), 0)
   const sum = (k: keyof RawStatRow) => list.reduce((a, r) => a + (Number(r[k]) || 0), 0)
   const kills = sum('kills')
@@ -424,8 +437,10 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
     team_name: first.team_name ?? '未入队',
     stage_id: first.match_stage_id ?? first.match?.stage_id ?? null,
     stage_name: null,
-    group_id: first.match_group_id ?? first.match?.group_id ?? null,
+    group_id: first.match_group_id ?? groupIdOf(first) ?? null,
     group_name: null,
+    group_ids: groupIds,
+    group_names: [],
     // 场均口径统一：÷ maps（= map_count 合计），和 avg_kills / avg_deaths / avg_assists 对齐
     we: r2(safeDiv(we, maps)),
     rating_pro: r2(safeDiv(rating, maps)),
@@ -472,16 +487,18 @@ export async function getPlayerStatsAggregated(
                 winner_id: m.winner_id,
                 team_a_id: m.team_a_id,
                 team_b_id: m.team_b_id,
+                // mock：组别回退源 = 该比赛所属 stage 的组别（stages 有 group_id）
+                stage: { group_id: mockStages.find((s) => s.id === m.stage_id)?.group_id ?? null },
               }
             : null,
         }
       })
-      .filter((r) => (!groupId || r.match_group_id === groupId) && (!stageId || r.match_stage_id === stageId))
+      .filter((r) => (!groupId || groupIdOf(r) === groupId) && (!stageId || r.match?.stage_id === stageId))
   } else {
     const { data } = await supabase
       .from('match_player_stats')
       .select(
-        '*, match:matches(stage_id, group_id, status, winner_id, team_a_id, team_b_id), team:teams(name), player:profiles(nickname, pw_username)',
+        '*, match:matches(stage_id, group_id, status, winner_id, team_a_id, team_b_id, stage:stages(group_id)), team:teams(name), player:profiles(nickname, pw_username)',
       )
     raw = ((data ?? []) as any[]).map((r) => ({
       player_id: r.player_id,
@@ -500,7 +517,7 @@ export async function getPlayerStatsAggregated(
       adr: Number(r.adr) || 0,
       rounds: r.rounds, we: r.we, rating: r.rating,
     }))
-    raw = raw.filter((r) => (!groupId || r.match?.group_id === groupId) && (!stageId || r.match?.stage_id === stageId))
+    raw = raw.filter((r) => (!groupId || groupIdOf(r) === groupId) && (!stageId || r.match?.stage_id === stageId))
   }
   // 按选手分组
   const byPlayer = new Map<string, RawStatRow[]>()
@@ -511,11 +528,15 @@ export async function getPlayerStatsAggregated(
   for (const [playerId, list] of byPlayer) {
     rows.push({ player_id: playerId, ...aggregatePlayerRows(list) })
   }
-  // 补阶段/组别名称
+  // 补阶段/组别名称（组别列可显示多个：该选手在本聚合范围内横跨的所有组别）
   const [stages, groups] = await Promise.all([listStages(), listGroups()])
+  const groupNameMap = new Map(groups.map((g) => [g.id, g.name]))
   for (const row of rows) {
     row.stage_name = stages.find((s) => s.id === row.stage_id)?.name ?? null
-    row.group_name = groups.find((g) => g.id === row.group_id)?.name ?? null
+    row.group_name = row.group_ids?.[0] ? (groupNameMap.get(row.group_ids[0]) ?? null) : null
+    row.group_names = (row.group_ids ?? [])
+      .map((id) => groupNameMap.get(id) ?? null)
+      .filter((x): x is string => !!x)
   }
   return rows.sort((a, b) => b.rating_pro - a.rating_pro || b.adr - a.adr)
 }

@@ -242,6 +242,9 @@ export interface PlayerStatRow {
   stage_group_id?: string | null // 数据/比赛所属组别（该行 stage 的组别，即「在哪打的」；非选手战队组别）
   group_id: string | null
   group_name: string | null
+  // 该选手在本行聚合范围内涉及的全部组别（可能跨多个组别：如挑战组首发 + 大师组替补）
+  group_ids?: string[]
+  group_names?: string[]
   we: number // WE（获胜效率）
   rating_pro: number // Rating PRO
   win_rate: number // 胜率 %

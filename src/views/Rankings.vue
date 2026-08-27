@@ -283,7 +283,7 @@ function format(col: StatCol, value: number): string {
             {{ row.stage_name ?? '-' }}{{ row.stage_name && row.group_name ? ' · ' + row.group_name : '' }}
           </template>
         </el-table-column>
-        <el-table-column prop="group_name" label="组别" width="76" fixed />
+        <el-table-column prop="group_name" label="组别" width="96" fixed />
         <el-table-column
           v-for="col in currentCols"
           :key="col.key"
@@ -327,7 +327,21 @@ function format(col: StatCol, value: number): string {
             {{ row.stage_name ?? '-' }}{{ row.stage_name && row.group_name ? ' · ' + row.group_name : '' }}
           </template>
         </el-table-column>
-        <el-table-column prop="group_name" label="组别" width="76" fixed />
+        <el-table-column label="组别" width="132" fixed>
+          <template #default="{ row }">
+            <template v-if="(row.group_names ?? []).length">
+              <el-tag
+                v-for="(g, gi) in row.group_names"
+                :key="gi"
+                size="small"
+                effect="plain"
+                round
+                class="group-tag"
+              >{{ g }}</el-tag>
+            </template>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column
           v-for="col in currentCols"
           :key="col.key"
@@ -394,6 +408,10 @@ function format(col: StatCol, value: number): string {
 
 .team-name {
   margin-right: 8px;
+}
+
+.group-tag {
+  margin: 2px 4px 2px 0;
 }
 
 .rating-pos {
