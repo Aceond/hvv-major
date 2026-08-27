@@ -6,31 +6,40 @@ import { supabase, isSupabaseConfigured } from '@/lib/supabase'
 import { mockMembers, mockMatchPlayerStats, mockTeams } from '@/mock/data'
 import type { MatchPlayerStat, MatchPlayerStatInput, TeamMember } from './types'
 
-/** 自动匹配一场比赛双方的正式队员（active；替补不参与统计），附带昵称 / 完美 ID */
+/** 自动匹配一场比赛双方的队员（active + benched，都允许录入数据；替补选手在 UI 上会标蓝提示），
+ *  附带昵称 / 完美 ID / 状态。 */
 export async function listMatchPlayers(
   teamAId: string | null,
   teamBId: string | null,
 ): Promise<TeamMember[]> {
   if (!isSupabaseConfigured || !supabase) {
     const ids = [teamAId, teamBId].filter((x): x is string => !!x)
-    return ids.flatMap((tid) => (mockMembers[tid] ?? []).filter((m) => m.status === 'active'))
+    return ids.flatMap((tid) => (mockMembers[tid] ?? []))
   }
   if (!teamAId && !teamBId) return []
   let query = supabase
     .from('team_members')
     .select('*, player:profiles(nickname, pw_username)')
-    .eq('status', 'active')
+    .in('status', ['active', 'benched'])
   if (teamAId && teamBId) {
     query = query.in('team_id', [teamAId, teamBId])
   } else {
     query = query.eq('team_id', teamAId ?? teamBId)
   }
   const { data } = await query
-  return ((data ?? []) as any[]).map((m) => ({
-    ...m,
-    nickname: m.player?.nickname ?? null,
-    pw_username: m.player?.pw_username ?? null,
-  }))
+  return ((data ?? []) as any[])
+    .map((m) => ({
+      ...m,
+      nickname: m.player?.nickname ?? null,
+      pw_username: m.player?.pw_username ?? null,
+    }))
+    .sort((a, b) => {
+      // active 在前，benched 在后；队内按队长在前 + 按 id 稳定
+      if (a.team_id !== b.team_id) return a.team_id.localeCompare(b.team_id)
+      if (a.status !== b.status) return a.status === 'active' ? -1 : 1
+      if (a.is_captain !== b.is_captain) return a.is_captain ? -1 : 1
+      return (a.id ?? '').localeCompare(b.id ?? '')
+    })
 }
 
 /** 某场比赛已录入的队员数据（含队员昵称/完美 ID/战队名），按地图分组返回 */

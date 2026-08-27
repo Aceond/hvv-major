@@ -27,6 +27,7 @@ interface PlayerRow extends MatchPlayerStatInput {
   player_name: string
   pw_username: string | null
   team_name: string
+  status?: 'active' | 'benched'
 }
 
 const players = ref<TeamMember[]>([])
@@ -77,14 +78,34 @@ async function load(matchId: string) {
     players.value = await listMatchPlayers(m.team_a_id, m.team_b_id)
     const [existing, mapsData] = await Promise.all([
       listMatchPlayerStats(matchId),
-      m.best_of > 1 ? listMatchMaps([matchId]) : Promise.resolve([]),
+      listMatchMaps([matchId]),
     ])
+    // 把逐图比分 match_maps → 按位置索引得到 rounds=胜+负 之和，后面按页签位置回填 rounds 默认值
+    const mapRoundsByIndex: number[] = []
+    const mapRoundsByName: Record<string, number> = {}
+    const mapsScored = mapsData
+      .filter((mp) => mp.match_id === matchId)
+      .sort((a, b) => (a.map_count || 0) - (b.map_count || 0))
+    for (const mp of mapsScored) {
+      const r = (Number(mp.team_a_score) || 0) + (Number(mp.team_b_score) || 0)
+      mapRoundsByIndex.push(r)
+      if (mp.map_name) mapRoundsByName[mp.map_name] = r
+    }
+
     const filledMaps = mapsData.filter((mp) => mp.team_a_score > 0 || mp.team_b_score > 0)
     const mapNames = filledMaps.map((mp) => mp.map_name).filter(Boolean)
     const n = resolveMapCount(m)
     const keys: string[] = []
     for (let i = 0; i < n; i++) keys.push(mapNames[i] ?? `地图${i + 1}`)
-    maps.value = keys.map((key) => ({ key, label: key.startsWith('地图') ? `${key}（待录入逐图比分）` : key }))
+    maps.value = keys.map((key, idx) => {
+      const autoRounds = mapRoundsByName[key] ?? mapRoundsByIndex[idx] ?? 0
+      return {
+        key,
+        label:
+          (key.startsWith('地图') ? `${key}（待录入逐图比分）` : key) +
+          (autoRounds > 0 ? ` · 对局数自动填充 = ${autoRounds}` : ''),
+      }
+    })
     activeMap.value = keys[0]
 
     // 旧数据（map_name 为空 = 整场合计）归入第一张图页签展示，避免丢失
@@ -100,12 +121,15 @@ async function load(matchId: string) {
     const teamA = m.team_a_name ?? 'A 队'
     const teamB = m.team_b_name ?? 'B 队'
     const nextByMap: Record<string, PlayerRow[]> = {}
-    for (const key of keys) {
+    for (let i = 0; i < keys.length; i++) {
+      const key = keys[i]
+      const autoRounds = mapRoundsByName[key] ?? mapRoundsByIndex[i] ?? 0
       const map = new Map(grouped.get(key)?.map((e) => [e.player_id, e]) ?? [])
       nextByMap[key] = players.value.map((p) => {
         const ex = map.get(p.profile_id)
         const kills = ex?.kills ?? 0
-        const rounds = ex?.rounds ?? 0
+        // rounds：已存值优先；否则用逐图比分自动推算；BO1 无逐图比分时 0
+        const rounds = ex && Number(ex.rounds) > 0 ? Number(ex.rounds) : autoRounds
         return {
           player_id: p.profile_id,
           team_id: p.team_id,
@@ -127,6 +151,7 @@ async function load(matchId: string) {
           player_name: p.nickname ?? p.pw_username ?? '未命名',
           pw_username: p.pw_username,
           team_name: p.team_id === m.team_a_id ? teamA : p.team_id === m.team_b_id ? teamB : '-',
+          status: p.status,
         }
       })
     }
@@ -136,14 +161,14 @@ async function load(matchId: string) {
   }
 }
 
-/** 保存：逐张地图分别覆盖保存 */
+/** 保存：逐张地图分别覆盖保存；自动跳过「未参赛」队员（rounds=0 且无任何击杀/死亡/助攻/首杀/多杀/残局/ADR/WE/Rating），避免全 0 行干扰汇总 */
 async function save() {
   const m = props.match
   if (!m) return
   saving.value = true
   try {
     for (const key of Object.keys(byMap.value)) {
-      const rows = byMap.value[key].map((r) => {
+      const rowsRaw = byMap.value[key].map((r) => {
         // 保存前最终反算：headshots/damage 按新口径重算一次（用户改了 kills 或 rounds 也跟着变）
         const k = Number(r.kills) || 0
         const rnd = Number(r.rounds) || 0
@@ -152,6 +177,21 @@ async function save() {
         const headshots = Math.round((k * hsRate) / 100)
         const damage = Math.round(adr * rnd)
         return { ...r, headshot_rate_pct: hsRate, adr, headshots, damage } as PlayerRow
+      })
+      // 只保存「实际参加了本图」的队员：rounds>0 或任意统计有值（避免替补未上场/本场没打的队员自动落 0 行）
+      const rows = rowsRaw.filter((r) => {
+        const rnd = Number(r.rounds) || 0
+        const anyStat =
+          (Number(r.kills) || 0) +
+          (Number(r.deaths) || 0) +
+          (Number(r.assists) || 0) +
+          (Number(r.first_kills) || 0) +
+          (Number(r.multi_kills) || 0) +
+          (Number(r.clutches) || 0) +
+          (Number(r.adr) || 0) +
+          (Number(r.we) || 0) +
+          (Number(r.rating) || 0)
+        return rnd > 0 || anyStat > 0
       })
       await saveMatchPlayerStats(
         m.id,
@@ -171,7 +211,7 @@ async function save() {
         })),
       )
     }
-    ElMessage.success('本场队员数据已保存（后台自动重算爆头率/ADR）')
+    ElMessage.success('本场队员数据已保存（未参赛的 0 行已自动跳过；后台自动重算爆头率/ADR）')
     visible.value = false
     emit('saved')
   } catch (e: any) {
@@ -209,7 +249,7 @@ const decCols = [
       type="info"
       :closable="false"
       class="tip"
-      title="按「每图」录入：爆头改为【爆头率整数%】，伤害改为【ADR平均伤害】。赛事期间自动按加权公式聚合：爆头率 = Σ(本图击杀×本图爆头率取整) ÷ Σ击杀；ADR = Σ(本图ADR×本图局数) ÷ Σ局数。"
+      title="按「每图」录入：爆头改为【爆头率整数%】，伤害改为【ADR平均伤害】。局数已按逐图比分自动填入（胜+负），仅实际参加本图的队员（rounds>0 或有统计）会被保存，未参赛的全 0 行自动跳过。赛事期间自动按加权公式聚合：爆头率 = Σ(本图击杀×本图爆头率取整) ÷ Σ击杀；ADR = Σ(本图ADR×本图局数) ÷ Σ局数。"
     />
 
     <el-tabs v-model="activeMap">
@@ -218,10 +258,28 @@ const decCols = [
           <span class="map-tab-label">{{ mp.label }}</span>
         </template>
         <el-table v-loading="loading" :data="byMap[mp.key] ?? []" stripe size="small" max-height="52vh">
-          <el-table-column label="选手" min-width="120" fixed>
+          <el-table-column label="选手" min-width="150" fixed>
             <template #default="{ row }">
               <span class="player-name">{{ row.player_name }}</span>
-              <span v-if="row.pw_username" class="pw">{{ row.pw_username }}</span>
+              <el-tag
+                v-if="row.status === 'benched'"
+                type="primary"
+                size="small"
+                effect="plain"
+                round
+                class="benched-tag"
+              >替补</el-tag>
+              <el-tag
+                v-else-if="row.status === 'active'"
+                type="success"
+                size="small"
+                effect="plain"
+                round
+                class="benched-tag"
+              >首发</el-tag>
+              <div>
+                <span v-if="row.pw_username" class="pw">{{ row.pw_username }}</span>
+              </div>
             </template>
           </el-table-column>
           <el-table-column prop="team_name" label="战队" min-width="110" fixed />
@@ -279,6 +337,11 @@ const decCols = [
 .pw {
   font-size: 12px;
   color: var(--cs2-text-muted);
+}
+
+.benched-tag {
+  margin-left: 4px;
+  vertical-align: middle;
 }
 
 .cell-input {
