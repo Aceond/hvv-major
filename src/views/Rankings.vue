@@ -22,7 +22,7 @@ interface StatCol {
 }
 
 const teamCols = ref<StatCol[]>([
-  { key: 'win_rate', label: '胜率', width: 78, fmt: 'pct0', color: 'pct' },
+  { key: 'win_rate', label: '胜率', width: 84, fmt: 'pct1', color: 'pct' },
   { key: 'net', label: '净胜分', width: 88, fmt: 'int' },
   { key: 'kd', label: 'K/D', width: 82, fmt: 'dec2', color: 'trend' },
   { key: 'matches', label: '比赛数', width: 88, fmt: 'int' },
@@ -37,7 +37,7 @@ const teamCols = ref<StatCol[]>([
 const playerCols = ref<StatCol[]>([
   { key: 'we', label: '场均 WE', width: 84, fmt: 'dec1', color: 'pct' },
   { key: 'rating_pro', label: '场均 Rating', width: 110, fmt: 'dec2', color: 'trend' },
-  { key: 'win_rate', label: '胜率', width: 74, fmt: 'pct0', color: 'pct' },
+  { key: 'win_rate', label: '胜率', width: 80, fmt: 'pct1', color: 'pct' },
   { key: 'kd', label: 'K/D', width: 80, fmt: 'dec2', color: 'trend' },
   { key: 'matches', label: '比赛数', width: 86, fmt: 'int' },
   { key: 'maps', label: '地图数', width: 86, fmt: 'int' },
