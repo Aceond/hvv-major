@@ -321,16 +321,23 @@ interface RawStatRow {
   deaths: number
   assists: number
   headshots: number
+  headshot_rate_pct: number     // 新列：爆头率整数%（0~100）
   first_kills: number
   multi_kills: number
   clutches: number
   damage: number
+  adr: number                   // 新列：每图 ADR（小数）
   rounds: number
   we: number
   rating: number
 }
 
-/** 对一名选手的若干行比赛数据进行聚合 */
+/** 对一名选手的若干行比赛数据进行聚合
+ *  爆头率口径（按赛事加权整数）：Σ round(kills × headshot_rate_pct) ÷ Σ kills；
+ *    若某行缺 headshot_rate_pct（0 且有 headshots），回退为「该行旧爆头数」计入加权分子。
+ *  ADR 口径：Σ round(adr × rounds) ÷ Σ rounds；
+ *    若某行缺 adr（0 且有 damage），回退为「该行总伤害 damage」计入加权分子。
+ */
 function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id'> {
   const first = list[0]
   const matchCount = new Set(list.map((r) => r.match_id)).size
@@ -339,14 +346,32 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
   const kills = sum('kills')
   const deaths = sum('deaths')
   const assists = sum('assists')
-  const headshots = sum('headshots')
   const firstKills = sum('first_kills')
   const multiKills = sum('multi_kills')
   const clutches = sum('clutches')
-  const damage = sum('damage')
   const rounds = sum('rounds')
   const we = sum('we')
   const rating = sum('rating')
+
+  // 爆头率：Σ kills * headshot_rate_pct（整数） ÷ Σ kills；回退旧 headshots
+  const wghsNum = list.reduce((acc, r) => {
+    const k = Number(r.kills) || 0
+    const hsRate = Number(r.headshot_rate_pct) || 0
+    if (k > 0 && hsRate > 0) {
+      return acc + Math.round(k * hsRate)
+    }
+    return acc + (Number(r.headshots) || 0) * 100   // 旧列 headshots = kills*rate/100，等价为 kills*rate 的单位是 1/100 → *100 还原到 kills*pct 维度
+  }, 0)
+  const wghsDen = kills * 100   // 分子单位是 kills*pct（pct 为 0~100），除以 Σ kills*100 得 %
+  // ADR：Σ adr*rounds ÷ Σ rounds；回退旧 damage=adr*rounds
+  const wadrNum = list.reduce((acc, r) => {
+    const adr = Number(r.adr) || 0
+    const rnd = Number(r.rounds) || 0
+    if (rnd > 0 && adr > 0) return acc + Math.round(adr * rnd)
+    return acc + (Number(r.damage) || 0)
+  }, 0)
+  const wadrDen = rounds
+
   // 胜率：参与的每场比赛按所属队是否获胜计
   const wins = new Set(
     list
@@ -369,10 +394,10 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
     kd: r2(safeDiv(kills, deaths)),
     matches: matchCount,
     maps,
-    hs_rate: r2(safeDiv(headshots, kills) * 100),
+    hs_rate: r2(safeDiv(wghsNum, wghsDen) * 100),   // 换算回百分比（0~100）
     kpr: 0,
     dpr: 0,
-    adr: r2(safeDiv(damage, rounds)),
+    adr: r2(safeDiv(wadrNum, wadrDen)),
     total_kills: kills,
     total_deaths: deaths,
     total_assists: assists,
@@ -427,9 +452,13 @@ export async function getPlayerStatsAggregated(
       match_id: r.match_id,
       match: r.match ?? null,
       map_count: r.map_count,
-      kills: r.kills, deaths: r.deaths, assists: r.assists, headshots: r.headshots,
+      kills: r.kills, deaths: r.deaths, assists: r.assists,
+      headshots: r.headshots,
+      headshot_rate_pct: Number(r.headshot_rate_pct) || 0,
       first_kills: r.first_kills, multi_kills: r.multi_kills, clutches: r.clutches,
-      damage: r.damage, rounds: r.rounds, we: r.we, rating: r.rating,
+      damage: r.damage,
+      adr: Number(r.adr) || 0,
+      rounds: r.rounds, we: r.we, rating: r.rating,
     }))
     raw = raw.filter((r) => (!groupId || r.match?.group_id === groupId) && (!stageId || r.match?.stage_id === stageId))
   }

@@ -474,6 +474,176 @@ alter table public.match_player_stats
   add constraint match_player_stats_match_id_map_player_key unique (match_id, map_name, player_id);
 
 -- ============================================================
+-- 6.7 录入口径升级：
+--   UI 改成按「每图」输入 爆头率(整数%) + ADR(小数)，不再输入爆头数/总伤害；
+--   headshot_rate_pct/adr 为主字段，旧列 headshots/damage 继续保留并在写时反算，保证历史查询/排行兼容。
+--   后台自动聚合公式：
+--     爆头率 = round( Σ(kills * headshot_rate_pct) ) / Σkills * 100
+--            （实际：加权整数分子 = Σ kills * headshot_rate_pct；爆头率 = 加权分子 / Σkills）
+--     ADR    = Σ(adr * rounds) / Σrounds
+-- ============================================================
+alter table public.match_player_stats
+  add column if not exists headshot_rate_pct int not null default 0;   -- 0~100（整数%）
+alter table public.match_player_stats
+  add column if not exists adr numeric(6,2) not null default 0;       -- 每图平均伤害（小数）
+-- 已有数据的 headshot_rate_pct / adr 从旧列反推（kills>0 按比例整数化；rounds>0 按比例；否则 0）
+update public.match_player_stats
+set headshot_rate_pct =
+      case when kills > 0 then round((headshots::numeric / nullif(kills, 0)) * 100)::int
+           else 0 end,
+    adr =
+      case when rounds > 0 then round((damage::numeric / nullif(rounds, 0)) * 100)::numeric / 100
+           else 0 end
+where true;
+
+-- 6.8 后台汇总表 team_stats / player_stats：当 match_player_stats 或 matches 变化时
+--     按阶段 / 组别自动重算，替代旧的纯手工录入（仍允许管理员 upsert 覆盖，但默认值自动出数据）。
+--     自动聚合列：hs_rate, adr, total_kills, total_deaths, total_assists 等（其余仍由后台补录）
+-- ============================================================
+create or replace function public.refresh_stage_stats_from_match_player_stats(p_stage_id uuid default null, p_group_id uuid default null)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  -- 1) player_stats：按 (player, stage, group) 汇总自动 upsert
+  with base as (
+    select mps.player_id,
+           mps.team_id,
+           m.stage_id,
+           m.group_id,
+           count(distinct mps.match_id) as matches,
+           sum(mps.kills) as kills,
+           sum(mps.deaths) as deaths,
+           sum(mps.assists) as assists,
+           round(coalesce(sum(round(mps.kills * nullif(mps.headshot_rate_pct, 0))), 0)) as wghs_num,  -- Σ kills * hs%（整数，用户口径）
+           sum(mps.kills) as wghs_den,
+           sum(round(mps.adr * mps.rounds)) as wadr_num,   -- Σ ADR * 局数
+           sum(mps.rounds) as wadr_den
+    from public.match_player_stats mps
+    join public.matches m on m.id = mps.match_id and m.status = 'completed'
+    where (p_stage_id is null or m.stage_id = p_stage_id)
+      and (p_group_id is null or m.group_id = p_group_id)
+    group by mps.player_id, mps.team_id, m.stage_id, m.group_id
+  ),
+  agg as (
+    select b.player_id,
+           b.team_id,
+           b.stage_id,
+           b.group_id,
+           b.matches,
+           b.kills as total_kills,
+           b.deaths as total_deaths,
+           b.assists as total_assists,
+           round(coalesce(b.wghs_num::numeric / nullif(b.wghs_den, 0), 0), 2)::numeric(5,2) as hs_rate,
+           round(coalesce(b.wadr_num::numeric / nullif(b.wadr_den, 0), 0), 2)::numeric(6,2) as adr,
+           round(coalesce(b.kills::numeric / nullif(b.deaths, 0), 0), 2)::numeric(5,2) as kd
+    from base b
+  )
+  insert into public.player_stats (profile_id, team_id, stage_id, group_id, matches, total_kills, total_deaths, total_assists, hs_rate, adr, kd)
+  select a.player_id, a.team_id, a.stage_id, a.group_id, a.matches, a.total_kills, a.total_deaths, a.total_assists, a.hs_rate, a.adr, a.kd
+  from agg a
+  on conflict (profile_id, stage_id) do update
+  set team_id = excluded.team_id,
+      group_id = excluded.group_id,
+      matches  = excluded.matches,
+      total_kills = excluded.total_kills,
+      total_deaths = excluded.total_deaths,
+      total_assists = excluded.total_assists,
+      hs_rate  = excluded.hs_rate,
+      adr      = excluded.adr,
+      kd       = excluded.kd;
+
+  -- 2) team_stats：按 (team, stage, group) 聚合 team 所有队员的 kills/deaths/assists、hs_rate/adr
+  with tbase as (
+    select mps.team_id,
+           m.stage_id,
+           m.group_id,
+           count(distinct mps.match_id) as matches,
+           sum(mps.kills) as kills,
+           sum(mps.deaths) as deaths,
+           sum(mps.assists) as assists,
+           round(coalesce(sum(round(mps.kills * nullif(mps.headshot_rate_pct, 0))), 0)) as wghs_num,
+           sum(mps.kills) as wghs_den,
+           sum(round(mps.adr * mps.rounds)) as wadr_num,
+           sum(mps.rounds) as wadr_den
+    from public.match_player_stats mps
+    join public.matches m on m.id = mps.match_id and m.status = 'completed'
+    where (p_stage_id is null or m.stage_id = p_stage_id)
+      and (p_group_id is null or m.group_id = p_group_id)
+    group by mps.team_id, m.stage_id, m.group_id
+  ),
+  tagg as (
+    select b.team_id, b.stage_id, b.group_id, b.matches,
+           b.kills as total_kills, b.deaths as total_deaths, b.assists as total_assists,
+           round(coalesce(b.kills::numeric / nullif(b.deaths, 0), 0), 2)::numeric(5,2) as kd,
+           round(coalesce(b.wghs_num::numeric / nullif(b.wghs_den, 0), 0), 2)::numeric(5,2) as hs_rate,
+           round(coalesce(b.wadr_num::numeric / nullif(b.wadr_den, 0), 0), 2)::numeric(5,2) as adr,
+           round(coalesce(b.kills::numeric / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_kills,
+           round(coalesce(b.deaths::numeric / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_deaths,
+           round(coalesce(b.assists::numeric / nullif(nullif(b.matches, 0), 1), 0), 2)::numeric(6,2) as avg_assists
+    from tbase b
+  )
+  insert into public.team_stats (team_id, stage_id, group_id, matches, total_kills, total_deaths, total_assists, kd, hs_rate, adr, avg_kills, avg_deaths, avg_assists)
+  select t.team_id, t.stage_id, t.group_id, t.matches, t.total_kills, t.total_deaths, t.total_assists, t.kd, t.hs_rate, t.adr, t.avg_kills, t.avg_deaths, t.avg_assists
+  from tagg t
+  on conflict (team_id, stage_id) do update
+  set group_id = excluded.group_id,
+      matches  = excluded.matches,
+      total_kills = excluded.total_kills,
+      total_deaths = excluded.total_deaths,
+      total_assists = excluded.total_assists,
+      kd       = excluded.kd,
+      hs_rate  = excluded.hs_rate,
+      adr      = excluded.adr,
+      avg_kills  = excluded.avg_kills,
+      avg_deaths = excluded.avg_deaths,
+      avg_assists = excluded.avg_assists;
+end;
+$$;
+
+drop trigger if exists trg_auto_refresh_stage_stats on public.match_player_stats;
+drop function if exists public.on_match_player_stats_changed();
+create or replace function public.on_match_player_stats_changed() returns trigger
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_match public.matches%rowtype;
+begin
+  if tg_op = 'DELETE' then
+    select * into v_match from public.matches where id = old.match_id;
+  else
+    select * into v_match from public.matches where id = new.match_id;
+  end if;
+  if v_match.id is not null then
+    perform public.refresh_stage_stats_from_match_player_stats(v_match.stage_id, v_match.group_id);
+  end if;
+  return null;
+end;
+$$;
+create trigger trg_auto_refresh_stage_stats
+after insert or update or delete on public.match_player_stats
+for each statement
+execute function public.on_match_player_stats_changed();
+
+drop trigger if exists trg_auto_refresh_stage_stats_matches on public.matches;
+drop function if exists public.on_match_status_completed_changed();
+create or replace function public.on_match_status_completed_changed() returns trigger
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if (old.status <> 'completed' and new.status = 'completed')
+    or (new.status <> old.status and (new.status = 'completed' or old.status = 'completed')) then
+    perform public.refresh_stage_stats_from_match_player_stats(new.stage_id, new.group_id);
+  end if;
+  return null;
+end;
+$$;
+create trigger trg_auto_refresh_stage_stats_matches
+after update of status on public.matches
+for each row
+execute function public.on_match_status_completed_changed();
+
+-- ============================================================
 -- 7. 辅助函数
 -- ============================================================
 create or replace function public.is_admin()

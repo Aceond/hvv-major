@@ -53,18 +53,31 @@ export async function listMatchPlayerStats(matchId: string): Promise<MatchPlayer
   }))
 }
 
-/** 保存某场比赛「某张地图」的队员数据：按 match_id + map_name + player_id 覆盖（先删旧，再插入） */
+/** 保存某场比赛「某张地图」的队员数据：按 match_id + map_name + player_id 覆盖（先删旧，再插入）
+ *  录入口径升级：headshot_rate_pct（爆头率整数%）与 adr 是录入字段；
+ *  兼容旧列 headshots/damage 由 (kills * hs% /100)、(adr * rounds) 反算后一并落盘。
+ */
 export async function saveMatchPlayerStats(
   matchId: string,
   mapName: string,
   rows: MatchPlayerStatInput[],
 ): Promise<boolean> {
+  // 输入规整：按 headshot_rate_pct / adr 反推 headshots / damage（保留整数），避免 UI 漏写
+  const normalized = rows.map((r) => {
+    const hsRate = Number(r.headshot_rate_pct) || 0
+    const adr = Number(r.adr) || 0
+    const k = Number(r.kills) || 0
+    const rnd = Number(r.rounds) || 0
+    const headshots = Number(r.headshots) > 0 ? Number(r.headshots) : Math.round((k * hsRate) / 100)
+    const damage = Number(r.damage) > 0 ? Number(r.damage) : Math.round(adr * rnd)
+    return { ...r, headshot_rate_pct: hsRate, adr, headshots, damage }
+  })
   if (!isSupabaseConfigured || !supabase) {
     for (let i = mockMatchPlayerStats.length - 1; i >= 0; i--) {
       const s = mockMatchPlayerStats[i]
       if (s.match_id === matchId && (s.map_name ?? '') === mapName) mockMatchPlayerStats.splice(i, 1)
     }
-    for (const r of rows) {
+    for (const r of normalized) {
       const teamName = mockTeams.find((t) => t.id === r.team_id)?.name ?? null
       mockMatchPlayerStats.push({
         id: `mps-${matchId}-${mapName}-${r.player_id}-${Date.now()}`,
@@ -73,7 +86,10 @@ export async function saveMatchPlayerStats(
         team_id: r.team_id,
         map_name: mapName,
         map_count: r.map_count,
-        kills: r.kills, deaths: r.deaths, assists: r.assists, headshots: r.headshots,
+        kills: r.kills, deaths: r.deaths, assists: r.assists,
+        headshot_rate_pct: r.headshot_rate_pct,
+        headshots: r.headshots,
+        adr: r.adr,
         first_kills: r.first_kills, multi_kills: r.multi_kills, clutches: r.clutches,
         damage: r.damage, rounds: r.rounds,
         we: r.we, rating: r.rating,
@@ -90,9 +106,9 @@ export async function saveMatchPlayerStats(
     .eq('match_id', matchId)
     .eq('map_name', mapName)
   if (delErr) throw new Error(delErr.message)
-  if (rows.length > 0) {
+  if (normalized.length > 0) {
     const { error: insErr } = await supabase.from('match_player_stats').insert(
-      rows.map((r) => ({ match_id: matchId, ...r })),
+      normalized.map((r) => ({ match_id: matchId, ...r })),
     )
     if (insErr) throw new Error(insErr.message)
   }

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 // 本场队员数据录入对话框（比分录入入口的一部分）
-// 自动匹配比赛双方正式队员，按「每张地图」分别登记：击杀/死亡/助攻/爆头/首杀/多杀/残局/伤害/局数/WE/Rating。
-// BO3 即三张图，每张图切换页签单独录入；个人数据排行页据此自动聚合（场均 = 总量 / 地图数，
-// 爆头率 = Σ爆头/Σ击杀，ADR = Σ伤害/Σ局数）。
+// 自动匹配比赛双方正式队员，按「每张地图」分别登记：击杀/死亡/助攻/爆头率/首杀/多杀/残局/ADR/局数/WE/Rating。
+// BO3 即三张图，每张图切换页签单独录入；
+// 后台自动聚合（整个赛事期间）：
+//   爆头率 = Σ(本图击杀 × 本图爆头率取整) ÷ Σ击杀
+//   ADR    = Σ(本图ADR × 本图局数) ÷ Σ局数
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { Match, MatchPlayerStat, MatchPlayerStatInput, TeamMember } from '@/api/types'
@@ -50,6 +52,23 @@ function resolveMapCount(m: Match): number {
   return Math.max(1, m.best_of)
 }
 
+/** 从已存行推导要回填的爆头率整数%（优先读新列 headshot_rate_pct；没值则用 headshots/kills 反推） */
+function resolveHsRate(ex: MatchPlayerStat | undefined, kills: number): number {
+  if (!ex) return 0
+  if (Number(ex.headshot_rate_pct) > 0) return Number(ex.headshot_rate_pct)
+  const k = Number(ex.kills) || kills || 0
+  if (k <= 0) return 0
+  return Math.round(((Number(ex.headshots) || 0) / k) * 100)
+}
+/** 推导回填 ADR（优先读新列 adr；没值则 damage/rounds） */
+function resolveAdr(ex: MatchPlayerStat | undefined, rounds: number): number {
+  if (!ex) return 0
+  if (Number(ex.adr) > 0) return Number(ex.adr)
+  const rnd = Number(ex.rounds) || rounds || 0
+  if (rnd <= 0) return 0
+  return Math.round(((Number(ex.damage) || 0) / rnd) * 100) / 100
+}
+
 async function load(matchId: string) {
   const m = props.match
   if (!m) return
@@ -85,20 +104,24 @@ async function load(matchId: string) {
       const map = new Map(grouped.get(key)?.map((e) => [e.player_id, e]) ?? [])
       nextByMap[key] = players.value.map((p) => {
         const ex = map.get(p.profile_id)
+        const kills = ex?.kills ?? 0
+        const rounds = ex?.rounds ?? 0
         return {
           player_id: p.profile_id,
           team_id: p.team_id,
           map_name: key,
           map_count: 1, // 每行 = 一张地图
-          kills: ex?.kills ?? 0,
+          kills,
           deaths: ex?.deaths ?? 0,
           assists: ex?.assists ?? 0,
-          headshots: ex?.headshots ?? 0,
+          headshot_rate_pct: resolveHsRate(ex, kills),
+          headshots: Math.round((kills * resolveHsRate(ex, kills)) / 100), // 兼容旧列
           first_kills: ex?.first_kills ?? 0,
           multi_kills: ex?.multi_kills ?? 0,
           clutches: ex?.clutches ?? 0,
-          damage: ex?.damage ?? 0,
-          rounds: ex?.rounds ?? 0,
+          adr: resolveAdr(ex, rounds),
+          damage: Math.round(resolveAdr(ex, rounds) * rounds), // 兼容旧列
+          rounds,
           we: ex?.we ?? 0,
           rating: ex?.rating ?? 0,
           player_name: p.nickname ?? p.pw_username ?? '未命名',
@@ -120,17 +143,35 @@ async function save() {
   saving.value = true
   try {
     for (const key of Object.keys(byMap.value)) {
-      const rows = byMap.value[key]
+      const rows = byMap.value[key].map((r) => {
+        // 保存前最终反算：headshots/damage 按新口径重算一次（用户改了 kills 或 rounds 也跟着变）
+        const k = Number(r.kills) || 0
+        const rnd = Number(r.rounds) || 0
+        const hsRate = Math.max(0, Math.min(100, Math.round(Number(r.headshot_rate_pct) || 0)))
+        const adr = Math.max(0, Math.round((Number(r.adr) || 0) * 100) / 100)
+        const headshots = Math.round((k * hsRate) / 100)
+        const damage = Math.round(adr * rnd)
+        return { ...r, headshot_rate_pct: hsRate, adr, headshots, damage } as PlayerRow
+      })
       await saveMatchPlayerStats(
         m.id,
         key,
-        rows.map(({ player_id, team_id, map_name, map_count, kills, deaths, assists, headshots, first_kills, multi_kills, clutches, damage, rounds, we, rating }) => ({
-          player_id, team_id, map_name, map_count, kills, deaths, assists, headshots,
-          first_kills, multi_kills, clutches, damage, rounds, we, rating,
+        rows.map(({
+          player_id, team_id, map_name, map_count,
+          kills, deaths, assists,
+          headshot_rate_pct, headshots,
+          first_kills, multi_kills, clutches,
+          adr, damage, rounds, we, rating,
+        }) => ({
+          player_id, team_id, map_name, map_count,
+          kills, deaths, assists,
+          headshot_rate_pct, headshots,
+          first_kills, multi_kills, clutches,
+          adr, damage, rounds, we, rating,
         })),
       )
     }
-    ElMessage.success('本场队员数据已保存')
+    ElMessage.success('本场队员数据已保存（后台自动重算爆头率/ADR）')
     visible.value = false
     emit('saved')
   } catch (e: any) {
@@ -141,17 +182,17 @@ async function save() {
 }
 
 const numCols = [
-  { key: 'kills', label: '击杀', tip: '本图击杀数' },
+  { key: 'kills', label: '击杀', tip: '本图击杀数（参与爆头率加权：Σ 击杀 × 爆头率）' },
   { key: 'deaths', label: '死亡', tip: '' },
   { key: 'assists', label: '助攻', tip: '' },
-  { key: 'headshots', label: '爆头', tip: '本图爆头数（排行页 = Σ爆头/Σ击杀）' },
+  { key: 'headshot_rate_pct', label: '爆头率%', tip: '本图爆头率(整数 0~100)。赛事合计爆头率=Σ(击杀×爆头率取整)/Σ击杀' },
   { key: 'first_kills', label: '首杀', tip: '本图首杀' },
   { key: 'multi_kills', label: '多杀', tip: '本图多杀' },
   { key: 'clutches', label: '残局', tip: '本图残局' },
-  { key: 'damage', label: '伤害', tip: '本图总伤害（ADR = Σ伤害/Σ局数）' },
-  { key: 'rounds', label: '局数', tip: '本图局数' },
+  { key: 'rounds', label: '局数', tip: '本图局数（ADR 合计权重）' },
 ] as const
 const decCols = [
+  { key: 'adr', label: 'ADR', tip: '本图平均伤害（小数）。赛事合计ADR=Σ(ADR×局数)/Σ局数' },
   { key: 'we', label: 'WE', tip: '本图 WE（排行页场均 = Σ/场次数）' },
   { key: 'rating', label: 'Rating', tip: '本图 Rating（排行页场均 = Σ/场次数）' },
 ] as const
@@ -161,14 +202,14 @@ const decCols = [
   <el-dialog
     v-model="visible"
     :title="`本场队员数据${match ? '：' + (match.team_a_name ?? '') + ' vs ' + (match.team_b_name ?? '') : ''}`"
-    width="1180px"
+    width="1220px"
     top="6vh"
   >
     <el-alert
       type="info"
       :closable="false"
       class="tip"
-      title="自动匹配本场双方正式队员，按「每张地图」分别录入：BO3 即切换三张图的页签逐一登记（每行 = 该选手在这张图的击杀/死亡/…）。个人数据排行自动聚合：场均 = 总量 / 地图数，爆头率 = Σ爆头/Σ击杀，ADR = Σ伤害/Σ局数，WE / Rating = Σ/场次数。"
+      title="按「每图」录入：爆头改为【爆头率整数%】，伤害改为【ADR平均伤害】。赛事期间自动按加权公式聚合：爆头率 = Σ(本图击杀×本图爆头率取整) ÷ Σ击杀；ADR = Σ(本图ADR×本图局数) ÷ Σ局数。"
     />
 
     <el-tabs v-model="activeMap">
@@ -184,14 +225,21 @@ const decCols = [
             </template>
           </el-table-column>
           <el-table-column prop="team_name" label="战队" min-width="110" fixed />
-          <el-table-column v-for="c in numCols" :key="c.key" :label="c.label" width="84" :show-overflow-tooltip="!!c.tip">
+          <el-table-column v-for="c in numCols" :key="c.key" :label="c.label" :width="c.key === 'headshot_rate_pct' ? 100 : 84" :show-overflow-tooltip="!!c.tip">
             <template #header>
               <el-tooltip :content="c.tip || c.label" placement="top">
                 <span>{{ c.label }}</span>
               </el-tooltip>
             </template>
             <template #default="{ row }">
-              <el-input-number v-model="row[c.key]" :min="0" size="small" :controls="false" class="cell-input" />
+              <el-input-number
+                v-model="row[c.key]"
+                :min="c.key === 'headshot_rate_pct' ? 0 : 0"
+                :max="c.key === 'headshot_rate_pct' ? 100 : undefined"
+                size="small"
+                :controls="false"
+                class="cell-input"
+              />
             </template>
           </el-table-column>
           <el-table-column v-for="c in decCols" :key="c.key" :label="c.label" width="96">
@@ -234,6 +282,6 @@ const decCols = [
 }
 
 .cell-input {
-  width: 72px;
+  width: 76px;
 }
 </style>

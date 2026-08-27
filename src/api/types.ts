@@ -277,11 +277,13 @@ export interface MatchPlayerStat {
   kills: number // 击杀（本行覆盖地图）
   deaths: number // 死亡
   assists: number // 助攻
-  headshots: number // 爆头数
+  headshots: number // 爆头数（兼容旧录入；新录入口径从 headshot_rate_pct * kills / 100 反算）
+  headshot_rate_pct: number // 爆头率整数%（0~100，新录入 UI 录入字段）
   first_kills: number // 首杀
   multi_kills: number // 多杀
   clutches: number // 残局
-  damage: number // 总伤害
+  damage: number // 总伤害（兼容旧录入；新录入口径从 adr * rounds 反算）
+  adr: number // 每图 ADR（小数，新录入 UI 录入字段）
   rounds: number // 局数
   we: number // 本图 WE
   rating: number // 本图 Rating
@@ -294,7 +296,10 @@ export interface MatchPlayerStat {
   match_stage_id?: string | null
 }
 
-/** 比赛队员数据（录入表单行：不含 id/created_at，保存时后端按 match_id+map_name+player_id 覆盖） */
+/** 比赛队员数据（录入表单行：不含 id/created_at，保存时后端按 match_id+map_name+player_id 覆盖）
+ *  新录入口径：headshot_rate_pct（爆头率整数%）与 adr（每图平均伤害）由用户填；
+ *  headshots/damage 仍落盘（按 kills * hs_rate_pct / 100、adr * rounds 反算），兼容旧排行查询。
+ */
 export interface MatchPlayerStatInput {
   player_id: string
   team_id: string
@@ -303,11 +308,13 @@ export interface MatchPlayerStatInput {
   kills: number
   deaths: number
   assists: number
-  headshots: number
+  headshots: number          // 兼容旧版（= round(kills * headshot_rate_pct/100)）
+  headshot_rate_pct: number  // 爆头率整数% 0~100
   first_kills: number
   multi_kills: number
   clutches: number
-  damage: number
+  damage: number             // 兼容旧版（= round(adr * rounds)）
+  adr: number                // ADR 小数
   rounds: number
   we: number
   rating: number
