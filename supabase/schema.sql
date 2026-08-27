@@ -414,17 +414,22 @@ create table if not exists public.player_stats (
   fpr numeric(6,2) not null default 0,          -- 首杀/回合
   awp_kpr numeric(6,2) not null default 0,      -- AWP 击杀/回合
   updated_at timestamptz not null default now()
-  -- 个人数据每名选手一行（profile_id 唯一）；唯一约束在下方兼容段统一管理
+  -- 个人数据按「选手 × 阶段」聚合；唯一约束在下方兼容段统一管理
 );
 
--- 兼容旧库：个人数据由「按阶段多行」改为「每名选手一行」。
--- 旧库中同人按阶段拆出的多行先清理（保留一行），再建立 profile_id 唯一约束；可重复执行。
+-- 兼容旧库：个人数据唯一约束统一成 (profile_id, stage_id)，
+--   保持和 team_stats (team_id, stage_id) 对齐，也和后台自动汇总触发器的按阶段刷新语义一致。
+--   线上历史遗留的 unique (profile_id) 约束、或旧的多行拆分在此统一清理；可重复执行。
 alter table public.player_stats drop constraint if exists player_stats_profile_id_stage_id_key;
 alter table public.player_stats drop constraint if exists player_stats_profile_id_key;
+-- 清理同一 profile 按 stage 空值或旧数据造成的重复：保留 id 最大一条，确保后续 (profile,stage) 唯一建立成功。
 delete from public.player_stats a
 using public.player_stats b
-where a.profile_id = b.profile_id and a.id < b.id;
-alter table public.player_stats add constraint player_stats_profile_id_key unique (profile_id);
+where a.profile_id = b.profile_id
+  and a.stage_id is not distinct from b.stage_id
+  and a.id < b.id;
+alter table public.player_stats
+  add constraint player_stats_profile_id_stage_id_key unique (profile_id, stage_id);
 
 -- 兼容旧库：统计表级联关系修复（可重复执行）。
 -- 1) 阶段删除时统计随删（否则删除阶段会被 team_stats / player_stats 的 RESTRICT 阻断）；

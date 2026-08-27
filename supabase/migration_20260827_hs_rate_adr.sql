@@ -1,10 +1,22 @@
 -- ============================================================
 -- 比赛队员数据 录入口径升级：
 --   UI 改为 爆头率(整数%) + ADR(小数) 录入；后台按加权公式自动计算赛事期间的爆头率和 ADR。
---   爆头率 = round(Σ(kills * headshot_rate_pct)) / (Σ kills * 100) * 100
---   ADR    = round(Σ(adr * rounds)) / Σ rounds
+--   爆头率 = Σ round(kills * headshot_rate_pct) / (Σ kills) （单位%等价于 ÷Σkills * 100）
+--   ADR    = Σ round(adr * rounds) / Σ rounds
 -- 兼容：旧 headshots / damage 列保留（由新列反算继续落盘），历史数据新列从旧列反推。
 -- ============================================================
+
+-- 0) player_stats 唯一约束对齐：从「每名选手一行」改为和 team_stats 一致的「选手 × 阶段」(profile_id, stage_id)，
+--    这样下方 upsert 的 on conflict 才能命中，后台刷新触发器（按 stage 粒度）语义也才对齐。
+alter table public.player_stats drop constraint if exists player_stats_profile_id_stage_id_key;
+alter table public.player_stats drop constraint if exists player_stats_profile_id_key;
+delete from public.player_stats a
+using public.player_stats b
+where a.profile_id = b.profile_id
+  and a.stage_id is not distinct from b.stage_id
+  and a.id < b.id;
+alter table public.player_stats
+  add constraint player_stats_profile_id_stage_id_key unique (profile_id, stage_id);
 
 -- 1) match_player_stats 表加新列（幂等）
 alter table public.match_player_stats
