@@ -11,10 +11,15 @@ export async function listEvents(): Promise<EventItem[]> {
       .sort((a, b) => (b.edition ?? 0) - (a.edition ?? 0))
       .map((e) => ({ ...e, champion_team_name: e.champion_team_name ?? null }))
   }
-  const { data } = await supabase
+  // 联表冠军队伍名；若库表尚未补 champion_team_id 列（未执行 schema 更新），联表查询会报错 → 降级为普通查询
+  let { data, error } = await supabase
     .from('events')
     .select('*, champion_team:teams!events_champion_team_id_fkey(name, tag)')
     .order('edition', { ascending: false })
+  if (error) {
+    const fallback = await supabase.from('events').select('*').order('edition', { ascending: false })
+    data = fallback.data
+  }
   return ((data ?? []) as any[]).map((e) => ({
     ...e,
     champion_team_id: e.champion_team_id ?? null,
