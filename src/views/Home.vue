@@ -47,11 +47,31 @@ const carousel = ref<Array<{ kind: 'banner' | 'champion'; event: EventItem; cham
 /** hero 大标题拆分：首个单词正常色，其余部分高亮（如 "HVV" + "MAJOR 11"） */
 const heroTitleParts = computed(() => config.value.brand_title.split(' ').filter(Boolean))
 
-/** HUD 角标赛季信息：从标题末段提取数字（如 HVV MAJOR 11 → SEASON 11） */
+/** 罗马数字 → 阿拉伯数字（I/II/III/IV/V/VI/VII/VIII/IX/X/XI/XII…；非法组合返回 0） */
+function romanToInt(s: string): number {
+  const map: Record<string, number> = { I: 1, V: 5, X: 10, L: 50, C: 100, D: 500, M: 1000 }
+  let total = 0
+  for (let i = 0; i < s.length; i++) {
+    const cur = map[s[i]]
+    const next = map[s[i + 1]]
+    if (!cur) return 0
+    if (next && next > cur) total -= cur
+    else total += cur
+  }
+  return total
+}
+
+/** HUD 角标赛季信息：从标题末段提取届数（阿拉伯数字，或罗马数字如 HVV MAJOR XI → SEASON 11） */
 const editionLabel = computed(() => {
   const last = heroTitleParts.value[heroTitleParts.value.length - 1] ?? ''
   const num = last.replace(/\D/g, '')
-  return num ? `SEASON ${num}` : 'SEASON 2026'
+  if (num) return `SEASON ${num}`
+  // 无阿拉伯数字时尝试罗马数字（仅当整段都是罗马数字字符才转换，避免误判普通单词）
+  if (/^[IVXLCDMivxlcdm]+$/.test(last)) {
+    const n = romanToInt(last.toUpperCase())
+    if (n > 0) return `SEASON ${n}`
+  }
+  return 'SEASON 2026'
 })
 
 function matchStatusType(status: Match['status']) {
