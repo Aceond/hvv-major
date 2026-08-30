@@ -33,6 +33,7 @@ export const mockEvents: EventItem[] = [
     signup_start: '2026-06-01 00:00', signup_end: '2026-06-20 23:59',
     start_at: '2026-06-22 10:00', end_at: '2026-07-05 22:00',
     description: 'CS2 自由约战制赛事 · 第十届。',
+    champion_team_id: 'team-1', champion_team_name: 'Nova Velocity', champion_team_tag: 'NV',
     created_at: '2026-05-25 10:00',
   },
   {
@@ -40,6 +41,7 @@ export const mockEvents: EventItem[] = [
     signup_start: '2026-04-01 00:00', signup_end: '2026-04-20 23:59',
     start_at: '2026-04-22 10:00', end_at: '2026-05-05 22:00',
     description: 'CS2 自由约战制赛事 · 第九届。',
+    champion_team_id: 'team-2', champion_team_name: '赤焰战队', champion_team_tag: 'RZ',
     created_at: '2026-03-25 10:00',
   },
 ]

@@ -1101,6 +1101,9 @@ create table if not exists public.events (
   start_at timestamptz,                   -- 开赛时间
   end_at timestamptz,                     -- 结束时间
   description text,                       -- 赛事简介
+  champion_team_id uuid references public.teams (id), -- 冠军队伍（往届手动录入；本届及以后赛事结束自动判定）
+  banner_url text,                        -- 赛事 banner（压缩 data URL，首页冠军轮播展示）
+  champion_image text,                    -- 冠军展示图（压缩 data URL，可选）
   created_at timestamptz not null default now()
 );
 
@@ -1116,6 +1119,44 @@ alter table public.teams add column if not exists event_id uuid references publi
 alter table public.stages add column if not exists event_id uuid references public.events (id);
 -- 赛程阶段关联组别（兼容旧库：每个组别的赛程单独管理，跨组/决赛阶段为空）
 alter table public.stages add column if not exists group_id uuid references public.groups (id);
+
+-- 兼容：老库补充冠军展播字段（可安全重复执行）
+alter table public.events add column if not exists champion_team_id uuid references public.teams (id);
+alter table public.events add column if not exists banner_url text;
+alter table public.events add column if not exists champion_image text;
+
+-- ============================================================
+-- 冠军自动判定：赛事结束时自动取该赛事淘汰赛总决赛（bracket='gf'，单败为最大轮次）胜者作为冠军
+-- 管理员把赛事状态改为 ended 时前端调用；往届赛事无完整比赛数据时在后台手动录入 champion_team_id
+-- ============================================================
+create or replace function public.resolve_event_champion(p_event_id uuid)
+returns uuid
+language plpgsql security definer set search_path = public
+as $$
+declare
+  v_team uuid;
+begin
+  select m.winner_id into v_team
+  from public.matches m
+  join public.stages s on s.id = m.stage_id
+  where s.event_id = p_event_id
+    and m.status = 'completed'
+    and m.winner_id is not null
+  order by
+    (m.bracket = 'gf') desc,      -- 总决赛优先
+    m.round_number desc,          -- 其次最大轮次（单败决赛）
+    m.sort_order desc,
+    m.team_a_score + m.team_b_score desc
+  limit 1;
+
+  if v_team is not null then
+    update public.events set champion_team_id = v_team where id = p_event_id;
+  end if;
+  return v_team;
+end;
+$$;
+
+grant execute on function public.resolve_event_champion(uuid) to authenticated;
 
 -- events：公开可读（前台赛事入口），仅管理员写
 drop policy if exists events_select on public.events;

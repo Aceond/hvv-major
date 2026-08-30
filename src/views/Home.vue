@@ -2,8 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { MATCH_STATUS_LABEL } from '@/api/types'
-import type { Match } from '@/api/types'
+import type { EventItem, Match } from '@/api/types'
 import { listThisWeekMatches, thisWeekRange } from '@/api/match'
+import { listEvents } from '@/api/event'
 import { getSiteConfig, DEFAULT_SITE_CONFIG } from '@/api/config'
 import type { SiteConfig } from '@/api/config'
 
@@ -40,6 +41,10 @@ const config = ref<SiteConfig>({ ...DEFAULT_SITE_CONFIG })
 const weekMatches = ref<Match[]>([])
 const weekLabel = ref('')
 
+/** 冠军展播轮播项：当前赛事 banner + 最近三届冠军 */
+const events = ref<EventItem[]>([])
+const carousel = ref<Array<{ kind: 'banner' | 'champion'; event: EventItem }>>([])
+
 /** hero 大标题拆分：首个单词正常色，其余部分高亮（如 "HVV" + "MAJOR 11"） */
 const heroTitleParts = computed(() => config.value.brand_title.split(' ').filter(Boolean))
 
@@ -73,12 +78,26 @@ function formatTime(s: string | null) {
 }
 
 onMounted(async () => {
-  const [cfg, matches] = await Promise.all([getSiteConfig(), listThisWeekMatches()])
+  const [cfg, matches, evs] = await Promise.all([getSiteConfig(), listThisWeekMatches(), listEvents()])
   config.value = cfg
   weekMatches.value = matches
+  events.value = evs
   const { start, end } = thisWeekRange()
   weekLabel.value = `${start.slice(5).replace('-', '.')} - ${end.slice(5).replace('-', '.')}`
+  buildCarousel(evs)
 })
+
+/** 组装冠军轮播：当前赛事 banner（有图时）+ 最近三届已结束且有冠军的赛事 */
+function buildCarousel(evs: EventItem[]) {
+  const items: Array<{ kind: 'banner' | 'champion'; event: EventItem }> = []
+  const current = evs.find((e) => e.status !== 'ended')
+  if (current?.banner_url) items.push({ kind: 'banner', event: current })
+  const champions = evs
+    .filter((e) => e.status === 'ended' && e.champion_team_id && e.champion_team_name)
+    .slice(0, 3)
+  for (const e of champions) items.push({ kind: 'champion', event: e })
+  carousel.value = items
+}
 </script>
 
 <template>
@@ -132,6 +151,49 @@ onMounted(async () => {
       </div>
       <div class="hero-corner hero-corner-tl" />
       <div class="hero-corner hero-corner-br" />
+    </section>
+
+    <!-- 冠军展播轮播：当前赛事 banner + 最近三届冠军 -->
+    <section v-if="carousel.length" class="champion-carousel">
+      <div class="carousel-head">
+        <span class="carousel-title">CHAMPIONS</span>
+        <span class="carousel-sub">冠军展播 · 历届荣耀</span>
+      </div>
+      <el-carousel height="220px" :interval="5000" arrow="hover" indicator-position="outside">
+        <el-carousel-item v-for="(item, idx) in carousel" :key="idx">
+          <!-- 当前赛事 banner -->
+          <div v-if="item.kind === 'banner'" class="slide banner-slide" @click="router.push({ name: 'events' })">
+            <img :src="item.event.banner_url ?? undefined" :alt="item.event.name" class="banner-img" />
+            <div class="banner-mask">
+              <div class="slide-overline">CURRENT EVENT</div>
+              <div class="slide-title">{{ item.event.name }}</div>
+              <div class="slide-sub">{{ item.event.description }}</div>
+            </div>
+          </div>
+          <!-- 历届冠军 -->
+          <div v-else class="slide champ-slide" @click="router.push({ name: 'events' })">
+            <div class="champ-card">
+              <div class="champ-side">
+                <div class="champ-overline">CHAMPION · 第 {{ item.event.edition }} 届</div>
+                <div class="champ-event">{{ item.event.name }}</div>
+                <div class="champ-team">
+                  <span class="champ-crown">🏆</span>
+                  <span class="champ-team-name">{{ item.event.champion_team_name }}</span>
+                  <el-tag v-if="item.event.champion_team_tag" size="small" effect="plain" class="champ-tag">
+                    {{ item.event.champion_team_tag }}
+                  </el-tag>
+                </div>
+              </div>
+              <img
+                v-if="item.event.champion_image"
+                :src="item.event.champion_image ?? undefined"
+                class="champ-img"
+                :alt="item.event.champion_team_name ?? ''"
+              />
+            </div>
+          </div>
+        </el-carousel-item>
+      </el-carousel>
     </section>
 
     <el-row :gutter="16" class="features">
@@ -528,6 +590,186 @@ onMounted(async () => {
 
 .features {
   margin-bottom: 8px;
+}
+
+/* 冠军展播轮播 */
+.champion-carousel {
+  margin-top: 24px;
+  padding: 18px 22px;
+  background: var(--cs2-panel);
+  border: 1px solid var(--cs2-border);
+}
+
+.carousel-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.carousel-title {
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: var(--cs2-accent);
+}
+
+.carousel-sub {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--cs2-text-muted);
+}
+
+.slide {
+  height: 100%;
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--cs2-border);
+}
+
+/* 当前赛事 banner */
+.banner-slide {
+  position: relative;
+}
+
+.banner-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.banner-mask {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 24px 36px;
+  background: linear-gradient(90deg, rgba(10, 10, 14, 0.86) 8%, rgba(10, 10, 14, 0.45) 55%, transparent);
+}
+
+.slide-overline {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--cs2-accent);
+  margin-bottom: 8px;
+}
+
+.slide-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: #fff;
+}
+
+.slide-sub {
+  margin-top: 8px;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+  max-width: 520px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* 历届冠军卡片 */
+.champ-slide {
+  background: linear-gradient(120deg, var(--cs2-panel-2), var(--cs2-panel));
+}
+
+.champ-card {
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 36px;
+  gap: 24px;
+}
+
+.champ-side {
+  flex: 1;
+  min-width: 0;
+}
+
+.champ-overline {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 3px;
+  color: var(--cs2-accent);
+  opacity: 0.8;
+  margin-bottom: 6px;
+}
+
+.champ-event {
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--cs2-text);
+  margin-bottom: 12px;
+}
+
+.champ-team {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.champ-crown {
+  font-size: 24px;
+}
+
+.champ-team-name {
+  font-size: 30px;
+  font-weight: 800;
+  letter-spacing: 2px;
+  color: var(--cs2-accent);
+  text-shadow: 0 0 22px rgba(255, 176, 32, 0.3);
+}
+
+.champ-tag {
+  margin-left: 4px;
+}
+
+.champ-img {
+  height: 100%;
+  max-width: 40%;
+  object-fit: contain;
+  border-radius: 4px;
+}
+
+@media (max-width: 768px) {
+  .champion-carousel {
+    padding: 14px 12px;
+  }
+
+  .champ-card {
+    padding: 16px 18px;
+    flex-direction: column;
+    justify-content: center;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .champ-img {
+    display: none;
+  }
+
+  .champ-team-name {
+    font-size: 24px;
+  }
+
+  .slide-title {
+    font-size: 22px;
+  }
+
+  .banner-mask {
+    padding: 16px 20px;
+  }
 }
 
 .feature-card {

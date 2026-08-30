@@ -41,6 +41,12 @@ export interface EventItem {
   start_at: string | null // 开赛时间
   end_at: string | null // 结束时间
   description: string | null // 赛事简介
+  // 冠军展播（首页轮播：最近三届冠军 + 当前赛事 banner）
+  champion_team_id?: string | null // 冠军队伍（往届手动录入；本届及以后赛事结束自动判定）
+  champion_team_name?: string | null // 冠军队伍名（联表）
+  champion_team_tag?: string | null // 冠军队伍队标（联表）
+  banner_url?: string | null // 赛事 banner（压缩 data URL）
+  champion_image?: string | null // 冠军展示图（压缩 data URL，可选）
   created_at: string
 }
 
