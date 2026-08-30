@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Sortable from 'sortablejs'
-import type { Group, PlayerStatRow, Stage, TeamStatRow } from '@/api/types'
+import type { EventItem, Group, PlayerStatRow, Stage, TeamStatRow } from '@/api/types'
 import { STAGE_STATUS_LABEL } from '@/api/types'
 import { listGroups, listStages, stageDisplayName } from '@/api/match'
+import { listEvents } from '@/api/event'
 import {
   getParticipatingTeams,
   getPlayerStatsAggregated,
@@ -18,7 +19,7 @@ interface StatCol {
   label: string
   width: number
   fmt?: 'int' | 'pct0' | 'pct1' | 'dec1' | 'dec2'
-  color?: 'trend' | 'pct' // 高值绿 / 低值红
+  color?: 'trend' | 'pct' | 'we' // 高值绿 / 低值红；we 按 WE 阈值（≥8 绿，<8 红，上限 16）
 }
 
 const teamCols = ref<StatCol[]>([
@@ -35,7 +36,7 @@ const teamCols = ref<StatCol[]>([
 ])
 
 const playerCols = ref<StatCol[]>([
-  { key: 'we', label: '场均 WE', width: 84, fmt: 'dec1', color: 'pct' },
+  { key: 'we', label: 'WE', width: 84, fmt: 'dec1', color: 'we' },
   { key: 'rating_pro', label: '场均 Rating', width: 110, fmt: 'dec2', color: 'trend' },
   { key: 'win_rate', label: '胜率', width: 80, fmt: 'pct1', color: 'pct' },
   { key: 'kd', label: 'K/D', width: 80, fmt: 'dec2', color: 'trend' },
@@ -55,9 +56,11 @@ const playerCols = ref<StatCol[]>([
 ])
 
 const tab = ref<'team' | 'player'>('team')
+const events = ref<EventItem[]>([])
 const stages = ref<Stage[]>([])
 const groups = ref<Group[]>([])
-// '' = 总阶段（汇总全部阶段数据）
+// '' = 总阶段（汇总该赛事全部阶段数据）
+const currentEvent = ref<string>('')
 const currentStage = ref<string>('')
 const currentGroup = ref<string>('')
 
@@ -84,9 +87,12 @@ watch(tab, async (v) => {
 })
 
 onMounted(async () => {
-  stages.value = await listStages()
-  groups.value = await listGroups()
-  await load()
+  const [evs, gs] = await Promise.all([listEvents(), listGroups()])
+  events.value = evs
+  groups.value = gs
+  // 默认选中最新一届赛事（edition 最大；无赛事时保持空=全部）
+  currentEvent.value = evs[0]?.id ?? ''
+  await refreshStages()
   await nextTick()
   bindSortable()
 })
@@ -95,18 +101,26 @@ onBeforeUnmount(() => {
   sortable?.destroy()
 })
 
+/** 切换赛事时刷新该赛事的阶段列表并重新加载 */
+async function refreshStages() {
+  stages.value = await listStages(currentEvent.value || undefined)
+  currentStage.value = ''
+  await load()
+}
+
 async function load() {
   loading.value = true
   try {
     const groupId = currentGroup.value || undefined
     const stageId = currentStage.value || undefined
+    const eventId = currentEvent.value || undefined
     // 队伍排行：以「打过已完成比赛的参赛队伍」为底（录比分后两队都会出现），
     // 合并后台手动录入的统计（team_stats），净胜分实时从已完成比赛计算
     const [teamStats, netMap, participating, winStats] = await Promise.all([
-      getTeamStats(groupId, stageId),
-      getTeamNetPoints(groupId, stageId),
-      getParticipatingTeams(groupId, stageId),
-      getTeamWinStats(groupId, stageId),
+      getTeamStats(groupId, stageId, eventId),
+      getTeamNetPoints(groupId, stageId, eventId),
+      getParticipatingTeams(groupId, stageId, eventId),
+      getTeamWinStats(groupId, stageId, eventId),
     ])
     const statsMap = new Map(teamStats.map((r) => [r.team_id, r]))
     const stageName = stageId ? stages.value.find((s) => s.id === stageId)?.name ?? null : null
@@ -139,7 +153,7 @@ async function load() {
     }
     teamRows.value = [...merged.values()]
     // 个人排行：从比赛队员数据自动聚合（场均 = 总量/地图数，爆头率/ADR/WE/Rating 按指定口径）
-    playerRows.value = await getPlayerStatsAggregated(groupId, stageId)
+    playerRows.value = await getPlayerStatsAggregated(groupId, stageId, eventId)
   } finally {
     loading.value = false
   }
@@ -187,9 +201,15 @@ function pctClass(value: number) {
   return value >= 50 ? 'rating-pos' : 'rating-neg'
 }
 
+/** WE 颜色：WE 上限 16，≥8 绿色、<8 红色 */
+function weClass(value: number) {
+  return value >= 8 ? 'rating-pos' : 'rating-neg'
+}
+
 function cellClass(col: StatCol, value: number): string {
   if (col.color === 'trend') return trendClass(value)
   if (col.color === 'pct') return pctClass(value)
+  if (col.color === 'we') return weClass(value)
   return ''
 }
 
@@ -232,6 +252,20 @@ function format(col: StatCol, value: number): string {
         <el-radio-button value="team">队伍排行</el-radio-button>
         <el-radio-button value="player">个人排行</el-radio-button>
       </el-radio-group>
+      <el-select
+        v-model="currentEvent"
+        placeholder="选择赛事"
+        class="filter-item"
+        @change="refreshStages"
+      >
+        <el-option label="全部赛事" value="" />
+        <el-option
+          v-for="e in events"
+          :key="e.id"
+          :label="e.name"
+          :value="e.id"
+        />
+      </el-select>
       <el-select
         v-model="currentStage"
         placeholder="选择阶段"

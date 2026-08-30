@@ -20,19 +20,28 @@ function r2(v: number): number {
   return Math.round(v * 100) / 100
 }
 
-/** 队伍数据排行（可按组别、阶段筛选；stageId 为空 = 总阶段汇总） */
-export async function getTeamStats(groupId?: string, stageId?: string): Promise<TeamStatRow[]> {
+/** 某赛事的全部阶段 id（eventId 为空返回空数组，调用方据此不按赛事过滤） */
+async function stageIdsOfEvent(eventId?: string): Promise<string[]> {
+  if (!eventId) return []
+  const stages = await listStages(eventId)
+  return stages.map((s) => s.id)
+}
+
+/** 队伍数据排行（可按赛事、组别、阶段筛选；stageId 为空 = 该赛事/全部阶段汇总） */
+export async function getTeamStats(groupId?: string, stageId?: string, eventId?: string): Promise<TeamStatRow[]> {
   if (!isSupabaseConfigured || !supabase) {
     return mockTeamStats
       .filter((s) => !groupId || s.group_id === groupId)
       .filter((s) => !stageId || s.stage_id === stageId)
       .sort((a, b) => b.win_rate - a.win_rate || b.kd - a.kd)
   }
+  const stageIds = await stageIdsOfEvent(eventId)
   let query = supabase
     .from('team_stats')
     .select('*, team:teams(name, tag), group:groups(name), stage:stages(name)')
   if (groupId) query = query.eq('group_id', groupId)
   if (stageId) query = query.eq('stage_id', stageId)
+  else if (stageIds.length) query = query.in('stage_id', stageIds)
   const { data } = await query
   return ((data ?? []) as any[]).map((s) => ({
     ...s,
@@ -129,13 +138,15 @@ export async function saveTeamStat(row: TeamStatRow) {
 }
 
 /** 实时净胜分（小分=净胜局）：根据已完成的比赛比分，逐场累加每队的净胜局 */
-export async function getTeamNetPoints(groupId?: string, stageId?: string): Promise<Record<string, number>> {
+export async function getTeamNetPoints(groupId?: string, stageId?: string, eventId?: string): Promise<Record<string, number>> {
   if (!isSupabaseConfigured || !supabase) return {}
+  const stageIds = await stageIdsOfEvent(eventId)
   let query = supabase
     .from('matches')
     .select('team_a_id, team_b_id, team_a_score, team_b_score, status, group_id, stage_id')
   if (groupId) query = query.eq('group_id', groupId)
   if (stageId) query = query.eq('stage_id', stageId)
+  else if (stageIds.length) query = query.in('stage_id', stageIds)
   const { data } = await query
   const net: Record<string, number> = {}
   for (const m of (data ?? []) as any[]) {
@@ -153,6 +164,7 @@ export async function getTeamNetPoints(groupId?: string, stageId?: string): Prom
 export async function getTeamWinStats(
   groupId?: string,
   stageId?: string,
+  eventId?: string,
 ): Promise<Record<string, { played: number; wins: number; win_rate: number }>> {
   const rows = [] as Array<{ team_a_id: string | null; team_b_id: string | null; team_a_score: number; team_b_score: number }>
   if (!isSupabaseConfigured || !supabase) {
@@ -163,12 +175,14 @@ export async function getTeamWinStats(
       rows.push(m)
     }
   } else {
+    const stageIds = await stageIdsOfEvent(eventId)
     let query = supabase
       .from('matches')
       .select('team_a_id, team_b_id, team_a_score, team_b_score')
       .eq('status', 'completed')
     if (groupId) query = query.eq('group_id', groupId)
     if (stageId) query = query.eq('stage_id', stageId)
+    else if (stageIds.length) query = query.in('stage_id', stageIds)
     const { data } = await query
     rows.push(...((data ?? []) as any[]))
   }
@@ -199,6 +213,7 @@ export async function getTeamWinStats(
 export async function getParticipatingTeams(
   groupId?: string,
   stageId?: string,
+  eventId?: string,
 ): Promise<TeamStatRow[]> {
   const empty = (t: { id: string; name: string; tag: string | null; group_id: string | null; group_name: string | null }): TeamStatRow => ({
     team_id: t.id,
@@ -233,9 +248,11 @@ export async function getParticipatingTeams(
       })
     })
   }
+  const stageIds = await stageIdsOfEvent(eventId)
   let query = supabase.from('matches').select('team_a_id, team_b_id').eq('status', 'completed')
   if (groupId) query = query.eq('group_id', groupId)
   if (stageId) query = query.eq('stage_id', stageId)
+  else if (stageIds.length) query = query.in('stage_id', stageIds)
   const { data } = await query
   const ids = new Set<string>()
   for (const m of (data ?? []) as any[]) {
@@ -512,11 +529,18 @@ function aggregatePlayerRows(list: RawStatRow[]): Omit<PlayerStatRow, 'player_id
   }
 }
 
-/** 个人数据排行（自动聚合比赛队员数据；可按组别、阶段筛选；stageId 为空 = 总阶段汇总） */
+/** 个人数据排行（自动聚合比赛队员数据；可按赛事、组别、阶段筛选；stageId 为空 = 该赛事/全部阶段汇总） */
 export async function getPlayerStatsAggregated(
   groupId?: string,
   stageId?: string,
+  eventId?: string,
 ): Promise<PlayerStatRow[]> {
+  const stageIds = await stageIdsOfEvent(eventId)
+  const stageFilter = (sid: string | null | undefined): boolean => {
+    if (stageId) return sid === stageId
+    if (!eventId) return true
+    return sid !== null && sid !== undefined && stageIds.includes(sid)
+  }
   let raw: RawStatRow[]
   if (!isSupabaseConfigured || !supabase) {
     raw = mockMatchPlayerStats
@@ -538,7 +562,7 @@ export async function getPlayerStatsAggregated(
             : null,
         }
       })
-      .filter((r) => (!groupId || groupIdOf(r) === groupId) && (!stageId || r.match?.stage_id === stageId))
+      .filter((r) => (!groupId || groupIdOf(r) === groupId) && stageFilter(r.match?.stage_id))
   } else {
     const { data } = await supabase
       .from('match_player_stats')
@@ -563,7 +587,7 @@ export async function getPlayerStatsAggregated(
       adr: Number(r.adr) || 0,
       rounds: r.rounds, we: r.we, rating: r.rating,
     }))
-    raw = raw.filter((r) => (!groupId || groupIdOf(r) === groupId) && (!stageId || r.match?.stage_id === stageId))
+    raw = raw.filter((r) => (!groupId || groupIdOf(r) === groupId) && stageFilter(r.match?.stage_id))
   }
   // 逐图胜负：为每行附加「本图是否获胜」——胜率按图统计（BO3 2:1 = 66.67%）
   // 判定优先级：match_maps.winner_id → 该图比分（winner_id 缺失的历史数据）→ 整场胜负（无比分回退）

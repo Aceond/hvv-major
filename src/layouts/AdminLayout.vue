@@ -31,6 +31,9 @@ async function signOut() {
         <el-menu-item index="/admin/events">
           <span class="menu-label">赛事管理</span>
         </el-menu-item>
+        <el-menu-item index="/admin/champions">
+          <span class="menu-label">往届冠军</span>
+        </el-menu-item>
         <el-menu-item index="/admin/accounts">
           <span class="menu-label">账号审核</span>
         </el-menu-item>

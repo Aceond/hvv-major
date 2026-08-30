@@ -34,6 +34,7 @@ const router = createRouter({
       children: [
         { path: '', name: 'admin-dashboard', component: () => import('@/views/admin/Dashboard.vue') },
         { path: 'events', name: 'admin-events', component: () => import('@/views/admin/Events.vue') },
+        { path: 'champions', name: 'admin-champions', component: () => import('@/views/admin/Champions.vue') },
         { path: 'accounts', name: 'admin-accounts', component: () => import('@/views/admin/Accounts.vue') },
         { path: 'players', name: 'admin-players', component: () => import('@/views/admin/Players.vue') },
         { path: 'teams', name: 'admin-teams', component: () => import('@/views/admin/Teams.vue') },

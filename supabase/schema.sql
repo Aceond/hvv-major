@@ -1126,37 +1126,105 @@ alter table public.events add column if not exists banner_url text;
 alter table public.events add column if not exists champion_image text;
 
 -- ============================================================
--- 冠军自动判定：赛事结束时自动取该赛事淘汰赛总决赛（bracket='gf'，单败为最大轮次）胜者作为冠军
--- 管理员把赛事状态改为 ended 时前端调用；往届赛事无完整比赛数据时在后台手动录入 champion_team_id
+-- 往届冠军：按组别（传奇组/大师组/挑战组）记录每届冠军队伍。
+-- 往届赛事在后台「往届冠军」独立入口手动录入；本届及以后赛事可点「自动判定」从各组淘汰赛胜者自动生成。
 -- ============================================================
-create or replace function public.resolve_event_champion(p_event_id uuid)
-returns uuid
+create table if not exists public.event_champions (
+  id uuid primary key default gen_random_uuid(),
+  event_id uuid not null references public.events (id) on delete cascade,
+  group_id uuid not null references public.groups (id),
+  team_id uuid not null references public.teams (id),
+  created_at timestamptz not null default now(),
+  unique (event_id, group_id)
+);
+
+drop policy if exists event_champions_select on public.event_champions;
+create policy event_champions_select on public.event_champions
+  for select using (true);
+drop policy if exists event_champions_admin_all on public.event_champions;
+create policy event_champions_admin_all on public.event_champions
+  for all using (public.is_admin()) with check (public.is_admin());
+grant select on public.event_champions to anon, authenticated;
+grant insert, update, delete on public.event_champions to authenticated;
+
+-- ============================================================
+-- 冠军自动判定（按组别）：对赛事内每个组别，取该组别淘汰赛总决赛（bracket='gf'，单败为最大轮次）已完成比赛胜者
+-- ============================================================
+create or replace function public.resolve_event_champions(p_event_id uuid)
+returns int
 language plpgsql security definer set search_path = public
 as $$
 declare
+  v_count int := 0;
+  v_group uuid;
   v_team uuid;
 begin
-  select m.winner_id into v_team
-  from public.matches m
-  join public.stages s on s.id = m.stage_id
-  where s.event_id = p_event_id
-    and m.status = 'completed'
-    and m.winner_id is not null
-  order by
-    (m.bracket = 'gf') desc,      -- 总决赛优先
-    m.round_number desc,          -- 其次最大轮次（单败决赛）
-    m.sort_order desc,
-    m.team_a_score + m.team_b_score desc
-  limit 1;
-
-  if v_team is not null then
-    update public.events set champion_team_id = v_team where id = p_event_id;
-  end if;
-  return v_team;
+  for v_group in
+    select distinct m.group_id
+    from public.matches m
+    join public.stages s on s.id = m.stage_id
+    where s.event_id = p_event_id
+      and m.group_id is not null
+      and m.status = 'completed'
+      and m.winner_id is not null
+  loop
+    select m.winner_id into v_team
+    from public.matches m
+    join public.stages s on s.id = m.stage_id
+    where s.event_id = p_event_id
+      and m.group_id = v_group
+      and m.status = 'completed'
+      and m.winner_id is not null
+    order by
+      (m.bracket = 'gf') desc,
+      m.round_number desc,
+      m.sort_order desc,
+      m.team_a_score + m.team_b_score desc
+    limit 1;
+    if v_team is not null then
+      insert into public.event_champions (event_id, group_id, team_id)
+      values (p_event_id, v_group, v_team)
+      on conflict (event_id, group_id) do update set team_id = excluded.team_id;
+      v_count := v_count + 1;
+    end if;
+  end loop;
+  return v_count;
 end;
 $$;
 
-grant execute on function public.resolve_event_champion(uuid) to authenticated;
+grant execute on function public.resolve_event_champions(uuid) to authenticated;
+
+-- ============================================================
+-- 删除赛事（级联清理）：events 被 player_applications / teams / stages / team_members 引用，
+-- 直接 delete 会触发外键阻塞，统一由本 RPC 按依赖顺序清理后删除。
+-- ============================================================
+create or replace function public.delete_event(p_event_id uuid)
+returns void
+language plpgsql security definer set search_path = public
+as $$
+begin
+  if not public.is_admin() then
+    raise exception 'permission denied: only admin';
+  end if;
+
+  -- 0) 清空本赛事 events 对战队的外键引用（champion_team_id 指向待删战队，先置空）
+  update public.events set champion_team_id = null where id = p_event_id;
+
+  -- 1) 赛程：删阶段 → 级联删 matches → 级联删 match_maps / match_player_stats / match_casters / match_media
+  delete from public.stages where event_id = p_event_id;
+
+  -- 2) 战队与名册：先删名册，再删战队（teams 可能被 match_maps.winner_id 引用，赛程已删）
+  delete from public.team_members where event_id = p_event_id;
+  delete from public.teams where event_id = p_event_id;
+
+  -- 3) 个人报名 / 冠军记录 / 赛事本身
+  delete from public.player_applications where event_id = p_event_id;
+  delete from public.event_champions where event_id = p_event_id;
+  delete from public.events where id = p_event_id;
+end;
+$$;
+
+grant execute on function public.delete_event(uuid) to authenticated;
 
 -- events：公开可读（前台赛事入口），仅管理员写
 drop policy if exists events_select on public.events;

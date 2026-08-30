@@ -2,9 +2,9 @@
 import { computed, onMounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { MATCH_STATUS_LABEL } from '@/api/types'
-import type { EventItem, Match } from '@/api/types'
+import type { EventChampion, EventItem, Match } from '@/api/types'
 import { listThisWeekMatches, thisWeekRange } from '@/api/match'
-import { listEvents } from '@/api/event'
+import { listEventChampions, listEvents } from '@/api/event'
 import { getSiteConfig, DEFAULT_SITE_CONFIG } from '@/api/config'
 import type { SiteConfig } from '@/api/config'
 
@@ -41,9 +41,8 @@ const config = ref<SiteConfig>({ ...DEFAULT_SITE_CONFIG })
 const weekMatches = ref<Match[]>([])
 const weekLabel = ref('')
 
-/** 冠军展播轮播项：当前赛事 banner + 最近三届冠军 */
-const events = ref<EventItem[]>([])
-const carousel = ref<Array<{ kind: 'banner' | 'champion'; event: EventItem }>>([])
+/** 冠军展播轮播项：当前赛事 banner + 最近三届冠军（每届展示各组别冠军） */
+const carousel = ref<Array<{ kind: 'banner' | 'champion'; event: EventItem; champions: EventChampion[] }>>([])
 
 /** hero 大标题拆分：首个单词正常色，其余部分高亮（如 "HVV" + "MAJOR 11"） */
 const heroTitleParts = computed(() => config.value.brand_title.split(' ').filter(Boolean))
@@ -81,21 +80,21 @@ onMounted(async () => {
   const [cfg, matches, evs] = await Promise.all([getSiteConfig(), listThisWeekMatches(), listEvents()])
   config.value = cfg
   weekMatches.value = matches
-  events.value = evs
+  await buildCarousel(evs)
   const { start, end } = thisWeekRange()
   weekLabel.value = `${start.slice(5).replace('-', '.')} - ${end.slice(5).replace('-', '.')}`
-  buildCarousel(evs)
 })
 
-/** 组装冠军轮播：当前赛事 banner（有图时）+ 最近三届已结束且有冠军的赛事 */
-function buildCarousel(evs: EventItem[]) {
-  const items: Array<{ kind: 'banner' | 'champion'; event: EventItem }> = []
+/** 组装冠军轮播：当前赛事 banner（有图时）+ 最近三届已结束赛事（每届加载各组别冠军） */
+async function buildCarousel(evs: EventItem[]) {
+  const items: Array<{ kind: 'banner' | 'champion'; event: EventItem; champions: EventChampion[] }> = []
   const current = evs.find((e) => e.status !== 'ended')
-  if (current?.banner_url) items.push({ kind: 'banner', event: current })
-  const champions = evs
-    .filter((e) => e.status === 'ended' && e.champion_team_id && e.champion_team_name)
-    .slice(0, 3)
-  for (const e of champions) items.push({ kind: 'champion', event: e })
+  if (current?.banner_url) items.push({ kind: 'banner', event: current, champions: [] })
+  const ended = evs.filter((e) => e.status === 'ended').slice(0, 3)
+  for (const e of ended) {
+    const champions = await listEventChampions(e.id)
+    if (champions.length) items.push({ kind: 'champion', event: e, champions })
+  }
   carousel.value = items
 }
 </script>
@@ -174,21 +173,24 @@ function buildCarousel(evs: EventItem[]) {
           <div v-else class="slide champ-slide" @click="router.push({ name: 'events' })">
             <div class="champ-card">
               <div class="champ-side">
-                <div class="champ-overline">CHAMPION · 第 {{ item.event.edition }} 届</div>
+                <div class="champ-overline">CHAMPIONS · 第 {{ item.event.edition }} 届</div>
                 <div class="champ-event">{{ item.event.name }}</div>
-                <div class="champ-team">
-                  <span class="champ-crown">🏆</span>
-                  <span class="champ-team-name">{{ item.event.champion_team_name }}</span>
-                  <el-tag v-if="item.event.champion_team_tag" size="small" effect="plain" class="champ-tag">
-                    {{ item.event.champion_team_tag }}
-                  </el-tag>
+                <div class="champ-list">
+                  <div v-for="c in item.champions" :key="c.group_id" class="champ-row-item">
+                    <span class="champ-group">{{ c.group_name }}</span>
+                    <span class="champ-crown">🏆</span>
+                    <span class="champ-team-name">{{ c.team_name }}</span>
+                    <el-tag v-if="c.team_tag" size="small" effect="plain" class="champ-tag">
+                      {{ c.team_tag }}
+                    </el-tag>
+                  </div>
                 </div>
               </div>
               <img
                 v-if="item.event.champion_image"
                 :src="item.event.champion_image ?? undefined"
                 class="champ-img"
-                :alt="item.event.champion_team_name ?? ''"
+                :alt="item.event.name"
               />
             </div>
           </div>
@@ -719,14 +721,34 @@ function buildCarousel(evs: EventItem[]) {
   gap: 10px;
 }
 
+.champ-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.champ-row-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.champ-group {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--cs2-text-muted);
+  min-width: 52px;
+}
+
 .champ-crown {
-  font-size: 24px;
+  font-size: 18px;
 }
 
 .champ-team-name {
-  font-size: 30px;
+  font-size: 24px;
   font-weight: 800;
-  letter-spacing: 2px;
+  letter-spacing: 1px;
   color: var(--cs2-accent);
   text-shadow: 0 0 22px rgba(255, 176, 32, 0.3);
 }

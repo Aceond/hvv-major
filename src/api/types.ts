@@ -50,6 +50,17 @@ export interface EventItem {
   created_at: string
 }
 
+/** 往届冠军（按组别）：一届赛事每个组别（传奇/大师/挑战）各自记录一支冠军队伍 */
+export interface EventChampion {
+  id: string
+  event_id: string
+  group_id: string
+  team_id: string
+  group_name?: string | null // 组别名（联表）
+  team_name?: string | null // 队伍名（联表）
+  team_tag?: string | null // 队标（联表）
+}
+
 export interface Profile {
   id: string
   username: string | null
