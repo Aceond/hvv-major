@@ -19,7 +19,7 @@ export async function listMatchPlayers(
   if (!teamAId && !teamBId) return []
   let query = supabase
     .from('team_members')
-    .select('*, player:profiles(nickname, pw_username)')
+    .select('*, player:profiles(nickname, pw_username, steam_id)')
     .in('status', ['active', 'benched'])
   if (teamAId && teamBId) {
     query = query.in('team_id', [teamAId, teamBId])
@@ -32,6 +32,7 @@ export async function listMatchPlayers(
       ...m,
       nickname: m.player?.nickname ?? null,
       pw_username: m.player?.pw_username ?? null,
+      steam_id: m.player?.steam_id ?? null, // PWA 自动导入按 Steam64 匹配（需 SQL 开放 authenticated 读 profiles.steam_id）
     }))
     .sort((a, b) => {
       // active 在前，benched 在后；队内按队长在前 + 按 id 稳定

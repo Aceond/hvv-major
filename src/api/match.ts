@@ -340,6 +340,58 @@ export async function submitMatchScore(
   return true
 }
 
+/**
+ * PWA 自动导入：按 (match_id, map_count) 覆盖/插入一张图的比分（map_name 用中文地图名），
+ * 并自动重算总比分与胜者（BO3 逐图导入互不覆盖）。需已执行 SQL（upsert_match_map RPC）。
+ */
+export async function upsertMatchMap(
+  matchId: string,
+  mapCount: number,
+  mapName: string,
+  teamAScore: number,
+  teamBScore: number,
+): Promise<void> {
+  if (!isSupabaseConfigured || !supabase) {
+    for (let i = mockMatchMaps.length - 1; i >= 0; i--) {
+      if (mockMatchMaps[i].match_id === matchId && mockMatchMaps[i].map_count === mapCount) mockMatchMaps.splice(i, 1)
+    }
+    const m = mockMatches.find((x) => x.id === matchId)
+    mockMatchMaps.push({
+      id: `mm-${matchId}-${mapCount}-${Date.now()}`,
+      match_id: matchId,
+      map_count: mapCount,
+      map_name: mapName,
+      team_a_score: teamAScore,
+      team_b_score: teamBScore,
+      winner_id:
+        m && teamAScore > teamBScore
+          ? m.team_a_id
+          : m && teamBScore > teamAScore
+            ? m.team_b_id
+            : null,
+    })
+    // 按已录地图重算总比分
+    if (m) {
+      const maps = mockMatchMaps.filter((x) => x.match_id === matchId)
+      const aWins = maps.filter((x) => x.winner_id === m.team_a_id).length
+      const bWins = maps.filter((x) => x.winner_id === m.team_b_id).length
+      m.team_a_score = aWins
+      m.team_b_score = bWins
+      m.winner_id = aWins > bWins ? m.team_a_id : bWins > aWins ? m.team_b_id : null
+      m.status = 'completed'
+    }
+    return
+  }
+  const { error } = await supabase.rpc('upsert_match_map', {
+    p_match_id: matchId,
+    p_map_count: mapCount,
+    p_map_name: mapName,
+    p_team_a_score: teamAScore,
+    p_team_b_score: teamBScore,
+  })
+  if (error) throw new Error(error.message)
+}
+
 /** 订阅赛程数据变更（比赛新增/修改/删除时通知前端刷新查看） */
 export function subscribeMatchChanges(onChange: () => void): () => void {
   if (!isSupabaseConfigured || !supabase) return () => {}

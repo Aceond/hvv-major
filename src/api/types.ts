@@ -125,6 +125,7 @@ export interface TeamMember {
   event_id?: string | null // 冗余战队所属赛事（正式队员按赛事一人一队约束用）
   nickname: string | null
   pw_username: string | null // 完美用户名
+  steam_id?: string | null // Steam64 位 ID（联表自 profiles，PWA 自动导入匹配用）
   is_captain: boolean
   status: 'active' | 'benched'
 }

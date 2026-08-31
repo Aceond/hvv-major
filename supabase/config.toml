@@ -1,0 +1,7 @@
+# Supabase 项目配置（Edge Functions 用）
+# 由 npx supabase link --project-ref <ref> 关联后执行：
+#   npx supabase functions deploy pwa-proxy
+project_id = "hvv-major"
+
+[functions.pwa-proxy]
+verify_jwt = false

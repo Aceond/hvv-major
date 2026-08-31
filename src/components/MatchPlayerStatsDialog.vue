@@ -14,7 +14,17 @@ import {
   saveMatchPlayerStats,
   purgeMatchPlayerStatsZeroRows,
 } from '@/api/playerMatchStats'
-import { listMatchMaps } from '@/api/match'
+import { listMatchMaps, upsertMatchMap } from '@/api/match'
+import {
+  fetchMySteam64,
+  fetchPwaMatchList,
+  fetchPwaReport,
+  cupNameMatches,
+  detectPastedKind,
+  parsePwaListJson,
+  parsePwaReportJson,
+} from '@/api/pwaImport'
+import type { PwaListRecord, PwaParsedMatch, PwaPlayer } from '@/api/pwaImport'
 
 const props = defineProps<{ modelValue: boolean; match: Match | null }>()
 const emit = defineEmits<{ (e: 'update:modelValue', v: boolean): void; (e: 'saved'): void }>()
@@ -27,6 +37,7 @@ const visible = computed({
 interface PlayerRow extends MatchPlayerStatInput {
   player_name: string
   pw_username: string | null
+  steam_id?: string | null // Steam64 位 ID（PWA 自动导入按此匹配）
   team_name: string
   status?: 'active' | 'benched'
 }
@@ -45,6 +56,7 @@ watch(
   async ([open, matchId]) => {
     if (!open || !matchId) return
     await load(matchId)
+    await prefillSteam64() // 预填 PWA 面板：当前登录用户报名表里的 Steam64
   },
 )
 
@@ -151,6 +163,7 @@ async function load(matchId: string) {
           rating: ex?.rating ?? 0,
           player_name: p.nickname ?? p.pw_username ?? '未命名',
           pw_username: p.pw_username,
+          steam_id: p.steam_id ?? null,
           team_name: p.team_id === m.team_a_id ? teamA : p.team_id === m.team_b_id ? teamB : '-',
           status: p.status,
         }
@@ -248,6 +261,287 @@ async function save() {
   }
 }
 
+// ============ PWA 自动导入（完美对战平台） ============
+// 流程：填 token + Steam64 → 拉「我的对局」列表 → 勾选 → 逐个拉 report 构建预览（二次确认）
+//   → 确认后按地图写比分（upsert_match_map RPC）+ 按 Steam64 自动匹配队员数据并保存。
+const pwaOpen = ref<string[]>([]) // 导入面板展开（el-collapse 的 active names）
+const pwaToken = ref('')
+const pwaSteam64 = ref('')
+const pwaCupFilter = ref('hwcsmajor11')
+const pwaListLoading = ref(false)
+const pwaList = ref<PwaListRecord[]>([])
+const pwaListChecked = ref<Record<string, boolean>>({})
+const pwaFetching = ref(false)
+const pwaPreviewVisible = ref(false)
+const pwaPreview = ref<PwaPreviewItem[]>([])
+const pwaImporting = ref(false)
+const pwaPasteText = ref('')
+const pwaPasteVisible = ref(false)
+const pwaTokenHintVisible = ref(false)
+
+/** 预览项：一场 PWA 对局（= 一张地图）的二次确认信息 */
+interface PwaPreviewItem {
+  match: PwaParsedMatch
+  checked: boolean
+  isTarget: boolean // 第三方 + 赛事名匹配过滤条件
+  aScore: number | null
+  bScore: number | null
+  matched: number // 按 Steam64 匹配到的 HVV 队员数
+  total: number
+  mapKey: string
+  note: string
+  players: PwaPreviewPlayer[]
+}
+interface PwaPreviewPlayer {
+  nick: string | null
+  steam64: string
+  hvName: string | null // 匹配到的 HVV 队员名
+  hvTeam: string | null
+  kills: number
+  deaths: number
+  assists: number
+  hsPct: number
+  adr: number
+  rating: number
+  matched: boolean
+}
+
+/** 预填 Steam64：读当前登录用户自己报名表里的 steam_id（RLS 只读自己的申请） */
+async function prefillSteam64() {
+  if (pwaSteam64.value.trim()) return
+  try {
+    const sid = await fetchMySteam64()
+    if (sid) pwaSteam64.value = sid
+  } catch {
+    /* 忽略：未配置 Supabase 或未报名时留空让队长手填 */
+  }
+}
+
+async function loadPwaList() {
+  const token = pwaToken.value.trim()
+  const sid = pwaSteam64.value.trim()
+  if (!token || !sid) {
+    ElMessage.warning('请先填写 PWA token 与 Steam64 位 ID')
+    return
+  }
+  pwaListLoading.value = true
+  try {
+    const list = await fetchPwaMatchList(token, sid, 20)
+    pwaList.value = list
+    const checked: Record<string, boolean> = {}
+    for (const r of list) checked[r.match] = true
+    pwaListChecked.value = checked
+    if (list.length === 0) ElMessage.info('未拉取到对局记录（token 可能已过期，请重新获取）')
+    else ElMessage.success(`已拉取 ${list.length} 条对局，请勾选本场需要导入的地图`)
+  } catch (e: any) {
+    ElMessage.error(e?.message || '拉取对局列表失败')
+  } finally {
+    pwaListLoading.value = false
+  }
+}
+
+/** 按 Steam64 把 PWA 两边的 PWA team_id 映射到 HVV 的 team_a / team_b，得到本图双方比分 */
+function resolveTeamScores(match: PwaParsedMatch): { aScore: number | null; bScore: number | null } {
+  const m = props.match
+  if (!m) return { aScore: null, bScore: null }
+  const hvBySteam = new Map<string, string>() // steam64 -> HVV team_id
+  for (const pl of players.value) if (pl.steam_id) hvBySteam.set(pl.steam_id, pl.team_id)
+  const pwaTeamToHv: Record<string, string> = {}
+  for (const p of match.players) {
+    const hv = p.steam64 ? hvBySteam.get(p.steam64) : undefined
+    if (hv && p.teamId && !pwaTeamToHv[p.teamId]) pwaTeamToHv[p.teamId] = hv
+  }
+  let aPwa: string | null = null
+  let bPwa: string | null = null
+  for (const [pt, hv] of Object.entries(pwaTeamToHv)) {
+    if (hv === m.team_a_id) aPwa = pt
+    if (hv === m.team_b_id) bPwa = pt
+  }
+  if (!aPwa || !bPwa) return { aScore: null, bScore: null }
+  return { aScore: match.score[aPwa] ?? 0, bScore: match.score[bPwa] ?? 0 }
+}
+
+function buildPreviewItem(match: PwaParsedMatch): PwaPreviewItem {
+  const m = props.match
+  const filter = pwaCupFilter.value.trim()
+  const isTarget = match.isThirdParty && cupNameMatches(match.cupName, filter)
+  const { aScore, bScore } = resolveTeamScores(match)
+
+  const hvBySteam = new Map<string, TeamMember>()
+  for (const pl of players.value) if (pl.steam_id) hvBySteam.set(pl.steam_id, pl)
+  const pps: PwaPreviewPlayer[] = match.players.map((p) => {
+    const hv = p.steam64 ? hvBySteam.get(p.steam64) : undefined
+    return {
+      nick: p.nick,
+      steam64: p.steam64,
+      hvName: hv ? (hv.nickname ?? hv.pw_username ?? null) : null,
+      hvTeam: hv
+        ? hv.team_id === m?.team_a_id
+          ? (m?.team_a_name ?? 'A 队')
+          : hv.team_id === m?.team_b_id
+            ? (m?.team_b_name ?? 'B 队')
+            : null
+        : null,
+      kills: p.kills,
+      deaths: p.deaths,
+      assists: p.assists,
+      hsPct: p.headshotRatePct,
+      adr: p.adr,
+      rating: p.rating,
+      matched: !!hv,
+    }
+  })
+  const matched = pps.filter((p) => p.matched).length
+
+  let note = ''
+  if (!match.isThirdParty) note = '非第三方赛事（天梯/约战外的局）'
+  else if (!isTarget) note = `赛事「${match.cupName ?? '-'}」与过滤条件不符`
+  if (aScore == null || bScore == null) note = (note ? note + '；' : '') + '无法识别双方战队归属（比分不自动写入）'
+
+  return {
+    match,
+    checked: isTarget && aScore != null && bScore != null && matched > 0,
+    isTarget,
+    aScore,
+    bScore,
+    matched,
+    total: match.players.length,
+    mapKey: match.mapLabel,
+    note,
+    players: pps,
+  }
+}
+
+/** 勾选列表中的对局 → 逐个拉 report → 构建预览（二次确认对话框） */
+async function previewSelected() {
+  const token = pwaToken.value.trim()
+  const selected = pwaList.value.filter((r) => pwaListChecked.value[r.match])
+  if (selected.length === 0) {
+    ElMessage.warning('请先勾选对局')
+    return
+  }
+  if (selected.length > 8) {
+    ElMessage.warning('一次最多预览 8 场，请分批操作')
+    return
+  }
+  pwaFetching.value = true
+  const items: PwaPreviewItem[] = []
+  const failed: string[] = []
+  try {
+    for (const r of selected) {
+      try {
+        const match = await fetchPwaReport(r.match, token)
+        items.push(buildPreviewItem(match))
+      } catch {
+        failed.push(r.match)
+      }
+    }
+    items.sort((a, b) => Number(b.isTarget) - Number(a.isTarget))
+    pwaPreview.value = items
+    pwaPreviewVisible.value = true
+    if (failed.length) ElMessage.warning(`以下对局拉取失败，已跳过：${failed.join('、')}`)
+  } finally {
+    pwaFetching.value = false
+  }
+}
+
+/** 把 PWA 选手数据按 Steam64 覆盖到某张地图的录入行 */
+function applyPwaToRows(mapKey: string, match: PwaParsedMatch) {
+  const rows = byMap.value[mapKey]
+  if (!rows) return
+  const steamToPwa = new Map<string, PwaPlayer>()
+  for (const p of match.players) if (p.steam64) steamToPwa.set(p.steam64, p)
+  for (const row of rows) {
+    const pwa = row.steam_id ? steamToPwa.get(row.steam_id) : undefined
+    if (!pwa) continue
+    row.kills = pwa.kills
+    row.deaths = pwa.deaths
+    row.assists = pwa.assists
+    row.headshot_rate_pct = pwa.headshotRatePct
+    row.headshots = pwa.headshots
+    row.first_kills = pwa.firstKills
+    row.multi_kills = pwa.multiKills
+    row.clutches = pwa.clutches
+    row.adr = pwa.adr
+    row.damage = pwa.damage
+    row.rounds = pwa.rounds
+    row.we = pwa.we
+    row.rating = pwa.rating
+  }
+}
+
+/** 二次确认 → 写比分 + 填数据 + 保存 */
+async function confirmPwaImport() {
+  const m = props.match
+  if (!m) return
+  const items = pwaPreview.value.filter((it) => it.checked)
+  if (items.length === 0) {
+    ElMessage.warning('未勾选任何可导入的对局')
+    return
+  }
+  // 同一张图只允许导入一场（(match_id, map_count) 唯一约束），避免覆盖冲突
+  const seen = new Set<string>()
+  for (const it of items) {
+    if (seen.has(it.match.mapLabel)) {
+      ElMessage.warning(`「${it.match.mapLabel}」出现多场，请只勾选一场`)
+      return
+    }
+    seen.add(it.match.mapLabel)
+  }
+  pwaImporting.value = true
+  try {
+    // 1) 逐图比分写入（顺序 = 勾选顺序，map_count 从 1 递增，自动重算总比分）
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      await upsertMatchMap(m.id, i + 1, it.match.mapLabel, it.aScore ?? 0, it.bScore ?? 0)
+    }
+    // 2) 重载表格 → 页签变为真实地图名（此时 match_maps 已写入）
+    await load(m.id)
+    // 3) 按 Steam64 把 PWA 选手数据覆盖到对应地图行
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i]
+      const key =
+        maps.value.find((x) => x.key === it.match.mapLabel)?.key ?? maps.value[i]?.key
+      if (key) applyPwaToRows(key, it.match)
+    }
+    pwaPreviewVisible.value = false
+    pwaOpen.value = []
+    // 4) 保存（覆盖该图旧数据 + 清理未参赛 0 行）
+    await save()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '导入失败')
+  } finally {
+    pwaImporting.value = false
+  }
+}
+
+/** 粘贴 JSON 回退（未部署代理 / 拉列表失败时）：支持「对局列表」或「单场 report」 */
+async function applyPasteJson() {
+  const text = pwaPasteText.value.trim()
+  if (!text) return
+  try {
+    const kind = detectPastedKind(text)
+    if (kind === 'list') {
+      const list = parsePwaListJson(text)
+      pwaList.value = list
+      const checked: Record<string, boolean> = {}
+      for (const r of list) checked[r.match] = true
+      pwaListChecked.value = checked
+      ElMessage.success(`已识别对局列表（${list.length} 条），请在下方勾选后点「预览所选对局」`)
+      pwaPasteVisible.value = false
+    } else if (kind === 'report') {
+      const item = buildPreviewItem(parsePwaReportJson(text))
+      pwaPreview.value = [item]
+      pwaPreviewVisible.value = true
+      pwaPasteVisible.value = false
+    } else {
+      ElMessage.error('无法识别 JSON：请粘贴「对局列表」或「单场 report」数据')
+    }
+  } catch (e: any) {
+    ElMessage.error(`JSON 解析失败：${e?.message}`)
+  }
+}
+
 const numCols = [
   { key: 'kills', label: '击杀', tip: '本图击杀数（参与爆头率加权：Σ 击杀 × 爆头率）' },
   { key: 'deaths', label: '死亡', tip: '' },
@@ -278,6 +572,65 @@ const decCols = [
       class="tip"
       title="按「每图」录入：爆头改为【爆头率整数%】，伤害改为【ADR平均伤害】。局数已按逐图比分自动填入（胜+负），仅实际参加本图的队员（rounds>0 或有统计）会被保存，未参赛的全 0 行自动跳过。赛事期间自动按加权公式聚合：爆头率 = Σ(本图击杀×本图爆头率取整) ÷ Σ击杀；ADR = Σ(本图ADR×本图局数) ÷ Σ局数。"
     />
+
+    <el-collapse v-model="pwaOpen" class="pwa-collapse">
+      <el-collapse-item name="pwa">
+        <template #title>
+          <span class="pwa-title">从完美对战平台（PWA）自动导入本场战绩</span>
+        </template>
+        <div class="pwa-box">
+          <div class="pwa-row">
+            <el-input v-model="pwaToken" placeholder="PWA access_token" show-password clearable class="pwa-token" />
+            <el-input v-model="pwaSteam64" placeholder="Steam64 位 ID（如 76561198...）" clearable class="pwa-steam" />
+            <el-input v-model="pwaCupFilter" placeholder="赛事名过滤（默认 hwcsmajor11）" clearable class="pwa-cup" />
+            <el-button type="primary" :loading="pwaListLoading" @click="loadPwaList">拉取我的对局</el-button>
+          </div>
+          <div class="pwa-row">
+            <el-button text type="primary" size="small" @click="pwaTokenHintVisible = !pwaTokenHintVisible">
+              {{ pwaTokenHintVisible ? '收起' : '查看' }} token 与 Steam64 获取方法
+            </el-button>
+            <el-button text type="primary" size="small" @click="pwaPasteVisible = !pwaPasteVisible">
+              {{ pwaPasteVisible ? '收起' : '展开' }}粘贴 JSON 导入（拉列表不可用时）
+            </el-button>
+          </div>
+          <el-alert
+            v-if="pwaTokenHintVisible"
+            type="info"
+            :closable="false"
+            class="pwa-hint"
+            title="1. 打开 https://partner.wmpvp.com/#/login 登录完美对战平台。
+            2. 手机号登录：登录后按 F12 → Application → Cookies，读取 access_token 的值；Steam 登录：登录完成后从浏览器地址栏复制 token 参数（URL 形如 …/login?state=appAdmin&token=YOUR_ACCESS_TOKEN）。
+            3. Steam64 位 ID 即 Steam 个人资料链接中的数字（如 76561198…），可在我方「个人选手审核」后台查看/修改。
+            4. token 会过期，失效后重新登录获取即可。"
+          />
+          <div v-if="pwaPasteVisible" class="pwa-paste">
+            <el-input v-model="pwaPasteText" type="textarea" :rows="3" placeholder="粘贴「对局列表」或「单场 report」的 JSON…" />
+            <el-button size="small" type="primary" @click="applyPasteJson">解析并导入</el-button>
+          </div>
+          <el-table v-if="pwaList.length" :data="pwaList" size="small" max-height="220" class="pwa-list">
+            <el-table-column width="46">
+              <template #default="{ row }">
+                <el-checkbox v-model="pwaListChecked[row.match]" />
+              </template>
+            </el-table-column>
+            <el-table-column label="时间" width="150">
+              <template #default="{ row }">{{ row.date ?? '-' }}</template>
+            </el-table-column>
+            <el-table-column label="我的 K/D" width="100">
+              <template #default="{ row }">{{ row.kill ?? '-' }} / {{ row.death ?? '-' }}</template>
+            </el-table-column>
+            <el-table-column prop="rating" label="Rating" width="90" />
+            <el-table-column label="昵称" min-width="140">
+              <template #default="{ row }">{{ row.steam_nick ?? row.user_id ?? '-' }}</template>
+            </el-table-column>
+          </el-table>
+          <div v-if="pwaList.length" class="pwa-actions">
+            <el-button type="primary" :loading="pwaFetching" @click="previewSelected">预览所选对局（拉取详情）</el-button>
+            <span class="pwa-tip">勾选本场要导入的地图（每场 = 一张图），一次最多 8 场</span>
+          </div>
+        </div>
+      </el-collapse-item>
+    </el-collapse>
 
     <el-tabs v-model="activeMap">
       <el-tab-pane v-for="mp in maps" :key="mp.key" :name="mp.key">
@@ -346,11 +699,162 @@ const decCols = [
       <el-button type="primary" :loading="saving" @click="save">保存全部地图数据</el-button>
     </template>
   </el-dialog>
+
+  <!-- PWA 自动导入：二次确认（每场 = 一张地图） -->
+  <el-dialog
+    v-model="pwaPreviewVisible"
+    title="二次确认：导入以下对局（每场 = 一张地图）"
+    width="1100px"
+    top="6vh"
+    append-to-body
+  >
+    <el-alert
+      type="warning"
+      :closable="false"
+      class="tip"
+      title="仅勾选的项会被导入：比分将写入「逐图比分」并自动重算总比分，选手数据按 Steam64 位 ID 自动匹配填充（未匹配的选手需确认其 steam_id 是否正确，可稍后手动补录）。勾选顺序 = 地图顺序。"
+    />
+    <el-table :data="pwaPreview" size="small" max-height="58vh" row-key="match.matchId">
+      <el-table-column type="expand">
+        <template #default="{ row }">
+          <el-table :data="row.players" size="small" class="pwa-preview-players">
+            <el-table-column label="PWA 昵称" min-width="150">
+              <template #default="{ row: p }">{{ p.nick ?? '-' }}</template>
+            </el-table-column>
+            <el-table-column label="Steam64" min-width="170">
+              <template #default="{ row: p }">{{ p.steam64 }}</template>
+            </el-table-column>
+            <el-table-column label="匹配到 HVV 选手" min-width="170">
+              <template #default="{ row: p }">
+                <el-tag v-if="p.matched" type="success" size="small" effect="plain">
+                  {{ p.hvName ?? '-' }}{{ p.hvTeam ? '（' + p.hvTeam + '）' : '' }}
+                </el-tag>
+                <el-tag v-else type="danger" size="small" effect="plain">未匹配</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="K / D / A" width="130">
+              <template #default="{ row: p }">{{ p.kills }} / {{ p.deaths }} / {{ p.assists }}</template>
+            </el-table-column>
+            <el-table-column label="爆头率" width="90">
+              <template #default="{ row: p }">{{ p.hsPct }}%</template>
+            </el-table-column>
+            <el-table-column prop="adr" label="ADR" width="80" />
+            <el-table-column prop="rating" label="Rating" width="90" />
+          </el-table>
+        </template>
+      </el-table-column>
+      <el-table-column width="46">
+        <template #default="{ row }">
+          <el-checkbox v-model="row.checked" />
+        </template>
+      </el-table-column>
+      <el-table-column label="地图" width="110">
+        <template #default="{ row }">{{ row.match.mapLabel }}</template>
+      </el-table-column>
+      <el-table-column label="赛事" min-width="150">
+        <template #default="{ row }">{{ row.match.cupName ?? (row.match.isThirdParty ? '第三方赛事' : '天梯') }}</template>
+      </el-table-column>
+      <el-table-column label="比分" width="110">
+        <template #default="{ row }">
+          <span v-if="row.aScore != null">{{ row.aScore }} : {{ row.bScore }}</span>
+          <el-tag v-else type="danger" size="small" effect="plain">无法识别</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="选手匹配" width="90">
+        <template #default="{ row }">
+          <el-tag :type="row.matched === row.total ? 'success' : 'warning'" size="small" effect="plain">
+            {{ row.matched }}/{{ row.total }}
+          </el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="备注" min-width="220">
+        <template #default="{ row }">
+          <el-tag v-if="row.isTarget" type="success" size="small" effect="plain">目标赛事</el-tag>
+          <span v-if="row.note" class="no">{{ row.note }}</span>
+        </template>
+      </el-table-column>
+    </el-table>
+    <template #footer>
+      <el-button @click="pwaPreviewVisible = false">取消</el-button>
+      <el-button type="primary" :loading="pwaImporting" @click="confirmPwaImport">
+        确认导入勾选的 {{ pwaPreview.filter((x) => x.checked).length }} 场（写比分 + 填数据）
+      </el-button>
+    </template>
+  </el-dialog>
 </template>
 
 <style scoped>
 .tip {
   margin-bottom: 12px;
+}
+
+.pwa-collapse {
+  margin-bottom: 12px;
+  border-radius: 6px;
+}
+
+.pwa-title {
+  font-weight: 600;
+  color: var(--cs2-accent, #409eff);
+}
+
+.pwa-box {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pwa-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pwa-token {
+  width: 260px;
+}
+
+.pwa-steam {
+  width: 240px;
+}
+
+.pwa-cup {
+  width: 210px;
+}
+
+.pwa-hint {
+  white-space: pre-line;
+}
+
+.pwa-paste {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.pwa-list {
+  margin-top: 4px;
+}
+
+.pwa-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.pwa-tip {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
+}
+
+.pwa-preview-players {
+  margin: 4px 8px 8px;
+}
+
+.no {
+  color: var(--el-color-danger);
+  font-size: 12px;
 }
 
 .map-tab-label {
