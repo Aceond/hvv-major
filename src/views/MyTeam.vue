@@ -303,52 +303,69 @@ onMounted(async () => {
             <div v-if="historyMatches.length === 0" class="history-empty">
               暂无对战记录，约战或赛程对阵录入后会显示在这里
             </div>
-            <div v-else class="history-list">
-              <div
-                v-for="m in historyMatches"
-                :key="m.id"
-                class="history-row"
-                @click="$router.push({ name: 'matches' })"
-              >
-                <div class="history-time">
-                  <span class="history-date">{{ formatDateTime(m.scheduled_at) }}</span>
-                </div>
-                <div class="history-stage">
-                  <el-tag v-if="m.group_name" size="small" effect="plain">{{ m.group_name }}</el-tag>
-                  <span class="stage-name">{{ m.stage_name ?? '-' }}</span>
-                </div>
-                <div class="history-vs">
-                  <span class="vs-team">{{ mainTeam.name }}</span>
-                  <span
-                    class="vs-score"
-                    :class="{
-                      win: mySideWon(m, mainTeam.id) === true,
-                      lose: mySideWon(m, mainTeam.id) === false,
-                    }"
-                  >
-                    {{ m.status === 'scheduled' ? 'VS' : matchScore(m, mainTeam.id) }}
-                  </span>
-                  <span class="vs-team">{{ opponentName(m, mainTeam.id) }}</span>
-                </div>
-                <el-tag :type="matchStatusType(m.status)" size="small">
-                  {{ MATCH_STATUS_LABEL[m.status] }}
-                </el-tag>
-                <el-tag
-                  v-if="m.status === 'completed' && mySideWon(m, mainTeam.id) === true"
-                  type="success"
-                  size="small"
-                  effect="dark"
-                  class="result-tag"
-                >胜</el-tag>
-                <el-tag
-                  v-else-if="m.status === 'completed' && mySideWon(m, mainTeam.id) === false"
-                  type="danger"
-                  size="small"
-                  effect="dark"
-                  class="result-tag"
-                >负</el-tag>
-              </div>
-            </div>
+            <el-table
+              v-else
+              :data="historyMatches"
+              stripe
+              size="small"
+              class="history-table"
+              @row-click="() => $router.push({ name: 'matches' })"
+            >
+              <el-table-column label="时间" width="150">
+                <template #default="{ row }">
+                  <span class="cell-time">{{ formatDateTime(row.scheduled_at) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="阶段" width="150">
+                <template #default="{ row }">
+                  <div class="cell-stage">
+                    <el-tag v-if="row.group_name" size="small" effect="plain">{{ row.group_name }}</el-tag>
+                    <span class="stage-name">{{ row.stage_name ?? '-' }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="对阵">
+                <template #default="{ row }">
+                  <div class="cell-vs">
+                    <span class="vs-team vs-self">{{ mainTeam.name }}</span>
+                    <span
+                      class="vs-score"
+                      :class="{
+                        win: mySideWon(row, mainTeam.id) === true,
+                        lose: mySideWon(row, mainTeam.id) === false,
+                      }"
+                    >
+                      {{ row.status === 'scheduled' ? 'VS' : matchScore(row, mainTeam.id) }}
+                    </span>
+                    <span class="vs-team">{{ opponentName(row, mainTeam.id) }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column label="状态" width="90">
+                <template #default="{ row }">
+                  <el-tag :type="matchStatusType(row.status)" size="small" effect="plain">
+                    {{ MATCH_STATUS_LABEL[row.status as Match['status']] }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="结果" width="70" align="center">
+                <template #default="{ row }">
+                  <el-tag
+                    v-if="row.status === 'completed' && mySideWon(row, mainTeam.id) === true"
+                    type="success"
+                    size="small"
+                    effect="dark"
+                  >胜</el-tag>
+                  <el-tag
+                    v-else-if="row.status === 'completed' && mySideWon(row, mainTeam.id) === false"
+                    type="danger"
+                    size="small"
+                    effect="dark"
+                  >负</el-tag>
+                  <span v-else class="cell-dash">-</span>
+                </template>
+              </el-table-column>
+            </el-table>
           </div>
         </template>
 
@@ -595,52 +612,45 @@ onMounted(async () => {
   color: var(--cs2-text-muted);
 }
 
-.history-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+/* 历史对战记录表格 */
+.history-table {
+  --el-table-border-color: var(--cs2-border);
+  --el-table-header-bg-color: var(--cs2-panel-2);
+  --el-table-tr-bg-color: var(--cs2-panel);
+  --el-table-row-hover-bg-color: var(--cs2-panel-2);
+  --el-table-text-color: var(--cs2-text);
+  --el-table-header-text-color: var(--cs2-text-muted);
 }
 
-.history-row {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  padding: 9px 12px;
-  background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
-  border: 1px solid var(--cs2-border);
+.history-table :deep(.el-table__row) {
   cursor: pointer;
-  transition: border-color 0.2s, transform 0.2s;
 }
 
-.history-row:hover {
-  border-color: var(--cs2-accent);
-  transform: translateX(3px);
-}
-
-.history-time {
-  min-width: 132px;
+.cell-time {
   font-size: 12px;
   color: var(--cs2-text-muted);
 }
 
-.history-stage {
+.cell-stage {
   display: flex;
   align-items: center;
   gap: 6px;
-  min-width: 110px;
+  min-width: 0;
 }
 
 .stage-name {
   font-size: 12px;
   color: var(--cs2-text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.history-vs {
-  flex: 1;
+.cell-vs {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 14px;
   min-width: 0;
 }
 
@@ -655,10 +665,17 @@ onMounted(async () => {
   color: var(--cs2-text-regular, #c6ccd8);
 }
 
+.vs-self {
+  font-weight: 600;
+  color: var(--cs2-text);
+}
+
 .vs-score {
   font-weight: 700;
   color: var(--cs2-accent);
   white-space: nowrap;
+  min-width: 42px;
+  text-align: center;
 }
 
 .vs-score.win {
@@ -669,33 +686,8 @@ onMounted(async () => {
   color: #f56c6c;
 }
 
-.result-tag {
-  margin-left: 2px;
-}
-
-@media (max-width: 768px) {
-  .history-row {
-    flex-wrap: wrap;
-    gap: 6px 10px;
-  }
-
-  .history-vs {
-    order: -1;
-    width: 100%;
-    flex-basis: 100%;
-    justify-content: space-between;
-  }
-
-  .history-time {
-    min-width: 0;
-    flex: 1;
-  }
-
-  .history-stage {
-    min-width: 0;
-    flex: 1;
-    justify-content: flex-end;
-  }
+.cell-dash {
+  color: var(--cs2-text-muted);
 }
 
 /* ---- 移动端 ---- */
