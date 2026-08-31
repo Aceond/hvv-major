@@ -178,7 +178,7 @@ async function buildCarousel(evs: EventItem[]) {
         <span class="carousel-title">CHAMPIONS</span>
         <span class="carousel-sub">冠军展播 · 历届荣耀</span>
       </div>
-      <el-carousel height="220px" :interval="5000" arrow="hover" indicator-position="outside">
+      <el-carousel height="220px" :interval="5000" arrow="hover">
         <el-carousel-item v-for="(item, idx) in carousel" :key="idx">
           <!-- 当前赛事 banner -->
           <div v-if="item.kind === 'banner'" class="slide banner-slide" @click="router.push({ name: 'events' })">
@@ -616,10 +616,12 @@ async function buildCarousel(evs: EventItem[]) {
 
 /* 冠军展播轮播 */
 .champion-carousel {
-  margin-top: 24px;
-  padding: 18px 22px;
+  margin: 24px 0 18px;
+  padding: 18px 22px 6px;
   background: var(--cs2-panel);
   border: 1px solid var(--cs2-border);
+  overflow: hidden;
+  position: relative;
 }
 
 .carousel-head {
