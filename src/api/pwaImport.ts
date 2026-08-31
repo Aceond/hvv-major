@@ -303,3 +303,20 @@ export async function fetchMySteam64(): Promise<string | null> {
   const row = (data ?? [])[0] as { steam_id?: string | null } | undefined
   return row?.steam_id ? String(row.steam_id) : null
 }
+
+/**
+ * 按 Steam64 位 ID 查 HVV 平台选手（profiles.steam_id，需已执行 SQL 开放 authenticated 读该列）。
+ * 用于「自动设为替补」：对局里的选手不在本队名册时，按此找到其账号加入名册。
+ */
+export async function lookupProfileBySteam64(
+  steam64: string,
+): Promise<{ id: string; nickname: string | null; pw_username: string | null } | null> {
+  if (!isSupabaseConfigured || !supabase) return null
+  const { data } = await supabase
+    .from('profiles')
+    .select('id, nickname, pw_username')
+    .eq('steam_id', steam64)
+    .limit(1)
+  const row = (data ?? [])[0] as { id: string; nickname: string | null; pw_username: string | null } | undefined
+  return row ? { id: row.id, nickname: row.nickname, pw_username: row.pw_username } : null
+}

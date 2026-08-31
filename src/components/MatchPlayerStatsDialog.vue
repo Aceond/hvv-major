@@ -15,10 +15,12 @@ import {
   purgeMatchPlayerStatsZeroRows,
 } from '@/api/playerMatchStats'
 import { listMatchMaps, upsertMatchMap } from '@/api/match'
+import { addTeamMember } from '@/api/registration'
 import {
   fetchMySteam64,
   fetchPwaMatchList,
   fetchPwaReport,
+  lookupProfileBySteam64,
   cupNameMatches,
   detectPastedKind,
   parsePwaListJson,
@@ -268,6 +270,7 @@ const pwaOpen = ref<string[]>([]) // 导入面板展开（el-collapse 的 active
 const pwaToken = ref('')
 const pwaSteam64 = ref('')
 const pwaCupFilter = ref('hwcsmajor11')
+const pwaAutoBench = ref(true) // 对局中出现但不在本队名册的选手，自动设为该队替补
 const pwaListLoading = ref(false)
 const pwaList = ref<PwaListRecord[]>([])
 const pwaListChecked = ref<Record<string, boolean>>({})
@@ -278,6 +281,22 @@ const pwaImporting = ref(false)
 const pwaPasteText = ref('')
 const pwaPasteVisible = ref(false)
 const pwaTokenHintVisible = ref(false)
+
+// token / Steam64 持久化：队长填一次后，下次打开对话框自动保留
+const PWA_TOKEN_KEY = 'hvv.pwa.token'
+const PWA_STEAM64_KEY = 'hvv.pwa.steam64'
+watch(
+  [pwaToken, pwaSteam64],
+  ([t, s]) => {
+    try {
+      localStorage.setItem(PWA_TOKEN_KEY, t)
+      localStorage.setItem(PWA_STEAM64_KEY, s)
+    } catch {
+      /* 忽略 localStorage 不可用 */
+    }
+  },
+  { immediate: true },
+)
 
 /** 预览项：一场 PWA 对局（= 一张地图）的二次确认信息 */
 interface PwaPreviewItem {
@@ -295,6 +314,7 @@ interface PwaPreviewItem {
 interface PwaPreviewPlayer {
   nick: string | null
   steam64: string
+  teamId: string | null // PWA 侧战队 id（用于判定应加入哪支 HVV 队）
   hvName: string | null // 匹配到的 HVV 队员名
   hvTeam: string | null
   kills: number
@@ -304,10 +324,26 @@ interface PwaPreviewPlayer {
   adr: number
   rating: number
   matched: boolean
+  // 自动替补：对局里有、但不在本队名册的 HVV 账号，确认导入时自动加入对应队替补
+  autoAdd?: {
+    profileId: string
+    nickname: string | null
+    teamId: string
+    teamName: string | null
+    enabled: boolean
+  } | null
 }
 
-/** 预填 Steam64：读当前登录用户自己报名表里的 steam_id（RLS 只读自己的申请） */
+/** 预填 token / Steam64：先取上次保存（localStorage），再读当前登录用户报名表里的 steam_id */
 async function prefillSteam64() {
+  try {
+    const savedToken = localStorage.getItem(PWA_TOKEN_KEY)
+    const savedSteam = localStorage.getItem(PWA_STEAM64_KEY)
+    if (savedToken && !pwaToken.value) pwaToken.value = savedToken
+    if (savedSteam && !pwaSteam64.value) pwaSteam64.value = savedSteam
+  } catch {
+    /* 忽略 localStorage 不可用 */
+  }
   if (pwaSteam64.value.trim()) return
   try {
     const sid = await fetchMySteam64()
@@ -361,6 +397,46 @@ function resolveTeamScores(match: PwaParsedMatch): { aScore: number | null; bSco
   return { aScore: match.score[aPwa] ?? 0, bScore: match.score[bPwa] ?? 0 }
 }
 
+/** PWA team_id -> HVV team_id（基于本场名册已匹配选手推断） */
+function pwaTeamToHvMap(match: PwaParsedMatch): Record<string, string> {
+  const hvBySteam = new Map<string, string>()
+  for (const pl of players.value) if (pl.steam_id) hvBySteam.set(pl.steam_id, pl.team_id)
+  const map: Record<string, string> = {}
+  for (const p of match.players) {
+    const hv = p.steam64 ? hvBySteam.get(p.steam64) : undefined
+    if (hv && p.teamId && !map[p.teamId]) map[p.teamId] = hv
+  }
+  return map
+}
+
+/**
+ * 自动替补探测：对局里有、但不在本队名册的选手，若其 Steam64 在 HVV 有账号，
+ * 则标记「可自动设为对应队替补」（确认导入时执行，RLS 允许队长/管理员加名册）。
+ */
+async function enrichAutoAdd(item: PwaPreviewItem) {
+  const m = props.match
+  if (!m) return
+  const rosterIds = new Set(players.value.map((p) => p.profile_id))
+  const teamNameOf = (tid: string) =>
+    tid === m.team_a_id ? (m.team_a_name ?? 'A 队') : tid === m.team_b_id ? (m.team_b_name ?? 'B 队') : null
+  const pwaToHv = pwaTeamToHvMap(item.match)
+  for (const pp of item.players) {
+    if (pp.matched || !pp.steam64) continue
+    const prof = await lookupProfileBySteam64(pp.steam64).catch(() => null)
+    if (!prof) continue
+    if (rosterIds.has(prof.id)) continue // 已在名册（active/benched），不需要加
+    const hvTeamId = pp.teamId ? pwaToHv[pp.teamId] : undefined
+    if (!hvTeamId) continue // 无法判定归属战队，跳过
+    pp.autoAdd = {
+      profileId: prof.id,
+      nickname: prof.nickname ?? prof.pw_username,
+      teamId: hvTeamId,
+      teamName: teamNameOf(hvTeamId),
+      enabled: true,
+    }
+  }
+}
+
 function buildPreviewItem(match: PwaParsedMatch): PwaPreviewItem {
   const m = props.match
   const filter = pwaCupFilter.value.trim()
@@ -374,6 +450,7 @@ function buildPreviewItem(match: PwaParsedMatch): PwaPreviewItem {
     return {
       nick: p.nick,
       steam64: p.steam64,
+      teamId: p.teamId,
       hvName: hv ? (hv.nickname ?? hv.pw_username ?? null) : null,
       hvTeam: hv
         ? hv.team_id === m?.team_a_id
@@ -431,7 +508,9 @@ async function previewSelected() {
     for (const r of selected) {
       try {
         const match = await fetchPwaReport(r.match, token)
-        items.push(buildPreviewItem(match))
+        const item = buildPreviewItem(match)
+        await enrichAutoAdd(item) // 探测「不在名册但可自动设为替补」的选手
+        items.push(item)
       } catch {
         failed.push(r.match)
       }
@@ -490,12 +569,32 @@ async function confirmPwaImport() {
   }
   pwaImporting.value = true
   try {
+    // 0) 自动设为替补：对局里有、但不在本队名册的 HVV 账号，加入对应队替补（队长/管理员 RLS 允许）
+    const toAdd: Array<{ teamId: string; profileId: string; nickname: string | null }> = []
+    const seenAdd = new Set<string>()
+    for (const it of items) {
+      for (const pp of it.players) {
+        const aa = pp.autoAdd
+        if (!aa?.enabled || !aa.teamId) continue
+        if (seenAdd.has(aa.profileId)) continue
+        seenAdd.add(aa.profileId)
+        if (players.value.some((pl) => pl.profile_id === aa.profileId)) continue // 已在名册则跳过
+        toAdd.push({ teamId: aa.teamId, profileId: aa.profileId, nickname: aa.nickname })
+      }
+    }
+    let addedBench = 0
+    for (const a of toAdd) {
+      await addTeamMember(a.teamId, a.profileId, 'benched')
+      addedBench++
+    }
+    if (addedBench > 0) ElMessage.success(`已将 ${addedBench} 名对局内选手自动设为替补（${toAdd.map((x) => x.nickname ?? '').filter(Boolean).join('、')}）`)
+
     // 1) 逐图比分写入（顺序 = 勾选顺序，map_count 从 1 递增，自动重算总比分）
     for (let i = 0; i < items.length; i++) {
       const it = items[i]
       await upsertMatchMap(m.id, i + 1, it.match.mapLabel, it.aScore ?? 0, it.bScore ?? 0)
     }
-    // 2) 重载表格 → 页签变为真实地图名（此时 match_maps 已写入）
+    // 2) 重载表格 → 页签变为真实地图名（此时 match_maps 已写入，名册含新替补）
     await load(m.id)
     // 3) 按 Steam64 把 PWA 选手数据覆盖到对应地图行
     for (let i = 0; i < items.length; i++) {
@@ -584,6 +683,9 @@ const decCols = [
             <el-input v-model="pwaSteam64" placeholder="Steam64 位 ID（如 76561198...）" clearable class="pwa-steam" />
             <el-input v-model="pwaCupFilter" placeholder="赛事名过滤（默认 hwcsmajor11）" clearable class="pwa-cup" />
             <el-button type="primary" :loading="pwaListLoading" @click="loadPwaList">拉取我的对局</el-button>
+            <el-tooltip content="对局中出现但不在本队名册的选手，若其 Steam64 在本平台有账号，确认导入时自动加入对应战队作为替补" placement="top">
+              <el-switch v-model="pwaAutoBench" inline-prompt active-text="自动替补" inactive-text="自动替补" />
+            </el-tooltip>
           </div>
           <div class="pwa-row">
             <el-button text type="primary" size="small" @click="pwaTokenHintVisible = !pwaTokenHintVisible">
@@ -712,7 +814,7 @@ const decCols = [
       type="warning"
       :closable="false"
       class="tip"
-      title="仅勾选的项会被导入：比分将写入「逐图比分」并自动重算总比分，选手数据按 Steam64 位 ID 自动匹配填充（未匹配的选手需确认其 steam_id 是否正确，可稍后手动补录）。勾选顺序 = 地图顺序。"
+      title="仅勾选的项会被导入：比分将写入「逐图比分」并自动重算总比分，选手数据按 Steam64 位 ID 自动匹配填充（未匹配的选手需确认其 steam_id 是否正确，可稍后手动补录）。对局中出现但不在名册、且在本平台有账号的选手，可在展开行里勾选「自动设为替补」（需开启上方自动替补开关）。勾选顺序 = 地图顺序。"
     />
     <el-table :data="pwaPreview" size="small" max-height="58vh" row-key="match.matchId">
       <el-table-column type="expand">
@@ -724,11 +826,18 @@ const decCols = [
             <el-table-column label="Steam64" min-width="170">
               <template #default="{ row: p }">{{ p.steam64 }}</template>
             </el-table-column>
-            <el-table-column label="匹配到 HVV 选手" min-width="170">
+            <el-table-column label="匹配到 HVV 选手" min-width="200">
               <template #default="{ row: p }">
                 <el-tag v-if="p.matched" type="success" size="small" effect="plain">
                   {{ p.hvName ?? '-' }}{{ p.hvTeam ? '（' + p.hvTeam + '）' : '' }}
                 </el-tag>
+                <div v-else-if="p.autoAdd" class="auto-add-cell">
+                  <el-checkbox v-model="p.autoAdd.enabled" size="small" />
+                  <div>
+                    <span class="auto-add-label">自动设为「{{ p.autoAdd.teamName ?? '对应队' }}」替补</span>
+                    <div class="auto-add-name">{{ p.autoAdd.nickname ?? p.steam64 }}</div>
+                  </div>
+                </div>
                 <el-tag v-else type="danger" size="small" effect="plain">未匹配</el-tag>
               </template>
             </el-table-column>
@@ -855,6 +964,22 @@ const decCols = [
 .no {
   color: var(--el-color-danger);
   font-size: 12px;
+}
+
+.auto-add-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.auto-add-label {
+  font-size: 12px;
+  color: var(--cs2-accent, #409eff);
+}
+
+.auto-add-name {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
 }
 
 .map-tab-label {
