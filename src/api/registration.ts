@@ -175,7 +175,6 @@ export async function reviewPlayerApplication(
       if (me) {
         me.pw_username = app.pw_username
         me.nickname = app.display_name ?? me.nickname ?? app.pw_username
-        if (app.steam_id) me.steam_id = app.steam_id
       }
       // 初始化个人数据：每名选手一行全 0 统计（演示模式写内存 mock，使其直接进入个人数据/排行）
       const stages = mockStages.filter((s) => !app.event_id || s.event_id === app.event_id)
@@ -307,7 +306,8 @@ export async function listPlayers(keyword?: string, eventId?: string | null): Pr
   }
   let query = supabase
     .from('profiles')
-    .select('id, nickname, pw_username, steam_id, highest_rank, highest_rating, team_members(team_id, status, event_id)')
+    // 注意：steam_id 不在列级授权内（仅本人/管理员可见），此处不读取，避免权限错误
+    .select('id, nickname, pw_username, highest_rank, highest_rating, team_members(team_id, status, event_id)')
     .in('role', ['player', 'caster']) // 选手与解说均进入选手池（解说也可作为队员被选入战队）
     .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
@@ -320,7 +320,6 @@ export async function listPlayers(keyword?: string, eventId?: string | null): Pr
       id: p.id,
       nickname: p.nickname,
       pw_username: p.pw_username,
-      steam_id: p.steam_id ?? null,
       highest_rank: p.highest_rank ?? null,
       highest_rating: p.highest_rating ?? null,
       in_team: active.length > 0,

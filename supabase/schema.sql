@@ -1256,9 +1256,10 @@ grant select on public.groups, public.teams, public.team_members,
   public.match_player_stats, public.standings, public.team_stats, public.player_stats,
   public.site_config, public.events
   to anon, authenticated;
--- profiles 列级授权：匿名用户仅能读公开展示列（不含 email/username，防隐私泄露）；已登录用户保留完整列（后台审核需邮箱）
-grant select (id, username, nickname, pw_username, steam_id, highest_rank, highest_rating, role) on public.profiles to anon;
-grant select on public.profiles to authenticated;
+-- profiles 列级授权：匿名用户仅能读公开展示列（不含 email/username，防隐私泄露）；已登录用户同样列级授权（含 email/username 供后台审核），
+-- 均不含 steam_id：Steam64 位 ID 仅选手本人（读自己的注册申请）与管理员（后台审核页）可见，普通用户/队长不可见
+grant select (id, username, nickname, pw_username, highest_rank, highest_rating, role) on public.profiles to anon;
+grant select (id, username, email, nickname, pw_username, role, highest_rank, highest_rating, account_status, created_at) on public.profiles to authenticated;
 -- 审核通过时回填选手资料（pw_username/nickname/角色）需要 profiles 的 UPDATE 权限，否则选手池为空
 grant update on public.profiles to authenticated;
 grant select on public.sync_logs to authenticated;

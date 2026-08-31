@@ -1,7 +1,7 @@
 // 管理端数据访问层（所有操作受 RLS 的 admin 策略约束）
 // 未配置 Supabase（演示模式）时直接读写内存中的 mock 数据。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
-import { mockMatches, mockMembers, mockPlayers, mockStages, mockTeams } from '@/mock/data'
+import { mockMatches, mockMembers, mockStages, mockTeams } from '@/mock/data'
 import type { AccountItem, ApplicationStatus, Match, Stage, Team, TeamStatus } from './types'
 import { listGroups, listMatches, listStages } from './match'
 import { mockAutoCreatePollForMatch } from './bet'
@@ -47,8 +47,7 @@ export async function updatePlayerSteamId(
     throw new Error('Steam64 位 ID 应为 17 位数字')
   }
   if (!isSupabaseConfigured || !supabase) {
-    const p = mockPlayers.find((x) => x.id === profileId)
-    if (p) p.steam_id = val
+    // 演示模式：选手池 mock 不携带 steam_id，仅提示已更新（演示环境无真实鉴权）
     return
   }
   const { error: profErr } = await supabase

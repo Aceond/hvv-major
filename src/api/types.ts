@@ -78,7 +78,6 @@ export interface PlayerItem {
   id: string
   nickname: string | null
   pw_username: string | null
-  steam_id?: string | null // Steam64 位 ID
   highest_rank?: string | null // 近 3 赛季最高段位
   highest_rating?: number | null // 最高段位时的最高 Rating
   in_team: boolean // 是否已加入某支战队
