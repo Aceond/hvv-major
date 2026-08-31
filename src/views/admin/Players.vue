@@ -4,7 +4,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import type { ApplicationStatus, EventItem, PlayerApplication } from '@/api/types'
 import { CS2_RANKS } from '@/api/types'
 import { listEvents } from '@/api/event'
-import { listPlayerApplications, reviewPlayerApplication } from '@/api/admin'
+import { listPlayerApplications, reviewPlayerApplication, updatePlayerSteamId } from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
 
 const rows = ref<PlayerApplication[]>([])
@@ -16,6 +16,35 @@ const currentEvent = ref('') // 赛事筛选：'' = 全部
 const rankDraft = ref<Record<string, string>>({})
 /** 待审核行管理员确认的最高段位 Rating（key = 申请 id） */
 const ratingDraft = ref<Record<string, number | null>>({})
+
+/** 手动修改 Steam64 位 ID 弹窗 */
+const steamEditVisible = ref(false)
+const steamEditApp = ref<PlayerApplication | null>(null)
+const steamEditValue = ref('')
+
+function openSteamEdit(row: PlayerApplication) {
+  steamEditApp.value = row
+  steamEditValue.value = row.steam_id ?? ''
+  steamEditVisible.value = true
+}
+
+async function saveSteamEdit() {
+  const app = steamEditApp.value
+  if (!app) return
+  const val = steamEditValue.value.trim()
+  if (val && !/^\d{17}$/.test(val)) {
+    ElMessage.warning('Steam64 位 ID 应为 17 位数字')
+    return
+  }
+  try {
+    await updatePlayerSteamId(app.profile_id, val || null, app.id)
+    app.steam_id = val || null
+    ElMessage.success('Steam64 位 ID 已更新')
+    steamEditVisible.value = false
+  } catch (e: any) {
+    ElMessage.error(e?.message || '更新失败')
+  }
+}
 
 const filteredRows = computed(() =>
   rows.value.filter((a) =>
@@ -128,6 +157,12 @@ onMounted(load)
           <span class="pw-name">{{ row.pw_username }}</span>
         </template>
       </el-table-column>
+      <el-table-column label="Steam64 ID" min-width="180">
+        <template #default="{ row }">
+          <span :class="{ 'no-rank': !row.steam_id }">{{ row.steam_id || '未填写' }}</span>
+          <el-button link type="primary" size="small" @click="openSteamEdit(row)">修改</el-button>
+        </template>
+      </el-table-column>
       <el-table-column label="报名赛事" min-width="130">
         <template #default="{ row }">
           <el-tag size="small" effect="plain">{{ eventName(row.event_id) }}</el-tag>
@@ -219,6 +254,20 @@ onMounted(load)
         </template>
       </el-table-column>
     </el-table>
+
+    <!-- 手动修改 Steam64 位 ID -->
+    <el-dialog v-model="steamEditVisible" title="手动修改 Steam64 位 ID" width="420px">
+      <el-form label-width="100px">
+        <el-form-item label="Steam64 ID">
+          <el-input v-model="steamEditValue" maxlength="17" placeholder="17 位数字，如 76561198000000000" />
+          <div class="form-tip">Steam 个人资料页 URL 中 /profiles/ 后面的 17 位数字；留空则清除</div>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="steamEditVisible = false">取消</el-button>
+        <el-button type="primary" @click="saveSteamEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 

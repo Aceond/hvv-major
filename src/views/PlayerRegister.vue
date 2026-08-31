@@ -17,6 +17,7 @@ const eventsLoaded = ref(false)
 const form = reactive({
   eventId: '',
   pwUsername: '',
+  steamId: '',
   displayName: '',
   highestRank: '',
   highestRating: null as number | null,
@@ -144,6 +145,10 @@ async function submit() {
     ElMessage.warning('请填写完美 ID')
     return
   }
+  if (!/^\d{17}$/.test(form.steamId.trim())) {
+    ElMessage.warning('请填写 17 位数字的 Steam64 位 ID')
+    return
+  }
   if (form.employmentStatus === 'employed' && !form.location.trim()) {
     ElMessage.warning('在职状态请填写驻地')
     return
@@ -167,6 +172,7 @@ async function submit() {
       },
       form.highestRank,
       form.highestRating,
+      form.steamId,
     )
     if (!app) {
       ElMessage.error('提交失败，请稍后重试')
@@ -192,6 +198,7 @@ onMounted(async () => {
     status.value = app.status
     form.eventId = app.event_id ?? form.eventId
     form.pwUsername = app.pw_username
+    form.steamId = app.steam_id ?? ''
     form.displayName = app.display_name ?? ''
     form.highestRank = app.highest_rank ?? ''
     form.highestRating = app.highest_rating ?? null
@@ -242,7 +249,7 @@ onMounted(async () => {
         type="info"
         :closable="false"
         title="注册流程"
-        description="选择要报名的赛事，填写选手姓名、完美 ID（完美对战平台用户名）与在职状态（在职需填驻地和工号），并上传最近 3-5 个赛季的截图（可选，也可不上传），提交后由管理员审核。审核通过后进入该赛事选手池（以选手姓名展示），队长创建战队时将从池中选择队员；每人只能加入一支战队。"
+        description="选择要报名的赛事，填写选手姓名、完美 ID（完美对战平台用户名）、Steam64 位 ID 与在职状态（在职需填驻地和工号），并上传最近 3-5 个赛季的截图（可选，也可不上传），提交后由管理员审核。审核通过后进入该赛事选手池（以选手姓名展示），队长创建战队时将从池中选择队员；每人只能加入一支战队。"
         class="tip"
       />
 
@@ -302,6 +309,14 @@ onMounted(async () => {
             placeholder="完美对战平台的用户名，如 yanlong"
           />
           <div class="form-tip">后台将按此用户名记录选手数据</div>
+        </el-form-item>
+        <el-form-item label="Steam64 ID">
+          <el-input
+            v-model="form.steamId"
+            placeholder="17 位数字，如 76561198000000000"
+            maxlength="17"
+          />
+          <div class="form-tip">Steam 个人资料页 URL 中 /profiles/ 后面的 17 位数字</div>
         </el-form-item>
         <el-form-item label="最高段位">
           <el-select

@@ -55,6 +55,8 @@ alter table public.profiles add column if not exists email text;
 alter table public.profiles add column if not exists highest_rank text;
 -- 最高段位时的最高 Rating（选手注册自选、管理员审核时确认）
 alter table public.profiles add column if not exists highest_rating numeric;
+-- Steam64 位 ID（个人选手注册时填写，审核通过后回填；后台可手动修改）
+alter table public.profiles add column if not exists steam_id text;
 
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
@@ -84,6 +86,8 @@ create table if not exists public.player_applications (
 
 -- 兼容旧库：补充 display_name 列
 alter table public.player_applications add column if not exists display_name text;
+-- 兼容旧库：补充 steam_id 列（Steam64 位 ID，个人选手注册时填写）
+alter table public.player_applications add column if not exists steam_id text;
 
 -- ============================================================
 -- 1.5 Storage：个人注册赛季截图桶
@@ -1253,7 +1257,7 @@ grant select on public.groups, public.teams, public.team_members,
   public.site_config, public.events
   to anon, authenticated;
 -- profiles 列级授权：匿名用户仅能读公开展示列（不含 email/username，防隐私泄露）；已登录用户保留完整列（后台审核需邮箱）
-grant select (id, username, nickname, pw_username, highest_rank, highest_rating, role) on public.profiles to anon;
+grant select (id, username, nickname, pw_username, steam_id, highest_rank, highest_rating, role) on public.profiles to anon;
 grant select on public.profiles to authenticated;
 -- 审核通过时回填选手资料（pw_username/nickname/角色）需要 profiles 的 UPDATE 权限，否则选手池为空
 grant update on public.profiles to authenticated;

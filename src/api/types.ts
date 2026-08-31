@@ -66,6 +66,7 @@ export interface Profile {
   username: string | null
   nickname: string | null // 游戏昵称（个人选手注册时填写）
   pw_username: string | null // 完美 ID：完美对战平台的用户名（后台按用户名记录）
+  steam_id?: string | null // Steam64 位 ID（个人选手注册时填写，后台可手动修改）
   role: Role
   highest_rank?: string | null // 近 3 赛季最高段位（管理员审核时查看战绩截图后选择）
   highest_rating?: number | null // 最高段位时的最高 Rating（选手注册自选、管理员审核时确认）
@@ -77,6 +78,7 @@ export interface PlayerItem {
   id: string
   nickname: string | null
   pw_username: string | null
+  steam_id?: string | null // Steam64 位 ID
   highest_rank?: string | null // 近 3 赛季最高段位
   highest_rating?: number | null // 最高段位时的最高 Rating
   in_team: boolean // 是否已加入某支战队
@@ -89,6 +91,7 @@ export interface PlayerApplication {
   profile_id: string
   event_id: string | null // 报名赛事
   pw_username: string // 完美 ID（完美对战平台用户名）
+  steam_id?: string | null // Steam64 位 ID（个人选手注册时填写）
   display_name: string | null // 选手姓名（真实姓名，审核通过后回填 profiles.nickname）
   nickname: string | null // 预留昵称（本次注册不再单独采集）
   screenshots: string[] // 赛季截图（URL 或演示模式下的 data URL）

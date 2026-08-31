@@ -1,13 +1,14 @@
 // 管理端数据访问层（所有操作受 RLS 的 admin 策略约束）
 // 未配置 Supabase（演示模式）时直接读写内存中的 mock 数据。
 import { supabase, isSupabaseConfigured } from '@/lib/supabase'
-import { mockMatches, mockMembers, mockStages, mockTeams } from '@/mock/data'
+import { mockMatches, mockMembers, mockPlayers, mockStages, mockTeams } from '@/mock/data'
 import type { AccountItem, ApplicationStatus, Match, Stage, Team, TeamStatus } from './types'
 import { listGroups, listMatches, listStages } from './match'
 import { mockAutoCreatePollForMatch } from './bet'
 import {
   addTeamMember,
   createTeamByAdmin,
+  isValidSteamId,
   listMembers,
   listPlayerApplications,
   listPlayers,
@@ -32,6 +33,37 @@ export {
   listPlayerApplications,
   reviewPlayerApplication,
   createTeamByAdmin,
+  isValidSteamId,
+}
+
+/** 手动修改选手 Steam64 位 ID：写入 profiles 主档；同时同步对应申请行，保证审核页展示一致 */
+export async function updatePlayerSteamId(
+  profileId: string,
+  steamId: string | null,
+  appId?: string,
+) {
+  const val = steamId?.trim() || null
+  if (val && !isValidSteamId(val)) {
+    throw new Error('Steam64 位 ID 应为 17 位数字')
+  }
+  if (!isSupabaseConfigured || !supabase) {
+    const p = mockPlayers.find((x) => x.id === profileId)
+    if (p) p.steam_id = val
+    return
+  }
+  const { error: profErr } = await supabase
+    .from('profiles')
+    .update({ steam_id: val })
+    .eq('id', profileId)
+  if (profErr) throw new Error(`更新选手资料失败：${profErr.message}`)
+  if (appId) {
+    // 同步申请行，避免审核页刷新后展示旧值
+    const { error: appErr } = await supabase
+      .from('player_applications')
+      .update({ steam_id: val })
+      .eq('id', appId)
+    if (appErr) console.warn('同步申请行 Steam64 ID 失败（不影响选手主档）：', appErr.message)
+  }
 }
 
 /** 账号列表（账号审核用）：展示用户名/邮箱/角色/审核状态/注册时间 */

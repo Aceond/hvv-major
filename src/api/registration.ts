@@ -16,6 +16,11 @@ import { listStages } from './match'
 // 演示模式下的注册申请（内存存储，页面刷新后清空；真实环境存 player_applications 表）
 const demoApplications: PlayerApplication[] = []
 
+/** Steam64 位 ID 校验：17 位纯数字（Steam 个人资料 /profiles/ 后的数字） */
+export function isValidSteamId(v: string): boolean {
+  return /^\d{17}$/.test(v.trim())
+}
+
 /** 个人选手注册申请：选择报名赛事，填写选手姓名与完美 ID，自选近 3 赛季最高段位与最高 Rating（可选），选择在职状态（在职需填驻地和工号），上传最近 3-5 个赛季的截图，提交后由管理员审核 */
 export async function submitPlayerApplication(
   pwUsername: string,
@@ -29,6 +34,7 @@ export async function submitPlayerApplication(
   },
   rank?: string,
   highestRating?: number | null,
+  steamId?: string | null,
 ): Promise<PlayerApplication | null> {
   if (!pwUsername.trim()) {
     throw new Error('请填写完美 ID')
@@ -45,6 +51,10 @@ export async function submitPlayerApplication(
   if (employment.status === 'employed' && !employment.employeeNo?.trim()) {
     throw new Error('在职状态请填写工号')
   }
+  const steamIdVal = steamId?.trim() || null
+  if (steamIdVal && !isValidSteamId(steamIdVal)) {
+    throw new Error('Steam64 位 ID 应为 17 位数字')
+  }
   const rankVal = rank?.trim() || null
   const ratingVal = highestRating == null || Number.isNaN(highestRating) ? null : Number(highestRating)
   if (!isSupabaseConfigured || !supabase) {
@@ -54,6 +64,7 @@ export async function submitPlayerApplication(
       profile_id: 'demo-player',
       event_id: eventId,
       pw_username: pwUsername,
+      steam_id: steamIdVal,
       display_name: displayName.trim(),
       nickname: me?.nickname ?? null,
       highest_rank: rankVal,
@@ -88,6 +99,7 @@ export async function submitPlayerApplication(
       profile_id: user.id,
       event_id: eventId,
       pw_username: pwUsername,
+      steam_id: steamIdVal,
       display_name: displayName.trim(),
       highest_rank: rankVal,
       highest_rating: ratingVal,
@@ -163,6 +175,7 @@ export async function reviewPlayerApplication(
       if (me) {
         me.pw_username = app.pw_username
         me.nickname = app.display_name ?? me.nickname ?? app.pw_username
+        if (app.steam_id) me.steam_id = app.steam_id
       }
       // 初始化个人数据：每名选手一行全 0 统计（演示模式写内存 mock，使其直接进入个人数据/排行）
       const stages = mockStages.filter((s) => !app.event_id || s.event_id === app.event_id)
@@ -222,9 +235,10 @@ export async function reviewPlayerApplication(
         nickname: app.display_name ?? app.nickname ?? app.pw_username,
       }
       if (!keepRole) patch.role = 'player'
-      // 段位 / rating 同步记录到选手信息表（profiles）
+      // 段位 / rating / Steam64 ID 同步记录到选手信息表（profiles）
       if (rankVal) patch.highest_rank = rankVal
       if (ratingVal != null) patch.highest_rating = ratingVal
+      if (app.steam_id) patch.steam_id = app.steam_id
       const { error: profErr } = await supabase
         .from('profiles')
         .update(patch)
@@ -293,7 +307,7 @@ export async function listPlayers(keyword?: string, eventId?: string | null): Pr
   }
   let query = supabase
     .from('profiles')
-    .select('id, nickname, pw_username, highest_rank, highest_rating, team_members(team_id, status, event_id)')
+    .select('id, nickname, pw_username, steam_id, highest_rank, highest_rating, team_members(team_id, status, event_id)')
     .in('role', ['player', 'caster']) // 选手与解说均进入选手池（解说也可作为队员被选入战队）
     .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
@@ -306,6 +320,7 @@ export async function listPlayers(keyword?: string, eventId?: string | null): Pr
       id: p.id,
       nickname: p.nickname,
       pw_username: p.pw_username,
+      steam_id: p.steam_id ?? null,
       highest_rank: p.highest_rank ?? null,
       highest_rating: p.highest_rating ?? null,
       in_team: active.length > 0,
