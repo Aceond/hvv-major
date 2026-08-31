@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
-import type { ApplicationStatus, EventItem, Group, Team, TeamMember } from '@/api/types'
+import type { ApplicationStatus, EventItem, Group, Match, Team, TeamMember } from '@/api/types'
+import { MATCH_STATUS_LABEL } from '@/api/types'
 import { listEvents, listSignupEvents } from '@/api/event'
 import { createTeam, listMembers, listMyTeams } from '@/api/registration'
-import { listGroups } from '@/api/match'
+import { listGroups, listMyMatches } from '@/api/match'
 import { formatDateTime } from '@/utils/format'
 import PlayerRadar from '@/components/PlayerRadar.vue'
 
@@ -17,6 +18,8 @@ const events = ref<EventItem[]>([])
 const groups = ref<Group[]>([])
 const loading = ref(false)
 const submitting = ref(false)
+const historyMatches = ref<Match[]>([])
+const historyLoading = ref(false)
 
 // 报名表单（无战队时展示，逻辑与「战队报名」一致）
 const form = reactive({ eventId: '', teamName: '', tag: '' })
@@ -68,6 +71,50 @@ function memberInitial(m: TeamMember): string {
   return memberName(m).slice(0, 1)
 }
 
+/** 历史对战记录：当前筛选赛事下主战队的全部对局（按开赛时间倒序） */
+async function loadHistory() {
+  const t = mainTeam.value
+  if (!t) {
+    historyMatches.value = []
+    return
+  }
+  historyLoading.value = true
+  try {
+    historyMatches.value = await listMyMatches([t.id])
+  } catch {
+    historyMatches.value = []
+  } finally {
+    historyLoading.value = false
+  }
+}
+
+/** 该场比赛中「我的战队」所在侧是否获胜 */
+function mySideWon(m: Match, teamId: string): boolean | null {
+  if (m.status !== 'completed') return null
+  if (m.team_a_id === teamId) return m.team_a_score > m.team_b_score
+  if (m.team_b_id === teamId) return m.team_b_score > m.team_a_score
+  return null
+}
+
+/** 对阵展示名：我队 vs 对手 */
+function opponentName(m: Match, teamId: string): string {
+  if (m.team_a_id === teamId) return m.team_b_name ?? '未知'
+  if (m.team_b_id === teamId) return m.team_a_name ?? '未知'
+  return '未知'
+}
+
+function matchScore(m: Match, teamId: string): string {
+  if (m.team_a_id === teamId) return `${m.team_a_score} : ${m.team_b_score}`
+  return `${m.team_b_score} : ${m.team_a_score}`
+}
+
+function matchStatusType(s: Match['status']) {
+  return s === 'completed' ? 'success' : s === 'cancelled' ? 'danger' : 'warning'
+}
+
+/** 赛事筛选切换后重新加载历史对局 */
+watch(filteredTeams, () => loadHistory())
+
 async function load() {
   if (!auth.isLoggedIn) return
   loading.value = true
@@ -84,6 +131,7 @@ async function load() {
       map[t.id] = await listMembers(t.id)
     }
     rosters.value = map
+    await loadHistory()
   } catch (e: any) {
     ElMessage.error(e.message || '加载失败')
   } finally {
@@ -244,6 +292,64 @@ onMounted(async () => {
             </div>
           </template>
           <el-empty v-else description="该赛事暂无你的战队报名" :image-size="60" />
+
+          <!-- 历史对战记录（当前赛事下主战队） -->
+          <div v-if="mainTeam" class="history-card" v-loading="historyLoading">
+            <div class="history-head">
+              <span class="history-title">⚔ 历史对战记录</span>
+              <span class="history-sub">{{ eventName(mainTeam.event_id) }} · {{ mainTeam.name }}</span>
+            </div>
+
+            <div v-if="historyMatches.length === 0" class="history-empty">
+              暂无对战记录，约战或赛程对阵录入后会显示在这里
+            </div>
+            <div v-else class="history-list">
+              <div
+                v-for="m in historyMatches"
+                :key="m.id"
+                class="history-row"
+                @click="$router.push({ name: 'matches' })"
+              >
+                <div class="history-time">
+                  <span class="history-date">{{ formatDateTime(m.scheduled_at) }}</span>
+                </div>
+                <div class="history-stage">
+                  <el-tag v-if="m.group_name" size="small" effect="plain">{{ m.group_name }}</el-tag>
+                  <span class="stage-name">{{ m.stage_name ?? '-' }}</span>
+                </div>
+                <div class="history-vs">
+                  <span class="vs-team">{{ mainTeam.name }}</span>
+                  <span
+                    class="vs-score"
+                    :class="{
+                      win: mySideWon(m, mainTeam.id) === true,
+                      lose: mySideWon(m, mainTeam.id) === false,
+                    }"
+                  >
+                    {{ m.status === 'scheduled' ? 'VS' : matchScore(m, mainTeam.id) }}
+                  </span>
+                  <span class="vs-team">{{ opponentName(m, mainTeam.id) }}</span>
+                </div>
+                <el-tag :type="matchStatusType(m.status)" size="small">
+                  {{ MATCH_STATUS_LABEL[m.status] }}
+                </el-tag>
+                <el-tag
+                  v-if="m.status === 'completed' && mySideWon(m, mainTeam.id) === true"
+                  type="success"
+                  size="small"
+                  effect="dark"
+                  class="result-tag"
+                >胜</el-tag>
+                <el-tag
+                  v-else-if="m.status === 'completed' && mySideWon(m, mainTeam.id) === false"
+                  type="danger"
+                  size="small"
+                  effect="dark"
+                  class="result-tag"
+                >负</el-tag>
+              </div>
+            </div>
+          </div>
         </template>
 
         <!-- 无战队：报名表单（逻辑与「战队报名」一致） -->
@@ -451,6 +557,145 @@ onMounted(async () => {
 
 .form {
   max-width: 560px;
+}
+
+/* ---- 历史对战记录 ---- */
+.history-card {
+  margin-top: 16px;
+  padding: 18px 22px 8px;
+  background: var(--cs2-panel);
+  border: 1px solid var(--cs2-border);
+}
+
+.history-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+
+.history-title {
+  font-size: 16px;
+  font-weight: 800;
+  letter-spacing: 1px;
+  color: var(--cs2-text);
+}
+
+.history-sub {
+  font-size: 12px;
+  letter-spacing: 1px;
+  color: var(--cs2-text-muted);
+}
+
+.history-empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--cs2-text-muted);
+}
+
+.history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.history-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 9px 12px;
+  background: linear-gradient(180deg, var(--cs2-panel-2), var(--cs2-panel));
+  border: 1px solid var(--cs2-border);
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.2s;
+}
+
+.history-row:hover {
+  border-color: var(--cs2-accent);
+  transform: translateX(3px);
+}
+
+.history-time {
+  min-width: 132px;
+  font-size: 12px;
+  color: var(--cs2-text-muted);
+}
+
+.history-stage {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 110px;
+}
+
+.stage-name {
+  font-size: 12px;
+  color: var(--cs2-text-muted);
+}
+
+.history-vs {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.vs-team {
+  min-width: 90px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: center;
+  font-size: 13px;
+  color: var(--cs2-text-regular, #c6ccd8);
+}
+
+.vs-score {
+  font-weight: 700;
+  color: var(--cs2-accent);
+  white-space: nowrap;
+}
+
+.vs-score.win {
+  color: #67c23a;
+}
+
+.vs-score.lose {
+  color: #f56c6c;
+}
+
+.result-tag {
+  margin-left: 2px;
+}
+
+@media (max-width: 768px) {
+  .history-row {
+    flex-wrap: wrap;
+    gap: 6px 10px;
+  }
+
+  .history-vs {
+    order: -1;
+    width: 100%;
+    flex-basis: 100%;
+    justify-content: space-between;
+  }
+
+  .history-time {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .history-stage {
+    min-width: 0;
+    flex: 1;
+    justify-content: flex-end;
+  }
 }
 
 /* ---- 移动端 ---- */
