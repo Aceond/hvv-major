@@ -65,6 +65,79 @@ export async function updatePlayerSteamId(
   }
 }
 
+export interface PlayerApplicationPatch {
+  display_name: string | null
+  pw_username?: string
+  steam_id: string | null
+  highest_rank: string | null
+  highest_rating: number | null
+  employment_status: string | null
+  location: string | null
+  employee_no: string | null
+}
+
+/** 管理员编辑选手申请资料：更新申请行并同步选手主档（profiles）对应字段。
+ *  可编辑：姓名（display_name，回填 profiles.nickname）、完美 ID（pw_username）、Steam64、
+ *  近 3 赛季最高段位、最高 Rating、在职状态/驻地/工号。 */
+export async function updatePlayerApplication(
+  appId: string,
+  profileId: string,
+  patch: PlayerApplicationPatch,
+) {
+  const steam = patch.steam_id?.trim() || null
+  if (steam && !isValidSteamId(steam)) {
+    throw new Error('Steam64 位 ID 应为 17 位数字')
+  }
+  const rank = patch.highest_rank?.trim() || null
+  const rating = patch.highest_rating == null || Number.isNaN(patch.highest_rating)
+    ? null
+    : patch.highest_rating
+  const display = patch.display_name?.trim() || null
+  const pw = (patch.pw_username ?? '').trim()
+  const emp = patch.employment_status
+  const loc = emp === 'employed' ? (patch.location?.trim() || null) : null
+  const no = emp === 'employed' ? (patch.employee_no?.trim() || null) : null
+  if (!display) throw new Error('请输入选手姓名')
+  if (!pw) throw new Error('请输入完美 ID')
+  if (emp === 'employed' && (!loc || !no)) throw new Error('在职状态请填写驻地和工号')
+
+  if (!isSupabaseConfigured || !supabase) {
+    // 演示模式：无真实鉴权，直接返回（页面 rows 由调用方在本地下发后刷新）
+    return
+  }
+
+  // 更新申请行（RLS 允许管理员）
+  const appPatch: Record<string, unknown> = {
+    display_name: display,
+    pw_username: pw,
+    steam_id: steam,
+    highest_rank: rank,
+    highest_rating: rating,
+    employment_status: emp,
+    location: loc,
+    employee_no: no,
+  }
+  const { error: appErr } = await supabase
+    .from('player_applications')
+    .update(appPatch)
+    .eq('id', appId)
+  if (appErr) throw new Error(`更新申请失败：${appErr.message}`)
+
+  // 同步选手主档（姓名、完美 ID、Steam64、段位、Rating）
+  const profPatch: Record<string, unknown> = {
+    nickname: display,
+    pw_username: pw,
+    steam_id: steam,
+    highest_rank: rank,
+    highest_rating: rating,
+  }
+  const { error: profErr } = await supabase
+    .from('profiles')
+    .update(profPatch)
+    .eq('id', profileId)
+  if (profErr) throw new Error(`同步选手主档失败：${profErr.message}`)
+}
+
 /** 账号列表（账号审核用）：展示用户名/邮箱/角色/审核状态/注册时间 */
 export async function listAccounts(): Promise<AccountItem[]> {
   if (!isSupabaseConfigured || !supabase) return []

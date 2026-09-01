@@ -405,7 +405,7 @@ onMounted(async () => {
       </el-card>
 
       <!-- 战绩五维图 -->
-      <PlayerRadar />
+      <PlayerRadar mode="team" />
     </template>
   </div>
 </template>

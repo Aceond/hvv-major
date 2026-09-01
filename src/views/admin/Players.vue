@@ -1,10 +1,15 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { ApplicationStatus, EventItem, PlayerApplication } from '@/api/types'
 import { CS2_RANKS } from '@/api/types'
 import { listEvents } from '@/api/event'
-import { listPlayerApplications, reviewPlayerApplication, updatePlayerSteamId } from '@/api/admin'
+import {
+  listPlayerApplications,
+  reviewPlayerApplication,
+  updatePlayerApplication,
+  updatePlayerSteamId,
+} from '@/api/admin'
 import { formatDateTime } from '@/utils/format'
 
 const rows = ref<PlayerApplication[]>([])
@@ -26,6 +31,59 @@ function openSteamEdit(row: PlayerApplication) {
   steamEditApp.value = row
   steamEditValue.value = row.steam_id ?? ''
   steamEditVisible.value = true
+}
+
+/** 编辑选手申请资料（姓名 / 完美 ID / Steam64 / 段位 / Rating / 在职信息） */
+const editVisible = ref(false)
+const editSaving = ref(false)
+const editRow = ref<PlayerApplication | null>(null)
+const editForm = reactive({
+  display_name: '',
+  pw_username: '',
+  steam_id: '',
+  highest_rank: '',
+  highest_rating: null as number | null,
+  employment_status: '' as '' | 'employed' | 'unemployed',
+  location: '',
+  employee_no: '',
+})
+
+function openEdit(row: PlayerApplication) {
+  editRow.value = row
+  editForm.display_name = row.display_name ?? ''
+  editForm.pw_username = row.pw_username ?? ''
+  editForm.steam_id = row.steam_id ?? ''
+  editForm.highest_rank = row.highest_rank ?? ''
+  editForm.highest_rating = row.highest_rating ?? null
+  editForm.employment_status = (row.employment_status as '' | 'employed' | 'unemployed') || 'unemployed'
+  editForm.location = row.location ?? ''
+  editForm.employee_no = row.employee_no ?? ''
+  editVisible.value = true
+}
+
+async function saveEdit() {
+  const row = editRow.value
+  if (!row) return
+  editSaving.value = true
+  try {
+    await updatePlayerApplication(row.id, row.profile_id, {
+      display_name: editForm.display_name,
+      pw_username: editForm.pw_username,
+      steam_id: editForm.steam_id,
+      highest_rank: editForm.highest_rank,
+      highest_rating: editForm.highest_rating,
+      employment_status: editForm.employment_status,
+      location: editForm.location,
+      employee_no: editForm.employee_no,
+    })
+    ElMessage.success('选手资料已更新')
+    editVisible.value = false
+    load()
+  } catch (e: any) {
+    ElMessage.error(e?.message || '保存失败')
+  } finally {
+    editSaving.value = false
+  }
 }
 
 async function saveSteamEdit() {
@@ -244,8 +302,9 @@ onMounted(load)
       <el-table-column label="提交时间" min-width="140">
         <template #default="{ row }">{{ formatDateTime(row.created_at) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="150">
+      <el-table-column label="操作" width="200">
         <template #default="{ row }">
+          <el-button size="small" @click="openEdit(row)">编辑</el-button>
           <template v-if="row.status === 'pending'">
             <el-button size="small" type="success" @click="decide(row, 'approved')">通过</el-button>
             <el-button size="small" type="danger" @click="decide(row, 'rejected')">拒绝</el-button>
@@ -266,6 +325,57 @@ onMounted(load)
       <template #footer>
         <el-button @click="steamEditVisible = false">取消</el-button>
         <el-button type="primary" @click="saveSteamEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- 编辑选手申请资料 -->
+    <el-dialog v-model="editVisible" title="编辑选手资料" width="520px">
+      <el-form label-width="110px">
+        <el-form-item label="选手姓名">
+          <el-input v-model="editForm.display_name" maxlength="30" placeholder="选手真实姓名" />
+        </el-form-item>
+        <el-form-item label="完美 ID">
+          <el-input v-model="editForm.pw_username" maxlength="30" placeholder="完美对战平台用户名" />
+        </el-form-item>
+        <el-form-item label="Steam64 ID">
+          <el-input v-model="editForm.steam_id" maxlength="17" placeholder="17 位数字，如 76561198000000000" />
+          <div class="form-tip">Steam 个人资料页 URL 中 /profiles/ 后面的 17 位数字；留空可清除</div>
+        </el-form-item>
+        <el-form-item label="近3赛季最高段位">
+          <el-select v-model="editForm.highest_rank" placeholder="选择段位" clearable style="width: 100%">
+            <el-option v-for="r in CS2_RANKS" :key="r" :label="r" :value="r" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="最高 Rating">
+          <el-input-number
+            v-model="editForm.highest_rating"
+            :min="0"
+            :max="10"
+            :precision="2"
+            :step="0.1"
+            controls-position="right"
+            placeholder="最高段位 Rating"
+            style="width: 100%"
+          />
+        </el-form-item>
+        <el-form-item label="在职状态">
+          <el-radio-group v-model="editForm.employment_status">
+            <el-radio value="employed">在职</el-radio>
+            <el-radio value="unemployed">离职</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <template v-if="editForm.employment_status === 'employed'">
+          <el-form-item label="驻地">
+            <el-input v-model="editForm.location" maxlength="50" placeholder="驻地（在职时必填）" />
+          </el-form-item>
+          <el-form-item label="工号">
+            <el-input v-model="editForm.employee_no" maxlength="30" placeholder="工号（在职时必填）" />
+          </el-form-item>
+        </template>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible = false">取消</el-button>
+        <el-button type="primary" :loading="editSaving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
   </div>

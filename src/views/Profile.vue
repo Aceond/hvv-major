@@ -217,7 +217,7 @@ async function savePassword() {
       </el-row>
 
       <!-- 战绩五维图 -->
-      <PlayerRadar />
+      <PlayerRadar mode="personal" />
 
       <!-- 比赛记录 -->
       <el-card class="card">
