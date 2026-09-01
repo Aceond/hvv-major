@@ -903,9 +903,9 @@ $$;
 
 -- ============================================================
 -- 个人选手注册提交（覆盖更新 + 自动通过）
--- 规则：同一选手(profile_id) + 同一赛事(event_id) 若已有待审(pending)申请，
---   再次提交时覆盖更新该条，而非新增重复申请。
--- 自动通过：仅当该选手该赛事此前已有过 approved 记录，且本次相对原待审申请
+-- 规则：同一选手(profile_id) + 同一赛事(event_id) 已有申请（不限状态，
+--   找最新一条）时再次提交，覆盖更新该条，而非新增重复申请。
+-- 自动通过：仅当该选手该赛事此前已有过 approved 记录，且本次相对原申请
 --   「只补齐了原为空的字段、其余已填字段完全未变」时，才直接置为 approved 并回填资料。
 -- 由于普通用户受 player_applications update RLS(仅管理员)限制，本函数以 security definer 执行。
 -- ============================================================
@@ -963,10 +963,10 @@ begin
     raise exception '在职状态请填写驻地和工号';
   end if;
 
-  -- 该选手该赛事最新一条待审申请
+  -- 该选手该赛事最新一条申请（不限状态；优先对待审/已通过做覆盖更新，避免新增重复）
   select * into v_existing
   from public.player_applications
-  where profile_id = uid and event_id = p_event_id and status = 'pending'
+  where profile_id = uid and event_id = p_event_id
   order by created_at desc
   limit 1;
 
@@ -977,7 +977,7 @@ begin
   ) into v_prev_approved;
 
   if v_existing.id is null then
-    -- 无待审：直接新增
+    -- 该选手从未在该赛事提交过：直接新增
     insert into public.player_applications (
       profile_id, event_id, pw_username, steam_id, display_name,
       highest_rank, highest_rating, screenshots, employment_status, location, employee_no, status
@@ -989,7 +989,7 @@ begin
     return v_result;
   end if;
 
-  -- 已有待审：对比字段，判定本次是否「只补空字段、其余未变」
+  -- 已有申请：对比字段，判定本次是否「只补空字段、其余未变」
   v_old_pw_empty := v_existing.pw_username is null or v_existing.pw_username = '';
   v_old_display_empty := v_existing.display_name is null or v_existing.display_name = '';
   v_old_steam_empty := v_existing.steam_id is null or v_existing.steam_id = '';
