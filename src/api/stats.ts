@@ -68,6 +68,8 @@ export async function getPlayerStats(groupId?: string, stageId?: string): Promis
   const { data } = await query
   return ((data ?? []) as any[]).map((s) => ({
     ...s,
+    // player_stats 主键列是 profile_id；统一映射为前端语义的 player_id
+    player_id: s.profile_id,
     player_name: s.player?.nickname ?? s.player?.pw_username ?? null,
     pw_username: s.player?.pw_username ?? null,
     team_name: s.team?.name ?? null,
@@ -94,6 +96,8 @@ export async function getPlayerStatsByEvent(eventId: string): Promise<PlayerStat
   const { data } = await query
   return ((data ?? []) as any[]).map((s) => ({
     ...s,
+    // player_stats 主键列是 profile_id；统一映射为前端语义的 player_id，便于按当前登录选手匹配
+    player_id: s.profile_id,
     player_name: s.player?.nickname ?? s.player?.pw_username ?? null,
     pw_username: s.player?.pw_username ?? null,
     team_name: s.team?.name ?? null,
@@ -308,7 +312,7 @@ export async function savePlayerStat(row: PlayerStatRow) {
         fpr: row.fpr,
         awp_kpr: row.awp_kpr,
       },
-      { onConflict: 'profile_id' },
+      { onConflict: 'profile_id,stage_id' },
     )
 }
 
