@@ -79,34 +79,6 @@ export async function getPlayerStats(groupId?: string, stageId?: string): Promis
   })).sort((a, b) => b.rating_pro - a.rating_pro)
 }
 
-/** 某赛事下所有选手的个人统计数据（个人中心五维图用）。
- *  与「数据录入 / 个人排行」读取的是同一张 player_stats，审核通过自动初始化、保存即更新，天然同步。 */
-export async function getPlayerStatsByEvent(eventId: string): Promise<PlayerStatRow[]> {
-  if (!isSupabaseConfigured || !supabase) {
-    return mockPlayerStats
-  }
-  // 选手统计通过 stage_id 关联到所属赛事（每名选手一行，stage 指向该赛事下的阶段）
-  const stages = await listStages(eventId)
-  const stageIds = stages.map((s) => s.id)
-  if (stageIds.length === 0) return []
-  let query = supabase
-    .from('player_stats')
-    .select('*, player:profiles(nickname, pw_username), team:teams(name), group:groups(name), stage:stages(name, group_id)')
-    .in('stage_id', stageIds)
-  const { data } = await query
-  return ((data ?? []) as any[]).map((s) => ({
-    ...s,
-    // player_stats 主键列是 profile_id；统一映射为前端语义的 player_id，便于按当前登录选手匹配
-    player_id: s.profile_id,
-    player_name: s.player?.nickname ?? s.player?.pw_username ?? null,
-    pw_username: s.player?.pw_username ?? null,
-    team_name: s.team?.name ?? null,
-    group_name: s.group?.name ?? null,
-    stage_name: s.stage?.name ?? null,
-    stage_group_id: s.stage?.group_id ?? null,
-  }))
-}
-
 /** 保存/更新队伍统计数据（按 team_id + stage_id 覆盖） */
 export async function saveTeamStat(row: TeamStatRow) {
   if (!isSupabaseConfigured || !supabase) {

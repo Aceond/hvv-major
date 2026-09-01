@@ -4,7 +4,7 @@ import type { EventItem, Group, PlayerStatRow, Team } from '@/api/types'
 import { listEvents } from '@/api/event'
 import { listGroups } from '@/api/match'
 import { listMyTeams } from '@/api/registration'
-import { getPlayerStatsByEvent } from '@/api/stats'
+import { getPlayerStatsAggregated } from '@/api/stats'
 import { useAuthStore } from '@/stores/auth'
 
 const props = withDefaults(
@@ -26,7 +26,7 @@ const radarRange = ref('all') // all=全部队伍；否则为组别 id（队伍�
 const eventStats = ref<PlayerStatRow[]>([])
 const radarLoading = ref(false)
 
-/** 五维图维度定义（场均击杀 = 总击杀 / 比赛数，其余直接取字段） */
+/** 五维图维度定义（场均击杀 = 总击杀 / 地图数，其余直接取字段） */
 const RADAR_DIMS = [
   { key: 'avg_kills', label: '场均击杀' },
   { key: 'kd', label: 'KD' },
@@ -38,7 +38,8 @@ const RADAR_DIMS = [
 function dimValue(row: PlayerStatRow, key: (typeof RADAR_DIMS)[number]['key']): number {
   switch (key) {
     case 'avg_kills':
-      return row.matches > 0 ? row.total_kills / row.matches : 0
+      // 与个人排行口径一致：场均击杀 = 总击杀 ÷ 地图数（聚合已给出，缺失时按 maps 兜底）
+      return row.avg_kills ?? (row.maps ? row.total_kills / row.maps : 0)
     case 'kd':
       return row.kd
     case 'adr':
@@ -53,11 +54,13 @@ function dimValue(row: PlayerStatRow, key: (typeof RADAR_DIMS)[number]['key']): 
 }
 
 /** 当前范围（全部/某组别）内的所有选手统计行。
- *  组别按「数据/比赛所属组别」判定（stage 的组别，即在哪打的），而非选手战队被分配的组别；
- *  演示数据未带 stage 组别时回退用战队组别。 */
+ *  组别按「数据/比赛所属组别」判定（group_ids 为选手在本聚合范围内涉及的全部组别），
+ *  而非选手战队被分配的组别；演示数据未带组别时回退用 group_id。 */
 const radarRows = computed(() => {
   if (radarRange.value === 'all') return eventStats.value
-  return eventStats.value.filter((r) => (r.stage_group_id ?? r.group_id) === radarRange.value)
+  return eventStats.value.filter(
+    (r) => r.group_ids?.includes(radarRange.value) || r.group_id === radarRange.value,
+  )
 })
 
 /** 我所在的战队（当前赛事下；同一赛事正式队员一人一队，取第一支匹配的战队） */
@@ -207,7 +210,8 @@ async function loadRadar() {
   if (!radarEventId.value) return
   radarLoading.value = true
   try {
-    eventStats.value = await getPlayerStatsByEvent(radarEventId.value)
+    // 与「个人排行」页同源同口径：直接实时聚合 match_player_stats，避免数据库触发器刷新滞后造成对不上
+    eventStats.value = await getPlayerStatsAggregated(undefined, undefined, radarEventId.value)
   } finally {
     radarLoading.value = false
   }
@@ -330,7 +334,7 @@ onMounted(async () => {
               </el-table-column>
             </el-table>
             <div class="radar-tip">
-              场均击杀 = 总击杀 ÷ 比赛数；数据与后台「数据录入 / 个人排行」同源，管理员保存后自动同步。
+              场均击杀 = 总击杀 ÷ 地图数；数据与「个人排行」页同源同口径（直接聚合比赛队员数据），实时一致。
             </div>
           </div>
         </div>
