@@ -92,11 +92,25 @@ export async function fetchPwaMatchList(
   size = 30,
 ): Promise<PwaListRecord[]> {
   const base = proxyBase()
-  if (!base) throw new Error('未配置 PWA 代理（VITE_PWA_PROXY_URL 或 Supabase 未配置）')
+  if (!base) throw new Error('未配置 PWA 代理（缺少 VITE_SUPABASE_URL / VITE_PWA_PROXY_URL）')
   const params = buildSignedPwaParams({ access_token: token, size: String(size), uid: steam64 })
   const qs = new URLSearchParams({ url: 'list', steamid: steam64, ...params })
-  const resp = await fetch(`${base}?${qs.toString()}`, { method: 'GET' })
-  if (!resp.ok) throw new Error(`代理请求失败（HTTP ${resp.status}），可改用「粘贴 JSON」导入`)
+  let resp: Response
+  try {
+    resp = await fetch(`${base}?${qs.toString()}`, { method: 'GET' })
+  } catch {
+    throw new Error('代理连接失败（网络/跨域）→ 请先部署 pwa-proxy Edge Function，或改用「粘贴 JSON」导入')
+  }
+  if (!resp.ok) {
+    // 区分常见失败原因，方便快速定位
+    const reason =
+      resp.status === 404
+        ? '代理未部署（404）→ 请按提示部署 pwa-proxy Edge Function，或改用「粘贴 JSON」导入'
+        : resp.status === 401 || resp.status === 403
+          ? `代理权限拦截（HTTP ${resp.status}）→ 请以 --no-verify-jwt 重新部署 pwa-proxy`
+          : `代理请求失败（HTTP ${resp.status}）→ 请检查代理部署与网络，或改用「粘贴 JSON」导入`
+    throw new Error(reason)
+  }
   const json = (await resp.json()) as PwaResp<PwaListRecord[]>
   if (json.code !== 0) throw new Error(`PWA 返回错误 ${json.code}：${json.msg ?? ''}（token/Steam64 可能不匹配）`)
   return json.data ?? []
