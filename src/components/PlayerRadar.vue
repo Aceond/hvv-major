@@ -53,14 +53,22 @@ function dimValue(row: PlayerStatRow, key: (typeof RADAR_DIMS)[number]['key']): 
   }
 }
 
-/** 当前范围（全部/某组别）内的所有选手统计行。
+/** 该统计行是否「有数据」：有效参赛过至少一场比赛（matches>0），用于平均值只统计有数据的选手 */
+function hasData(r: PlayerStatRow): boolean {
+  return (r.matches ?? 0) > 0
+}
+
+/** 当前范围（全部/某组别）内的所有选手统计行（仅保留有数据的选手，避免零数据拉低平均值）。
  *  组别按「数据/比赛所属组别」判定（group_ids 为选手在本聚合范围内涉及的全部组别），
  *  而非选手战队被分配的组别；演示数据未带组别时回退用 group_id。 */
 const radarRows = computed(() => {
-  if (radarRange.value === 'all') return eventStats.value
-  return eventStats.value.filter(
-    (r) => r.group_ids?.includes(radarRange.value) || r.group_id === radarRange.value,
-  )
+  const base =
+    radarRange.value === 'all'
+      ? eventStats.value
+      : eventStats.value.filter(
+          (r) => r.group_ids?.includes(radarRange.value) || r.group_id === radarRange.value,
+        )
+  return base.filter(hasData)
 })
 
 /** 我所在的战队（当前赛事下；同一赛事正式队员一人一队，取第一支匹配的战队） */
@@ -68,17 +76,17 @@ const myTeam = computed(
   () => myTeams.value.find((t) => t.event_id === radarEventId.value) ?? null,
 )
 
-/** 我队队员的统计行（该赛事下 team_id 等于我队的所有选手行） */
+/** 我队队员的统计行（该赛事下 team_id 等于我队的所有选手行；仅保留有数据队员） */
 const myTeamRows = computed(() => {
   const team = myTeam.value
   if (!team) return []
-  return eventStats.value.filter((r) => r.team_id === team.id)
+  return eventStats.value.filter((r) => r.team_id === team.id).filter(hasData)
 })
 
 /** 当前登录选手本人的统计行（该赛事下 player_id 等于当前用户）；personal 模式用 */
 const myPlayerRows = computed(() => {
   if (!auth.profile?.id) return []
-  return eventStats.value.filter((r) => r.player_id === auth.profile?.id)
+  return eventStats.value.filter((r) => r.player_id === auth.profile?.id).filter(hasData)
 })
 
 const radarRangeName = computed(() => {
