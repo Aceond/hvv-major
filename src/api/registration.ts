@@ -91,30 +91,25 @@ export async function submitPlayerApplication(
   if (!user) {
     throw new Error('登录状态已失效，请重新登录后再提交')
   }
-  // 截图以压缩后的 data URL 直接存入申请记录（screenshots 为 jsonb），不依赖 Storage 桶配置，保证上传稳定。
-  // 注册页已先行压缩（自适应，单张 <~65KB，5 张总提交体 <~400KB，低于网络/网关拦截阈值）；后台审核与前台展示均直接读取。
-  const { data, error: insertErr } = await supabase
-    .from('player_applications')
-    .insert({
-      profile_id: user.id,
-      event_id: eventId,
-      pw_username: pwUsername,
-      steam_id: steamIdVal,
-      display_name: displayName.trim(),
-      highest_rank: rankVal,
-      highest_rating: ratingVal,
-      screenshots,
-      employment_status: employment.status,
-      location: employment.status === 'employed' ? employment.location?.trim() ?? null : null,
-      employee_no: employment.status === 'employed' ? employment.employeeNo?.trim() ?? null : null,
-    })
-    .select('*')
-    .single()
-  if (insertErr) {
-    // 透出真实原因（多为表缺列/RLS/权限），便于定位与修复
-    throw new Error(`提交失败：${insertErr.message}`)
+  // 经 security definer RPC 提交：同一选手+同一赛事已有待审申请时覆盖更新，不新增重复；
+  // 仅当该选手该赛事此前已通过、且本次只补齐原先为空的字段（其余已填字段未变）时自动置为 approved。
+  const { data, error: rpcErr } = await supabase.rpc('submit_player_application', {
+    p_event_id: eventId,
+    p_pw_username: pwUsername,
+    p_display_name: displayName.trim(),
+    p_steam_id: steamIdVal ?? null,
+    p_highest_rank: rankVal,
+    p_highest_rating: ratingVal,
+    p_screenshots: screenshots as unknown as Record<string, unknown>,
+    p_employment_status: employment.status,
+    p_location: employment.status === 'employed' ? employment.location?.trim() ?? null : null,
+    p_employee_no: employment.status === 'employed' ? employment.employeeNo?.trim() ?? null : null,
+  })
+  if (rpcErr) {
+    // 透出真实原因（多为表缺列/RLS/权限/函数未部署），便于定位与修复
+    throw new Error(`提交失败：${rpcErr.message}`)
   }
-  return data as PlayerApplication | null
+  return (data as unknown as PlayerApplication) ?? null
 }
 
 /** 查询当前登录用户的注册申请（最新一条） */

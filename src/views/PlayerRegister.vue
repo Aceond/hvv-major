@@ -178,8 +178,12 @@ async function submit() {
       ElMessage.error('提交失败，请稍后重试')
       return
     }
-    status.value = 'pending'
-    ElMessage.success('注册申请已提交，等待管理员审核')
+    status.value = app.status ?? 'pending'
+    if (app.status === 'approved') {
+      ElMessage.success('本次仅补齐了先前空缺的信息，且你此前已通过审核，已自动通过，可前往战队报名')
+    } else {
+      ElMessage.success('注册申请已提交，等待管理员审核')
+    }
   } catch (e: any) {
     ElMessage.error(e.message || '提交失败')
   } finally {
