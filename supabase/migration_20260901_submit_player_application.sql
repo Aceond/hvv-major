@@ -50,6 +50,7 @@ declare
   v_old_loc_empty boolean;
   v_old_no_empty boolean;
   v_old_screens_empty boolean;
+  v_new_screens boolean;
   v_keep_role boolean;
 begin
   if uid is null then
@@ -99,6 +100,9 @@ begin
   v_old_no_empty := v_existing.employee_no is null or v_existing.employee_no = '';
   v_old_screens_empty := v_existing.screenshots is null
     or jsonb_array_length(coalesce(v_existing.screenshots, '[]'::jsonb)) = 0;
+  -- 是否「本次传了新图」（新截图非空数组）：只有传了新图才参与图片判定；
+  -- 本次没传图（空数组）时忽略图片，既不算改动、也不覆盖旧图。
+  v_new_screens := v_screens is not null and jsonb_array_length(v_screens) > 0;
 
   -- 旧值非空且本次新值不同 → 视为「改动」，禁止自动通过（只允许空→有值）
   if not v_old_pw_empty and v_existing.pw_username <> v_pw then v_auto_pass := false; end if;
@@ -109,7 +113,9 @@ begin
   if not v_old_emp_empty and v_existing.employment_status <> p_employment_status then v_auto_pass := false; end if;
   if not v_old_loc_empty and v_existing.location is distinct from v_loc then v_auto_pass := false; end if;
   if not v_old_no_empty and v_existing.employee_no is distinct from v_no then v_auto_pass := false; end if;
-  if not v_old_screens_empty
+  -- 只有本次传了新图时才对比：旧图非空且新图长度不同 → 视为改动；本次没传图则完全忽略
+  if v_new_screens
+     and not v_old_screens_empty
      and jsonb_array_length(coalesce(v_existing.screenshots, '[]'::jsonb)) <> jsonb_array_length(v_screens)
   then v_auto_pass := false; end if;
 
@@ -123,7 +129,7 @@ begin
       display_name = v_display,
       highest_rank = nullif(v_rank, ''),
       highest_rating = v_rating,
-      screenshots = v_screens,
+      screenshots = case when v_new_screens then v_screens else v_existing.screenshots end,
       employment_status = p_employment_status,
       location = v_loc,
       employee_no = v_no,
