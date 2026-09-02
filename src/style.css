@@ -128,23 +128,22 @@ a {
   padding: 28px 20px 40px;
 }
 
-/* 页面标题（斜切角战术风格） */
-.page-title {
+/* 页面标题（斜切角战术风格）：前台 .page-title / h2.title 与后台 h2 统一视觉 */
+.page-title,
+.page-container h2.title,
+.admin-layout h2 {
   display: inline-flex;
   align-items: center;
   margin: 0 0 20px;
   font-size: 22px;
   font-weight: 700;
   letter-spacing: 1px;
-}
-
-/* 各页面沿用 <h2 class="title"> 时适配暗色 */
-.page-container h2.title {
   color: var(--cs2-text);
-  margin-bottom: 16px;
 }
 
-.page-title::before {
+.page-title::before,
+.page-container h2.title::before,
+.admin-layout h2::before {
   content: '';
   width: 4px;
   height: 22px;
@@ -154,7 +153,9 @@ a {
 }
 
 /* 页面标题右侧 HUD 角标（战术风格） */
-.page-title::after {
+.page-title::after,
+.page-container h2.title::after,
+.admin-layout h2::after {
   content: '// CS2';
   margin-left: 12px;
   font-size: 10px;
