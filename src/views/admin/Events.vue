@@ -3,7 +3,7 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { EventItem, EventStatus } from '@/api/types'
 import { EVENT_STATUS_LABEL } from '@/api/types'
-import { createEvent, deleteEvent, listEvents, updateEvent } from '@/api/event'
+import { createEvent, deleteEvent, listEvents, resolveEventChampions, updateEvent } from '@/api/event'
 
 const rows = ref<EventItem[]>([])
 const loading = ref(false)
@@ -11,6 +11,8 @@ const loading = ref(false)
 const dialogVisible = ref(false)
 const saving = ref(false)
 const editingId = ref<string | null>(null)
+/** 编辑前该赛事的旧状态（用于判断是否「刚变为 ended」以触发冠军自动判定） */
+const oldStatus = ref<EventStatus | null>(null)
 
 const form = reactive({
   name: '',
@@ -57,6 +59,7 @@ function openCreate() {
 
 function openEdit(e: EventItem) {
   editingId.value = e.id
+  oldStatus.value = e.status
   Object.assign(form, {
     name: e.name,
     edition: e.edition,
@@ -90,6 +93,17 @@ async function save() {
     if (editingId.value) {
       await updateEvent(editingId.value, payload)
       ElMessage.success('赛事已更新')
+      // 联动：赛事从非「已结束」变为「已结束」时，自动按各组总决赛胜者判定冠军，
+      // 使首页「冠军展播」无需再去「往届冠军」页手动点一次。
+      const becameEnded = oldStatus.value !== 'ended' && form.status === 'ended'
+      if (becameEnded) {
+        try {
+          const n = await resolveEventChampions(editingId.value)
+          if (n > 0) ElMessage.success(`已自动判定 ${n} 个组别的冠军`)
+        } catch (e: any) {
+          ElMessage.warning(e?.message || '冠军自动判定未完成，可在「往届冠军」页手动判定')
+        }
+      }
     } else {
       const created = await createEvent(payload)
       if (!created) {
