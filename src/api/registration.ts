@@ -303,7 +303,7 @@ export async function listPlayers(keyword?: string, eventId?: string | null): Pr
     .from('profiles')
     // 注意：steam_id 不在列级授权内（仅本人/管理员可见），此处不读取，避免权限错误
     .select('id, nickname, pw_username, highest_rank, highest_rating, team_members(team_id, status, event_id)')
-    .in('role', ['player', 'caster']) // 选手与解说均进入选手池（解说也可作为队员被选入战队）
+    .in('role', ['player', 'caster', 'admin']) // 选手/解说/管理员均进入选手池（管理员本人也可参赛被选入战队）
     .not('pw_username', 'is', null) // 只有个人注册审核通过（回填完美 ID）的选手才进入选手池
   if (keyword) query = query.or(`pw_username.ilike.%${keyword}%,nickname.ilike.%${keyword}%`)
   const { data } = await query
