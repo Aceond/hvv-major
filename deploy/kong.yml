@@ -1,0 +1,26 @@
+# Kong 声明式配置：把 /auth /rest /realtime 聚合到 8000 端口
+# 前端 @supabase/supabase-js 只认一个 SUPABASE_URL，走这个入口即可零改动
+_format_version: "3.0"
+services:
+  - name: auth
+    url: http://gotrue:9999
+    routes:
+      - name: auth-route
+        paths: ["/auth"]
+        strip_path: false
+        preserve_host: true
+  - name: rest
+    url: http://postgrest:3000
+    routes:
+      - name: rest-route
+        paths: ["/rest"]
+        strip_path: false
+        preserve_host: true
+  - name: realtime
+    url: http://realtime:4000
+    routes:
+      - name: realtime-route
+        paths: ["/realtime"]
+        strip_path: false
+        preserve_host: true
+        protocols: ["http", "https"]

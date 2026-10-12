@@ -1,0 +1,111 @@
+# ============================================================
+# HVV Major 自托管后端（路线 B：微缩版 Supabase）
+# 5 个服务：postgres + gotrue + postgrest + realtime + kong
+# 内存合计约 1~1.5GB，适配 3.7GB 服务器
+# ============================================================
+services:
+  postgres:
+    image: postgres:17
+    container_name: hvv-postgres
+    restart: unless-stopped
+    command:
+      - postgres
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - wal_level=logical
+      - -c
+      - max_replication_slots=5
+      - -c
+      - max_connections=100
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+
+  gotrue:
+    image: supabase/gotrue:latest
+    container_name: hvv-gotrue
+    restart: unless-stopped
+    environment:
+      GOTRUE_JWT_SECRET: ${JWT_SECRET}
+      GOTRUE_JWT_EXP: "3600"
+      GOTRUE_DB_DRIVER: postgres
+      GOTRUE_DB_DATABASE_URL: postgres://supabase_auth_admin:${AUTH_DB_PASSWORD}@postgres:5432/postgres
+      GOTRUE_API_HOST: 0.0.0.0
+      GOTRUE_API_PORT: "9999"
+      GOTRUE_SITE_URL: ${SITE_URL}
+      GOTRUE_URI_ALLOW_LIST: ${URI_ALLOW_LIST}
+      GOTRUE_EXTERNAL_EMAIL_ENABLED: "true"
+      GOTRUE_MAILER_AUTOCONFIRM: ${MAILER_AUTOCONFIRM}
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgrest:
+    image: postgrest/postgrest:latest
+    container_name: hvv-postgrest
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD}@postgres:5432/postgres
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_DB_SCHEMAS: public
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  realtime:
+    image: supabase/realtime:latest
+    container_name: hvv-realtime
+    restart: unless-stopped
+    environment:
+      PORT: "4000"
+      APP_NAME: realtime
+      DB_HOST: postgres
+      DB_PORT: "5432"
+      DB_NAME: postgres
+      DB_USER: supabase_realtime_admin
+      DB_PASSWORD: ${REALTIME_DB_PASSWORD}
+      DB_SSL: "false"
+      DB_AFTER_CONNECT_QUERY: 'SET search_path TO _realtime'
+      DB_ENC_KEY: supabaserealtime
+      API_JWT_SECRET: ${JWT_SECRET}
+      SECRET_KEY_BASE: ${JWT_SECRET}
+      METRICS_JWT_SECRET: ${JWT_SECRET}
+      SEED_SELF_HOST: "true"
+      ERL_AFLAGS: -proto_dist inet_tcp
+      DNS_NODES: "''"
+      RLIMIT_NOFILE: "10000"
+      SECURE_CHANNELS: "false"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  kong:
+    image: kong:3.6
+    container_name: hvv-kong
+    restart: unless-stopped
+    environment:
+      KONG_DATABASE: "off"
+      KONG_DECLARATIVE_CONFIG: /kong.yml
+      KONG_PROXY_ACCESS_LOG: /dev/stdout
+      KONG_PROXY_ERROR_LOG: /dev/stderr
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./kong.yml:/kong.yml
+    depends_on:
+      - gotrue
+      - postgrest
+      - realtime
+
+volumes:
+  pgdata:

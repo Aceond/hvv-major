@@ -28,3 +28,15 @@ debug.log
 .idea/
 .DS_Store
 *.local
+
+# 部署产物与敏感数据（含数据库密码 / PWA token / Steam64，勿提交）
+hvv-backend-deploy.tar.gz
+data/pwa_*.json
+data/_report_dump.json
+scripts/pwa_*.py
+scripts/_*.py
+scripts/.venv/
+scripts/data/
+.supabase-cli-home/
+supabase/.temp/
+OIP.webp
